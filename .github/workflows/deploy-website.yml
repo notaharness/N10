@@ -1,0 +1,45 @@
+name: Deploy website
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - uses: nrwl/nx-set-shas@v4
+
+      # Builds and dry-runs wrangler with no credentials required, so this
+      # workflow stays green while n10.is is not yet a Cloudflare zone.
+      - run: npx nx affected -t deploy:check
+
+      # Runs only once CLOUDFLARE_API_TOKEN is set as a repository secret
+      # (and CLOUDFLARE_ACCOUNT_ID as a repository variable) — see
+      # apps/website/README.md for the Cloudflare-side setup.
+      - name: Deploy
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npx nx affected -t deploy
