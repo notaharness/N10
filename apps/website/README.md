@@ -58,6 +58,18 @@ app, independent of anything in this project. Forcing `NODE_ENV=production`
 in the script (rather than relying on the caller's environment) makes the
 build deterministic regardless of how it's invoked.
 
+## AI features
+
+`/llms.txt` and `/llms-full.txt` are live (`src/app/llms.txt/route.ts`,
+`src/lib/llms.ts`). The MCP endpoint (`/api/mcp`) and the "Ask AI" chat
+dialog are not implemented yet: the version of `@fumadocs/cli` available
+under this workspace's min-release-age constraint (`1.5.0`) doesn't ship
+the `feature mcp` / `add ai/*` generators the newer Fumadocs docs describe.
+Revisit once a newer CLI clears the cooldown, or hand-roll `/api/mcp` on
+top of `source` and the Model Context Protocol SDK directly. The AI chat
+dialog also needs a provider API key as a Worker secret before it's worth
+adding.
+
 ## Deploying
 
 `wrangler.jsonc`'s `routes` entry is commented out until `n10.is` is added

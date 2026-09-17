@@ -36,6 +36,7 @@ export default [
       '**/.open-next',
       '**/.wrangler',
       '**/next-env.d.ts',
+      'src/generated/**',
     ],
   },
 ];

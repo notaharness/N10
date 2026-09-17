@@ -36,11 +36,16 @@
           }
         ],
         "outputs": [
-          "{projectRoot}/.source"
+          "{projectRoot}/.source",
+          "{projectRoot}/src/generated"
         ],
         "options": {
-          "command": "fumadocs-mdx",
-          "cwd": "apps/website"
+          "commands": [
+            "fumadocs-mdx",
+            "node scripts/generate-llms-full.mjs"
+          ],
+          "cwd": "apps/website",
+          "parallel": false
         }
       },
       "build": {

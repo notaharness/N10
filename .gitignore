@@ -73,6 +73,7 @@ out
 .open-next
 .wrangler
 next-env.d.ts
+apps/website/src/generated
 
 # Intermediate recordings from the README capture script. The published
 # GIFs and stills in docs/media/ are committed; the multi-megabyte
