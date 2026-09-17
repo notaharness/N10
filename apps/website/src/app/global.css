@@ -1,0 +1,24 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* n10 brand palette.
+ *
+ * Source of truth: apps/desktop/src/renderer/styles.css. These values
+ * are copied, not imported: the desktop ships an IDE chrome palette
+ * (sidebar/titlebar/tab/diff tokens) that a marketing page has no use
+ * for, and Fumadocs reads its own --color-fd-* namespace rather than
+ * shadcn's. What transfers is the accent and the radius; retune the
+ * blue there, retune it here too.
+ *
+ * If a third consumer ever needs this palette, extract it into a
+ * CSS-only libs/design-tokens package rather than adding another copy.
+ */
+:root {
+  --color-fd-primary: #005fb8;
+  --radius: 0.375rem;
+}
+
+.dark {
+  --color-fd-primary: #0078d4;
+}

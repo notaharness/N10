@@ -11,7 +11,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "noEmit": true,
     "composite": false,
     "incremental": true,
@@ -30,7 +30,11 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "tsBuildInfoFile": "node_modules/.cache/website.tsbuildinfo"
   },
   "include": [
@@ -39,7 +43,8 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts",
-    ".source/**/*.ts"
+    ".source/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules", "out", ".open-next"]
 }

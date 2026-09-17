@@ -13,6 +13,9 @@
     "url": "git+https://github.com/notaharness/n10.git",
     "directory": "apps/website"
   },
+  "scripts": {
+    "build": "NODE_ENV=production next build"
+  },
   "nx": {
     "name": "website",
     "tags": [
