@@ -3,6 +3,42 @@ title: Architecture
 description: A directory map of every app and library in the n10 monorepo.
 ---
 
+Both shells sit on the same core: the TUI and desktop app share
+`libs/app-core` for React state and `libs/core` for git, PTY and provider
+operations, with dependencies flowing one way (`@nx/enforce-module-boundaries`
+enforces this — an app may depend on libs, never on another app).
+`apps/website` is intentionally standalone.
+
+```mermaid
+flowchart TB
+  subgraph Apps
+    cli["apps/cli (Ink TUI)"]
+    desktop["apps/desktop (Electron)"]
+    website["apps/website (Next.js, standalone)"]
+  end
+  subgraph Libs
+    appcore["libs/app-core — React hooks + controllers"]
+    core["libs/core — no React, Ink or Electron"]
+    vcs["libs/vcs/* — GitHub, Azure DevOps"]
+    terminal["libs/terminal, terminal-pty, terminal-tmux"]
+    diff["libs/diff"]
+    worktree["libs/worktree-manager"]
+    review["libs/review-comments"]
+    logger["libs/logger"]
+  end
+  cli --> appcore
+  desktop --> appcore
+  appcore --> core
+  core --> vcs
+  core --> terminal
+  core --> diff
+  core --> worktree
+  core --> review
+  core --> logger
+```
+
+The full directory map, app by app:
+
 ```
 apps/cli/                        — Ink TUI application (ESM, React 19) — thin render layer over @n10/app-core
   src/main.tsx                   — Entry point, root component
