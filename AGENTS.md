@@ -28,8 +28,9 @@ n10 was formerly named Kirby; the repository is `notaharness/n10`.
 
 n10 runs coding agents in git worktrees and reviews their pull requests.
 Nx monorepo with npm workspaces and ESM: `apps/cli` is the Ink TUI,
-`apps/desktop` is Electron, `libs/core` owns shared operations, and
-`libs/app-core` supplies React hooks and controllers.
+`apps/desktop` is Electron, `apps/website` is the Next.js/Fumadocs site at
+n10.is, `libs/core` owns shared operations, and `libs/app-core` supplies
+React hooks and controllers.
 
 ## Context and tools
 
@@ -53,7 +54,12 @@ npx nx e2e cli-e2e                    # offline TUI tests
 npx nx e2e desktop-e2e                # offline Electron tests
 npx nx e2e:visual desktop-e2e          # screenshots in a pinned container
 GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
+npx nx dev website                    # apps/website at http://localhost:3100
 ```
+
+See `apps/website/README.md` for that project's own commands and
+conventions (it doesn't follow the workspace's tsconfig or import style —
+Next.js requires otherwise).
 
 - Install dependencies with `npm ci` in a fresh worktree before running code
   checks. Do not copy another checkout's `node_modules`; workspace links and
