@@ -1,23 +1,21 @@
-import Link from 'next/link';
+import { Cta } from '@/components/landing/cta';
+import { Features } from '@/components/landing/features';
+import { Footer } from '@/components/landing/footer';
+import { Hero } from '@/components/landing/hero';
+import { InstallStrip } from '@/components/landing/install-strip';
+import { ProvidersTable } from '@/components/landing/providers-table';
+import { TerminalUiSection } from '@/components/landing/terminal-ui';
 
-// Placeholder landing page. The real composition (hero, install strip,
-// feature sections, provider table) lands in a later checkpoint once
-// the docs content and converted demo media exist — see the plan's
-// "feat(website): build the landing page" step.
 export default function HomePage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center">
-      <h1 className="text-3xl font-semibold">n10</h1>
-      <p className="text-fd-muted-foreground max-w-md">
-        Run AI coding agents across git worktrees, track pull requests, and
-        review code from a desktop app or terminal UI.
-      </p>
-      <Link
-        href="/docs"
-        className="text-fd-primary underline underline-offset-4"
-      >
-        Read the docs
-      </Link>
+    <main className="flex flex-1 flex-col">
+      <Hero />
+      <InstallStrip />
+      <Features />
+      <TerminalUiSection />
+      <ProvidersTable />
+      <Cta />
+      <Footer />
     </main>
   );
 }
