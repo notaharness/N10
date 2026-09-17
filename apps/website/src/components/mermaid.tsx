@@ -1,7 +1,25 @@
 'use client';
 
 import mermaid from 'mermaid';
+import { useTheme } from 'next-themes';
 import { useEffect, useId, useState } from 'react';
+
+/**
+ * Reads a Fumadocs `--color-fd-*` custom property's resolved value.
+ *
+ * Mermaid's theming can't take a `var(...)` reference directly: it
+ * parses every themeVariables colour at `initialize()` time to compute
+ * derived shades (borders, hover states, contrast text), which needs a
+ * real colour string, not an unresolved CSS variable. Reading the
+ * computed value here, after the `.dark` class has already been applied
+ * (see the `resolvedTheme` dependency below), gets the real value for
+ * whichever theme is active.
+ */
+function fdColor(name: string): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+}
 
 /**
  * Renders a `<Mermaid chart="..." />` reference, produced from a
@@ -9,24 +27,24 @@ import { useEffect, useId, useState } from 'react';
  * only touches the DOM inside `render`, called from `useEffect`, so
  * importing it at module scope stays SSR-safe.
  *
- * Colours are Fumadocs' own --color-fd-* CSS variables (see
- * src/app/global.css), not hardcoded hex: mermaid accepts a CSS
- * `var(...)` reference anywhere it accepts a colour string, so the
- * diagram follows the site's light/dark toggle live, with no need to
- * re-render on theme change. `theme: 'base'` is required for
- * `themeVariables` to fully apply — 'default'/'dark' bring their own
- * baked-in palette that these would only partially override.
- *
- * `securityLevel: 'loose'` (mermaid's own default for embedding docs
- * content the site owner controls, rather than user input) allows
- * diagrams to use clickable nodes and HTML labels.
+ * `theme: 'base'` is required for `themeVariables` to fully apply —
+ * 'default'/'dark' bring their own baked-in palette that these would
+ * only partially override. `securityLevel: 'loose'` (mermaid's own
+ * default for embedding docs content the site owner controls, rather
+ * than user input) allows diagrams to use clickable nodes and HTML
+ * labels.
  */
 export function Mermaid({ chart }: { chart: string }) {
   const id = useId().replace(/:/g, '-');
+  const { resolvedTheme } = useTheme();
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // next-themes reports `resolvedTheme` as undefined until it has read
+    // localStorage/media query client-side; wait for that (and for the
+    // `.dark` class it applies) rather than resolving colours too early.
+    if (resolvedTheme === undefined) return;
     let cancelled = false;
 
     mermaid.initialize({
@@ -37,18 +55,18 @@ export function Mermaid({ chart }: { chart: string }) {
       themeVariables: {
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
         fontSize: '16px',
-        background: 'var(--color-fd-background)',
-        mainBkg: 'var(--color-fd-secondary)',
-        primaryColor: 'var(--color-fd-secondary)',
-        primaryTextColor: 'var(--color-fd-foreground)',
-        primaryBorderColor: 'var(--color-fd-border)',
-        secondaryColor: 'var(--color-fd-muted)',
-        tertiaryColor: 'var(--color-fd-card)',
-        lineColor: 'var(--color-fd-muted-foreground)',
-        textColor: 'var(--color-fd-foreground)',
-        clusterBkg: 'var(--color-fd-card)',
-        clusterBorder: 'var(--color-fd-border)',
-        edgeLabelBackground: 'var(--color-fd-background)',
+        background: fdColor('--color-fd-background'),
+        mainBkg: fdColor('--color-fd-secondary'),
+        primaryColor: fdColor('--color-fd-secondary'),
+        primaryTextColor: fdColor('--color-fd-foreground'),
+        primaryBorderColor: fdColor('--color-fd-border'),
+        secondaryColor: fdColor('--color-fd-muted'),
+        tertiaryColor: fdColor('--color-fd-card'),
+        lineColor: fdColor('--color-fd-muted-foreground'),
+        textColor: fdColor('--color-fd-foreground'),
+        clusterBkg: fdColor('--color-fd-card'),
+        clusterBorder: fdColor('--color-fd-border'),
+        edgeLabelBackground: fdColor('--color-fd-background'),
       },
     });
 
@@ -70,7 +88,7 @@ export function Mermaid({ chart }: { chart: string }) {
     return () => {
       cancelled = true;
     };
-  }, [chart, id]);
+  }, [chart, id, resolvedTheme]);
 
   if (error) {
     return (
