@@ -242,11 +242,13 @@ export function ItemView({
     // the moment it mounts.
     return estimateTerminalGrid(tab.getBoundingClientRect(), 0.6);
   };
-  const { choose, stop, busy } = useItemLaunch(
-    repo.cwd,
-    launchTarget(branch, state),
-    estimateGrid
-  );
+  const { choose, stop, busy, remoteStep, remoteError, resetRemote } =
+    useItemLaunch(
+      repo.cwd,
+      launchTarget(branch, state),
+      estimateGrid,
+      menu.close
+    );
   const { connectionBanner, inputDisabled } = useConnectionBanner(
     state?.sessionName,
     state ?? {
@@ -267,9 +269,17 @@ export function ItemView({
     onPin();
     menu.show();
   };
-  const onChoose = (choice: LaunchChoice) => {
+  // A remote launch leaves the dialog open to show its step, and to
+  // keep the user's input intact on a named failure (ux-machines.md
+  // §5) — closing here as eagerly as a local launch would lose both.
+  // `useItemLaunch` closes it itself once the launch actually lands.
+  const closeMenu = () => {
+    resetRemote();
     menu.close();
+  };
+  const onChoose = (choice: LaunchChoice) => {
     onPin();
+    if (!choice.machine) closeMenu();
     choose(choice);
   };
   const dialog = menu.open && (
@@ -278,8 +288,11 @@ export function ItemView({
       branch={branch}
       hasWorktree={hasWorktree}
       cwd={repo.cwd}
+      busy={busy}
+      remoteStep={remoteStep}
+      remoteError={remoteError}
       onChoose={onChoose}
-      onClose={menu.close}
+      onClose={closeMenu}
     />
   );
 

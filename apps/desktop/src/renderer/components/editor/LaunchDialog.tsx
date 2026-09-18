@@ -4,14 +4,14 @@ import { useState } from 'react';
 import type { PullRequestInfo } from '@n10/vcs-core';
 import type {
   AgentId,
+  LaunchStep,
   SessionIncarnation,
   SessionLaunchView,
 } from '../../../host/contract.js';
 import { useAgentOptions } from '../../lib/data/queries.js';
 import { agentIdForLaunch } from '../../lib/agent-pick.js';
-import { ContinueContext } from './LaunchSessionContext.js';
-import { LaunchAgentPicker } from './LaunchAgentPicker.js';
-import { errorMessage } from '../../lib/utils.js';
+import { useMachineChoice } from '../terminal/NewTerminalMachineChoice.js';
+import { LaunchDialogBody } from './LaunchDialogBody.js';
 import { Button } from '../ui/button.js';
 import {
   Dialog,
@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog.js';
-import { ReviewInstructions, ReplacementNotice } from './LaunchInstructions.js';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group.js';
 
 export type LaunchChoice =
@@ -30,14 +29,19 @@ export type LaunchChoice =
       fresh: boolean;
       agentId?: AgentId;
       expected?: SessionIncarnation;
+      /** A beam peerId to launch on (ux-machines.md §5), or omitted for
+       *  local — never set for a "continue", which resumes on whatever
+       *  machine its session already lives on. */
+      machine?: string;
     }
   | {
       kind: 'review';
       instruction?: string;
       agentId?: AgentId;
       expected?: SessionIncarnation;
+      machine?: string;
     };
-type Mode = 'continue' | 'new' | 'review';
+export type Mode = 'continue' | 'new' | 'review';
 
 /** Session choices are based on a native snapshot, also used to guard replacement. */
 export function LaunchDialog({
@@ -45,6 +49,9 @@ export function LaunchDialog({
   branch,
   cwd,
   hasWorktree,
+  busy,
+  remoteStep,
+  remoteError,
   onChoose,
   onClose,
 }: {
@@ -52,6 +59,11 @@ export function LaunchDialog({
   branch: string;
   cwd: string;
   hasWorktree: boolean;
+  /** True while a launch (local or remote) is in flight. */
+  busy?: boolean;
+  /** Set only during a remote launch (ux-machines.md §5). */
+  remoteStep?: LaunchStep | null;
+  remoteError?: string | null;
   onChoose: (choice: LaunchChoice) => void;
   onClose: () => void;
 }) {
@@ -66,17 +78,24 @@ export function LaunchDialog({
   const options = useAgentOptions(cwd);
   const agents = options.data ?? [];
   const [agentIndex, setAgentIndex] = useState(0);
+  const machineChoice = useMachineChoice();
   const info = context.data;
   const canContinue = canContinueSession(info);
   const mode = selectedMode(selected, canContinue);
   const replacing = isReplacing(mode, info);
-  const disabled = launchDisabled(
-    info,
-    context.isFetching,
-    context.isError,
-    mode,
-    agents.length
-  );
+  // A "continue" resumes on whatever machine its session already lives
+  // on — the choice is meaningless there even if a peer was picked
+  // before switching mode.
+  const machine =
+    mode === 'continue' ? undefined : machineChoice.selectedMachine();
+  const disabled =
+    launchDisabled(
+      info,
+      context.isFetching,
+      context.isError,
+      mode,
+      agents.length
+    ) || Boolean(busy);
   const go = () => {
     if (!info || disabled) return;
     onChoose(
@@ -84,7 +103,8 @@ export function LaunchDialog({
         mode,
         info,
         instruction,
-        agentIdForLaunch(agents, agentIndex)
+        agentIdForLaunch(agents, agentIndex),
+        machine
       )
     );
   };
@@ -114,34 +134,23 @@ export function LaunchDialog({
             <Action value="new">New session</Action>
             {pr && <Action value="review">Review</Action>}
           </ToggleGroup>
-          <div className="min-w-0 space-y-5 p-5 [overflow-wrap:anywhere]">
-            <LaunchStatus
-              fetching={context.isFetching}
-              error={context.error}
-              agentError={mode === 'continue' ? null : options.error}
-            />
-            {mode !== 'continue' && (
-              <LaunchAgentPicker
-                agents={agents}
-                index={agentIndex}
-                onChange={setAgentIndex}
-              />
-            )}
-            {info && mode === 'continue' && <ContinueContext info={info} />}
-            {mode === 'new' && (
-              <p className="text-muted-foreground">
-                Start a fresh conversation in this worktree.
-              </p>
-            )}
-            {mode === 'review' && (
-              <ReviewInstructions
-                value={instruction}
-                onChange={setInstruction}
-                onSubmit={go}
-              />
-            )}
-            {replacing && <ReplacementNotice info={info} mode={mode} />}
-          </div>
+          <LaunchDialogBody
+            mode={mode}
+            info={info}
+            fetching={context.isFetching}
+            contextError={context.error}
+            agentOptionsError={options.error}
+            agents={agents}
+            agentIndex={agentIndex}
+            onAgentIndexChange={setAgentIndex}
+            machineChoice={machineChoice}
+            remoteStep={remoteStep}
+            remoteError={remoteError}
+            instruction={instruction}
+            onInstructionChange={setInstruction}
+            onSubmit={go}
+            replacing={replacing}
+          />
         </div>
         <DialogFooter className="shrink-0 flex-wrap border-t px-5 py-4">
           <Button variant="ghost" onClick={onClose}>
@@ -192,7 +201,8 @@ function launchChoice(
   mode: Mode,
   info: SessionLaunchView,
   instruction: string,
-  agentId?: AgentId
+  agentId: AgentId | undefined,
+  machine: string | undefined
 ): LaunchChoice {
   if (mode === 'review')
     return {
@@ -200,12 +210,14 @@ function launchChoice(
       agentId,
       instruction: instruction.trim() || undefined,
       expected: info.incarnation,
+      machine,
     };
   return {
     kind: 'session',
     agentId: mode === 'new' ? agentId : undefined,
     fresh: mode === 'new',
     expected: info.incarnation,
+    machine,
   };
 }
 function actionLabel(
@@ -219,24 +231,6 @@ function actionLabel(
     }`;
   const subject = mode === 'review' ? 'review' : 'new session';
   return `${replacing ? 'Stop and start' : 'Start'} ${subject}`;
-}
-
-function LaunchStatus({
-  fetching,
-  error,
-  agentError,
-}: {
-  fetching: boolean;
-  error: Error | null;
-  agentError: Error | null;
-}) {
-  return (
-    <>
-      {fetching && <p className="text-muted-foreground">Reading session…</p>}
-      {error && <p role="alert">{errorMessage(error)}</p>}
-      {agentError && <p role="alert">{errorMessage(agentError)}</p>}
-    </>
-  );
 }
 
 function isReplacing(mode: Mode, info?: SessionLaunchView) {
