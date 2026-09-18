@@ -48,14 +48,13 @@ const TEN_WIDTH = 142;
 const SPLIT_GAP = 18;
 
 /**
- * A flag for the 1: a wedge from the top of the stem. Its top edge runs
- * at 45° down-left for `reach` units and ends in a point, so with the
- * bar half on the N's stave the point just touches the stave's edge;
- * the lower edge returns to the stem a full stroke below. Local to the
- * 10 pane.
+ * A flag for the 1: a 45° slab from the top of the stem, one stroke
+ * deep, reaching `reach` units left and cut vertically at the end. With
+ * the bar half on the N's stave that cut sits flush on the stave's
+ * left edge. Local to the 10 pane.
  */
 function flagPoints(reach: number): string {
-  return `0,0 ${-reach},${reach} 0,${reach + STROKE}`;
+  return `0,0 ${-reach},${reach} ${-reach},${reach + STROKE} 0,${STROKE}`;
 }
 
 export interface LogoColors {
@@ -95,7 +94,7 @@ export function Logo({
   overlap?: number;
   /**
    * Give the 1 a flag. It reaches left exactly as far as the bar is off
-   * the stave, so its point touches the stave's left edge.
+   * the stave, so its end sits flush on the stave's left edge.
    */
   flag?: boolean;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
