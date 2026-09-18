@@ -29,11 +29,22 @@ export interface PollSubscriber {
 
 const DEFAULT_INTERVAL_MS = 1000;
 
+/** Consecutive failed polls required before a control-plane fault is
+ *  reported to subscribers (finding 7, second pass): a single failed
+ *  `list-sessions` used to drive every subscriber's `onUnreachable`
+ *  straight into `enterReconnecting`, disposing a perfectly healthy
+ *  pty handle and reattaching over a one-tick blip. This does not
+ *  change what a *genuinely* down machine looks like — still no
+ *  terminal state, only a longer "reconnecting" — it only keeps a
+ *  routine hiccup from churning a healthy data plane. */
+const UNREACHABLE_AFTER_MISSES = 2;
+
 export class RemoteSessionPoller {
   private readonly subscribers = new Map<string, Set<PollSubscriber>>();
   private timer?: ReturnType<typeof setInterval>;
   private polling: Promise<void> | null = null;
   private disposed = false;
+  private consecutiveFailures = 0;
 
   constructor(
     private readonly executor: MachineExecutor,
@@ -84,6 +95,7 @@ export class RemoteSessionPoller {
     if (this.subscribers.size === 0) return;
     try {
       const sessions = await tmuxListSessionsDetailedWith(this.executor);
+      this.consecutiveFailures = 0;
       // Read subscribers *after* the await, not a snapshot taken
       // before it: a backend that subscribes while this call is in
       // flight must still see this same tick's result rather than
@@ -104,8 +116,13 @@ export class RemoteSessionPoller {
       }
     } catch {
       // The list call itself failed: the machine could not be reached
-      // this tick. Every subscriber hears "unreachable", never a state
-      // that reads as its process having exited.
+      // this tick. A single miss keeps polling silently — a routine
+      // control-plane blip must not churn a healthy data plane — and
+      // only `UNREACHABLE_AFTER_MISSES` consecutive misses tell every
+      // subscriber "unreachable", never a state that reads as its
+      // process having exited.
+      this.consecutiveFailures += 1;
+      if (this.consecutiveFailures < UNREACHABLE_AFTER_MISSES) return;
       for (const set of this.subscribers.values())
         for (const subscriber of set) subscriber.onUnreachable();
     }

@@ -115,7 +115,7 @@ describe('RemoteSessionPoller (D3: one list-sessions call fans out to every back
     poller.dispose();
   });
 
-  it('marks every subscribed backend unreachable, never as exited, when the machine cannot be reached', async () => {
+  it('marks every subscribed backend unreachable, never as exited, once the machine has been unreachable for two consecutive polls', async () => {
     run.mockRejectedValue(new Error('connection lost'));
     const poller = new RemoteSessionPoller(executor, 1000);
     const events: string[] = [];
@@ -124,6 +124,10 @@ describe('RemoteSessionPoller (D3: one list-sessions call fans out to every back
       onUnreachable: () => events.push('unreachable'),
     });
     await flushImmediatePoll();
+    // Second-pass finding 7: a single failed poll stays silent — it
+    // does not yet churn a healthy data plane over a one-tick blip.
+    expect(events).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(events).toEqual(['unreachable']);
     poller.dispose();
   });
@@ -141,7 +145,35 @@ describe('RemoteSessionPoller (D3: one list-sessions call fans out to every back
       onUnreachable: () => events.push('unreachable'),
     });
     await flushImmediatePoll();
+    await vi.advanceTimersByTimeAsync(1000);
     expect(events).toEqual(['unreachable']);
+    poller.dispose();
+  });
+
+  it('does not report unreachable for a single failed poll, and resets the count once a poll succeeds again (finding 7, second pass)', async () => {
+    run.mockRejectedValueOnce(new Error('connection lost'));
+    run.mockResolvedValue({
+      stdout: listSessionsOutput([{ name: 'a' }]),
+      stderr: '',
+      code: 0,
+    });
+    const poller = new RemoteSessionPoller(executor, 1000);
+    const events: string[] = [];
+    poller.subscribe('a', {
+      onState: () => events.push('state'),
+      onUnreachable: () => events.push('unreachable'),
+    });
+    await flushImmediatePoll();
+    expect(events).toEqual([]);
+    // The next poll succeeds, resetting the streak.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(events).toEqual(['state']);
+
+    // A later single miss, on its own, still must not report unreachable.
+    run.mockRejectedValueOnce(new Error('connection lost'));
+    events.length = 0;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(events).toEqual([]);
     poller.dispose();
   });
 

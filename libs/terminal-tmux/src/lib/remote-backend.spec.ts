@@ -311,6 +311,10 @@ describe('RemoteTmuxBackend (D4)', () => {
       poller
     );
     await flushMicrotasks();
+    // Second-pass finding 7: the poller now waits for a second
+    // consecutive failed poll before reporting unreachable, so a
+    // single control-plane blip does not churn a healthy data plane.
+    await vi.advanceTimersByTimeAsync(1000);
     expect(backend.connectionState).toBe('reconnecting');
     expect(backend.processState?.running).toBe(true);
   });
@@ -339,6 +343,9 @@ describe('RemoteTmuxBackend (D4)', () => {
     const exited = vi.fn();
     backend.onExit(exited);
     await flushMicrotasks();
+    // Second-pass finding 7: wait for the poller's second consecutive
+    // failed poll, same as the test above.
+    await vi.advanceTimersByTimeAsync(1000);
     expect(backend.connectionState).toBe('reconnecting');
     expect(backend.processState?.running).toBe(true);
     expect(exited).not.toHaveBeenCalled();
