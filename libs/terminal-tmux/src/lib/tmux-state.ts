@@ -21,7 +21,7 @@ function parsePaneState(fields: string[]): TmuxPaneState {
 }
 
 /** Shared by the sync and async pane-state readers. */
-function paneStateArgs(name: string): string[] {
+export function paneStateArgs(name: string): string[] {
   return [
     '-u',
     'display-message',
@@ -33,7 +33,9 @@ function paneStateArgs(name: string): string[] {
 }
 
 /** Shared with the async poller: both read the same fixed columns. */
-function parsePaneStateResult(result: TmuxRunResult): TmuxPaneState | null {
+export function parsePaneStateResult(
+  result: TmuxRunResult
+): TmuxPaneState | null {
   const fields = result.stdout.trimEnd().split('\t');
   // display-message may succeed with empty output for a vanished target.
   // Require an actual pane identity and explicit native liveness state.

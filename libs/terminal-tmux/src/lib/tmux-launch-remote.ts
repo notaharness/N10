@@ -4,12 +4,15 @@
  * builders `tmux-launch.ts` shares for exactly this purpose), executed
  * through a `MachineExecutor` instead of a local fork (decisions.md D5).
  *
- * Only `create` and a plain `attach` (no native-incarnation guard) are
- * supported remotely this phase — `TmuxSessionIncarnation` is
- * server-scoped (`tmux-snapshot.ts`) and a remote transport has no
- * incarnation notion of its own yet. `restart`/`replace` and a guarded
- * `attach` throw rather than silently falling back to an unguarded
- * operation.
+ * `create`, a plain `attach` (no native-incarnation guard) and an
+ * unguarded `restart` are supported remotely this phase, the last
+ * exactly as `tmux-launch.ts` runs it when its own plan carries no
+ * `expected`: require a dead pane, then native `respawn-pane` without
+ * `-k` so a concurrent restart cannot terminate a live process
+ * (root AGENTS.md). `replace` and a guarded `attach`/`restart` throw
+ * rather than silently falling back to an unguarded operation —
+ * `TmuxSessionIncarnation` is server-scoped (`tmux-snapshot.ts`) and a
+ * remote transport has no incarnation notion of its own yet.
  */
 import type { SessionSpec } from '@n10/terminal';
 import {
@@ -27,6 +30,7 @@ import {
   tmuxHasSessionWith,
   tmuxKillSessionWith,
   tmuxNewSessionDetachedWith,
+  tmuxPaneStateWith,
   tmuxShowOptionWith,
 } from './tmux-cli-remote.js';
 
@@ -91,6 +95,33 @@ async function createRemote(
   }
 }
 
+/** Unguarded restart only — a plan carrying `expected` throws below,
+ *  same as a guarded attach. Mirrors `tmux-launch.ts`'s own
+ *  `restart` branch: a dead-pane requirement (never running or
+ *  already-gone) and a single native command queue with no `-k`, so a
+ *  concurrent winner is never killed by a loser's restart. */
+async function restartRemote(
+  executor: MachineExecutor,
+  spec: SessionSpec,
+  plan: Extract<TmuxLaunchPlan, { mode: 'restart' }>
+): Promise<string> {
+  const state = await tmuxPaneStateWith(executor, plan.target);
+  if (!state?.paneDead)
+    throw new Error(
+      `Cannot restart a running or missing tmux pane: ${plan.target}`
+    );
+  const commands = [
+    await resolvedCommandArgs(executor, plan.target, spec, false),
+    ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
+  ];
+  const [first, ...following] = commands;
+  checkedRemote(
+    await runTmuxWith(executor, first!, following),
+    'session setup'
+  );
+  return plan.target;
+}
+
 export async function prepareRemoteTmuxSession(
   executor: MachineExecutor,
   spec: SessionSpec,
@@ -104,7 +135,9 @@ export async function prepareRemoteTmuxSession(
     );
     return plan.target;
   }
+  if (plan.mode === 'restart' && !plan.expected)
+    return restartRemote(executor, spec, plan);
   throw new Error(
-    `remote sessions do not support "${plan.mode}" yet — only create and a plain attach run on a remote machine`
+    `remote sessions do not support "${plan.mode}" yet — only create, a plain attach and an unguarded restart run on a remote machine`
   );
 }

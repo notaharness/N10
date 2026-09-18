@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   machine: { id: 'peer-abc', executor: {} } as unknown,
   requireMachine: vi.fn(() => state.machine),
   pollerFor: vi.fn(() => 'the-poller'),
+  listOurSessionsWith: vi.fn(async () => []),
 }));
 vi.mock('@n10/terminal-tmux', () => ({
   createTmuxBackend: state.create,
@@ -33,6 +34,8 @@ vi.mock('../pty-registry.js', () => ({
 vi.mock('../session-resolver.js', () => ({
   resolveSessionByName: () => state.existing,
   resolveWorktreeSession: () => state.existing,
+  listOurSessions: () => [],
+  listOurSessionsWith: state.listOurSessionsWith,
 }));
 vi.mock('../discovery/worktree-origin.js', () => ({
   readWorktreeHead: state.head,
@@ -69,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.existing = null;
   state.head.mockReturnValue({ branch: 'feature/x' });
+  state.listOurSessionsWith.mockResolvedValue([]);
 });
 describe('session launch boundary', () => {
   it('coalesces concurrent requests for the same worktree', async () => {
@@ -202,11 +206,12 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
     expect(state.pollerFor).toHaveBeenCalledWith(state.machine);
   });
 
-  it('always creates fresh for a remote request rather than resolving an existing session locally', async () => {
-    // Even with a "found" local session for this repo/branch, a remote
-    // request must not attach to it — the two live on different
-    // machines and a local tmux name means nothing on the remote one.
-    state.existing = found;
+  // Finding 7: before this fix, findSession returned null for every
+  // remote request unconditionally, so a launch on a machine already
+  // running this worktree's agent always took the `create` branch —
+  // a second tmux session and a second agent in the same checkout.
+  it('attaches to an existing session found on the machine, rather than creating a duplicate (finding 7)', async () => {
+    state.existing = { ...found, machine: 'peer-abc' };
     await openSession({
       ...base,
       session: {
@@ -216,6 +221,32 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
         machine: 'peer-abc',
       },
     });
+    expect(state.listOurSessionsWith).toHaveBeenCalledWith(
+      state.machine.executor
+    );
+    expect(state.createRemote.mock.calls[0][1]).toMatchObject({
+      mode: 'attach',
+      target: found.name,
+    });
+    expect(state.createRemote).toHaveBeenCalledOnce();
+  });
+
+  it('creates fresh when the remote machine’s own listing finds nothing for this repo/branch', async () => {
+    // state.existing stays null (the remote listing's default in this
+    // suite) — discovery is still consulted (asserted below), it
+    // simply finds nothing, which must still create rather than throw.
+    await openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    expect(state.listOurSessionsWith).toHaveBeenCalledWith(
+      state.machine.executor
+    );
     expect(state.createRemote.mock.calls[0][1]).toMatchObject({
       mode: 'create',
     });

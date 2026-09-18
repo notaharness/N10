@@ -27,6 +27,7 @@ export { isTmuxAvailable, type TmuxStatus } from './lib/is-tmux-available.js';
 
 export type { MachineExecutor } from './lib/tmux-cli.js';
 export { prepareRemoteTmuxSession } from './lib/tmux-launch-remote.js';
+export { tmuxListSessionsDetailedWith } from './lib/tmux-cli-remote.js';
 export {
   createRemoteTmuxBackend,
   RemoteTmuxBackend,

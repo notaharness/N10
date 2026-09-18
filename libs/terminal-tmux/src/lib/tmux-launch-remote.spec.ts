@@ -15,6 +15,9 @@ const spec: SessionSpec = {
 function fakeExecutor(opts: {
   hasSession?: (name: string) => boolean;
   fail?: string;
+  /** `undefined` for a name means "no such pane" (null pane state);
+   *  otherwise whether it reads as dead. */
+  paneDead?: (name: string) => boolean | undefined;
 }): { executor: MachineExecutor; calls: string[] } {
   const calls: string[] = [];
   const executor: MachineExecutor = {
@@ -28,6 +31,13 @@ function fakeExecutor(opts: {
           stderr: '',
           code: opts.hasSession?.(name) ? 0 : 1,
         };
+      }
+      if (tmuxArgs.includes('display-message')) {
+        const target = tmuxArgs[tmuxArgs.indexOf('-t') + 1]!;
+        const name = target.replace(/^=/, '').replace(/:$/, '');
+        const dead = opts.paneDead?.(name);
+        if (dead === undefined) return { stdout: '', stderr: '', code: 0 };
+        return { stdout: `%0\t${dead ? '1' : '0'}\t\t\n`, stderr: '', code: 0 };
       }
       if (opts.fail && argv.join(' ').includes(opts.fail))
         return { stdout: '', stderr: 'boom', code: 1 };
@@ -103,23 +113,71 @@ describe('prepareRemoteTmuxSession (D5: the same plan, executed remotely)', () =
     expect(calls).toEqual(['tmux set-option -t =existing: status off']);
   });
 
-  it('throws rather than silently degrading for restart/replace, which need a per-transport incarnation notion not built yet', async () => {
-    const { executor } = fakeExecutor({});
+  it('throws rather than silently degrading for replace and a guarded restart, which need a per-transport incarnation notion not built yet', async () => {
+    const { executor } = fakeExecutor({ paneDead: () => true });
+    const expected = {
+      name: 'x',
+      sessionId: '$0',
+      paneId: '%0',
+      panePid: 1,
+      serverPid: 1,
+    };
     await expect(
-      prepareRemoteTmuxSession(executor, spec, { mode: 'restart', target: 'x' })
+      prepareRemoteTmuxSession(executor, spec, {
+        mode: 'restart',
+        target: 'x',
+        expected,
+      })
     ).rejects.toThrow(/do not support "restart"/);
     await expect(
       prepareRemoteTmuxSession(executor, spec, {
         mode: 'replace',
         target: 'x',
-        expected: {
-          name: 'x',
-          sessionId: '$0',
-          paneId: '%0',
-          panePid: 1,
-          serverPid: 1,
-        },
+        expected,
       })
     ).rejects.toThrow(/do not support "replace"/);
+  });
+
+  // Finding 6: an unguarded restart (no `expected` — every terminal
+  // restart, and a worktree resume nobody has confirmed replacing) is
+  // the same tmux argv as the local path, run through the executor.
+  describe('an unguarded restart (finding 6)', () => {
+    it('respawns a dead pane without -k, and updates metadata in the same command queue', async () => {
+      const { executor, calls } = fakeExecutor({ paneDead: () => true });
+      const name = await prepareRemoteTmuxSession(executor, spec, {
+        mode: 'restart',
+        target: 'x',
+        tags: { '@agent': 'claude' },
+        retainOnExit: true,
+      });
+      expect(name).toBe('x');
+      expect(calls[0]).toContain('display-message');
+      expect(calls[1]).toMatch(
+        /^tmux respawn-pane -t =x: -c \/tmp( -e \S+=\S+)* -- \/bin\/sh -c agent ; set-option -t =x: @agent claude ; set-option -t =x: remain-on-exit on ; set-option -t =x: status off$/
+      );
+      expect(calls.join(' ')).not.toMatch(/respawn-pane -k/);
+    });
+
+    it('refuses to restart a running pane', async () => {
+      const { executor } = fakeExecutor({ paneDead: () => false });
+      await expect(
+        prepareRemoteTmuxSession(executor, spec, {
+          mode: 'restart',
+          target: 'x',
+          tags: {},
+        })
+      ).rejects.toThrow(/Cannot restart a running or missing tmux pane/);
+    });
+
+    it('refuses to restart a pane that no longer exists', async () => {
+      const { executor } = fakeExecutor({ paneDead: () => undefined });
+      await expect(
+        prepareRemoteTmuxSession(executor, spec, {
+          mode: 'restart',
+          target: 'x',
+          tags: {},
+        })
+      ).rejects.toThrow(/Cannot restart a running or missing tmux pane/);
+    });
   });
 });

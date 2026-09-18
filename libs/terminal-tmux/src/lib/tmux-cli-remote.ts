@@ -23,7 +23,10 @@ import {
 } from './tmux-cli.js';
 import {
   listSessionsArgv,
+  paneStateArgs,
   parseSessionLine,
+  parsePaneStateResult,
+  type TmuxPaneState,
   type TmuxSessionInfo,
 } from './tmux-state.js';
 
@@ -88,6 +91,20 @@ export async function tmuxCapturePaneWith(
 ): Promise<string | null> {
   const result = await runTmuxWith(executor, capturePaneArgv(name));
   return result.exitCode === 0 ? result.stdout : null;
+}
+
+/** Async twin of `tmuxPaneState` (`tmux-state.ts`): the same
+ *  `display-message` read, same parsing, over an executor — for the
+ *  remote `restart` plan's "require a dead pane" guard
+ *  (`tmux-launch-remote.ts`, mirroring the local unguarded-restart
+ *  rule in `tmux-launch.ts`). `null` means the session/pane no longer
+ *  exists. */
+export async function tmuxPaneStateWith(
+  executor: MachineExecutor,
+  name: string
+): Promise<TmuxPaneState | null> {
+  const result = await executor.run(['tmux', ...paneStateArgs(name)]);
+  return parsePaneStateResult(toTmuxRunResult(result));
 }
 
 /**

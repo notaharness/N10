@@ -1,4 +1,9 @@
-import { tmuxListSessionsDetailed } from '@n10/terminal-tmux';
+import {
+  tmuxListSessionsDetailed,
+  tmuxListSessionsDetailedWith,
+  type MachineExecutor,
+  type TmuxSessionInfo,
+} from '@n10/terminal-tmux';
 import {
   isWorktreeSessionFor,
   LISTED_TAGS,
@@ -16,21 +21,40 @@ import {
  * one place. Never throws: no server, or no tmux, is an empty listing.
  */
 
-/** Every session on the server that carries our tags, in tmux's
- *  listing order. */
-export function listOurSessions(): TaggedSession[] {
-  let listed;
-  try {
-    listed = tmuxListSessionsDetailed(LISTED_TAGS);
-  } catch {
-    return [];
-  }
+function sessionsFromListing(listed: TmuxSessionInfo[]): TaggedSession[] {
   const ours: TaggedSession[] = [];
   for (const info of listed) {
     const session = taggedSession(info);
     if (session) ours.push(session);
   }
   return ours;
+}
+
+/** Every session on the server that carries our tags, in tmux's
+ *  listing order. */
+export function listOurSessions(): TaggedSession[] {
+  try {
+    return sessionsFromListing(tmuxListSessionsDetailed(LISTED_TAGS));
+  } catch {
+    return [];
+  }
+}
+
+/** The remote twin, one round trip through `executor` — the model
+ *  `open-session.ts`'s `findSession` follows to discover an existing
+ *  remote worktree or terminal before creating a second one (finding
+ *  7). Never throws: a machine that cannot be reached, or one with no
+ *  tmux server, is an empty listing, exactly like the local resolver. */
+export async function listOurSessionsWith(
+  executor: MachineExecutor
+): Promise<TaggedSession[]> {
+  try {
+    return sessionsFromListing(
+      await tmuxListSessionsDetailedWith(executor, LISTED_TAGS)
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** The oldest of several sessions, by tmux's creation time. More than

@@ -25,6 +25,7 @@ import {
   type TaggedSession,
 } from '../session-identity.js';
 import {
+  listOurSessionsWith,
   resolveSessionByName,
   resolveWorktreeSession,
 } from '../session-resolver.js';
@@ -48,17 +49,28 @@ export interface OpenSessionParams {
   ) => { spec: LaunchSpec; agent?: string; fresh?: boolean };
 }
 
-function findSession(request: SessionRequest): TaggedSession | null {
-  // Remote session discovery is not built this phase (D3's poller
-  // starts once a backend exists; nothing resolves an *existing*
-  // remote session by identity yet). A remote request therefore always
-  // creates fresh — see `launchPlan`'s `!existing` branch — rather than
-  // querying local tmux for a session that could never live there.
-  if ((request.machine ?? LOCAL_MACHINE) !== LOCAL_MACHINE) return null;
+/**
+ * The tagged session `request` already names, found on whichever
+ * machine it lives on — local tmux directly, or one `list-sessions`
+ * round trip through the machine's own executor for a remote request
+ * (finding 7). Without this, a remote launch could never find what it
+ * already has: `launchPlan`'s `!existing` branch always won, so
+ * re-opening a repository whose agent is still running on another
+ * machine created a second tmux session and a second agent in the same
+ * checkout — the worst class of bug this feature can cause.
+ */
+async function findSession(
+  request: SessionRequest
+): Promise<TaggedSession | null> {
+  const machineId = request.machine ?? LOCAL_MACHINE;
+  const sessions =
+    machineId === LOCAL_MACHINE
+      ? undefined
+      : await listOurSessionsWith(requireMachine(machineId).executor);
   return request.type === 'worktree'
-    ? resolveWorktreeSession(request.repo, request.branch)
+    ? resolveWorktreeSession(request.repo, request.branch, sessions)
     : request.target
-    ? resolveSessionByName(request.target)
+    ? resolveSessionByName(request.target, sessions)
     : null;
 }
 
@@ -110,7 +122,7 @@ export function openSession(params: OpenSessionParams): Promise<NamedPtyEntry> {
 
 async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
   const { session, cols, rows, mode = 'open' } = params;
-  const existing = resolveOpenTarget(params);
+  const existing = await resolveOpenTarget(params);
   const attaching = !params.fresh && shouldAttach(mode, existing);
   const launch = attaching
     ? { spec: { cmd: '', args: [] }, agent: existing!.agent, fresh: false }
@@ -154,10 +166,12 @@ function createRemoteBackend(
   return createRemoteTmuxBackend(spec, plan, machine, pollerFor(machine));
 }
 
-function resolveOpenTarget(params: OpenSessionParams): TaggedSession | null {
+async function resolveOpenTarget(
+  params: OpenSessionParams
+): Promise<TaggedSession | null> {
   const { session, cwd, mode = 'open' } = params;
   validateCheckout(session, cwd);
-  const existing = mode === 'create' ? null : findSession(session);
+  const existing = mode === 'create' ? null : await findSession(session);
   if (mode === 'attach' && !existing)
     throw new Error('Session ended before it could be attached');
   if (params.expected && (!existing || params.expected.name !== existing.name))
