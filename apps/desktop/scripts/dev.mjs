@@ -35,6 +35,7 @@ const mainOptions = {
   entryPoints: [
     join(appRoot, 'src/main/main.ts'),
     join(appRoot, 'src/main/tmux-session-worker.ts'),
+    join(appRoot, 'src/main/beam-node-worker.ts'),
   ],
   bundle: true,
   platform: 'node',
