@@ -26,6 +26,7 @@ import { stopRemoteSyncLoop } from '../host/services/remote-sync.js';
 import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
+import { installMachineResolver } from '../host/services/remote-machines.js';
 import {
   installBeamNodeBridge,
   type BeamNodeBridge,
@@ -282,6 +283,7 @@ installHostEventBridge();
 // process starts lazily on the first machines call (decisions.md D10) —
 // an app that launches with nothing paired never spawns a beam node.
 const beamNodeBridge: BeamNodeBridge = installBeamNodeBridge();
+installMachineResolver();
 
 // ── App lifecycle ────────────────────────────────────────────────
 

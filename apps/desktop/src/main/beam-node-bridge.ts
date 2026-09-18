@@ -16,6 +16,11 @@ import type {
   BeamNodeRequest,
   BeamWorkerMessage,
 } from './beam-node-protocol.js';
+import type {
+  RemoteMachinePort,
+  StreamEventPayload,
+} from '../host/services/remote-machines.js';
+import { setRemoteMachinePort } from '../host/services/remote-machines.js';
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -31,11 +36,14 @@ interface Pending {
  * and the restart policy — nothing about identity, peers, accepting or
  * streams, which all live in `beam-node.ts`, run inside the worker.
  */
-export class BeamNodeBridge implements MachinesPort {
+export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
   private child: UtilityProcess | null = null;
   private starting: Promise<UtilityProcess> | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  private readonly ptyEventListeners = new Set<
+    (event: StreamEventPayload) => void
+  >();
   private shuttingDown = false;
 
   private ensureChild(): Promise<UtilityProcess> {
@@ -63,6 +71,14 @@ export class BeamNodeBridge implements MachinesPort {
     if (message.kind === 'event') {
       if (message.name === 'changed') {
         receiveMachinesUpdate(message.payload as MachineView[]);
+      } else if (message.name === 'pty-data') {
+        const { streamId, data } = message.payload;
+        for (const cb of this.ptyEventListeners)
+          cb({ kind: 'data', streamId, data });
+      } else if (message.name === 'pty-closed') {
+        const { streamId } = message.payload;
+        for (const cb of this.ptyEventListeners)
+          cb({ kind: 'closed', streamId });
       }
       return;
     }
@@ -150,6 +166,47 @@ export class BeamNodeBridge implements MachinesPort {
     return this.request('forgetMachine', { peerId });
   }
 
+  execOn(
+    peerId: string,
+    argv: string[],
+    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string }
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    return this.request('execOn', { peerId, argv, ...opts });
+  }
+
+  ptyOpen(
+    peerId: string,
+    params: {
+      argv?: string[];
+      cwd?: string;
+      env?: Record<string, string>;
+      cols?: number;
+      rows?: number;
+    }
+  ): Promise<{ streamId: string }> {
+    return this.request('ptyOpen', { peerId, ...params });
+  }
+
+  ptyWrite(streamId: string, data: string): void {
+    // Fire-and-forget, like the local PtySession.write() this mirrors:
+    // a write racing the stream's own close is not an error the caller
+    // needs to hear about, only one to not crash on.
+    this.request('ptyWrite', { streamId, data }).catch(() => undefined);
+  }
+
+  ptyResize(streamId: string, cols: number, rows: number): void {
+    this.request('ptyResize', { streamId, cols, rows }).catch(() => undefined);
+  }
+
+  ptyClose(streamId: string): void {
+    this.request('ptyClose', { streamId }).catch(() => undefined);
+  }
+
+  onPtyEvent(cb: (event: StreamEventPayload) => void): () => void {
+    this.ptyEventListeners.add(cb);
+    return () => this.ptyEventListeners.delete(cb);
+  }
+
   /**
    * App quit: ask the node to stop accepting, close connections and let
    * the mailbox flush what it can, then let it exit itself. Bounded —
@@ -172,10 +229,12 @@ export class BeamNodeBridge implements MachinesPort {
   }
 }
 
-/** Installs the bridge as the machines service's port. Call once at
- *  startup, before the first machines API call. */
+/** Installs the bridge as both the machines service's port and the
+ *  remote-machine (executor + pty) port. Call once at startup, before
+ *  the first machines API call. */
 export function installBeamNodeBridge(): BeamNodeBridge {
   const bridge = new BeamNodeBridge();
   setMachinesPort(bridge);
+  setRemoteMachinePort(bridge);
   return bridge;
 }

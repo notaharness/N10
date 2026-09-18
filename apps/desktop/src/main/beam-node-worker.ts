@@ -22,6 +22,20 @@ function post(message: BeamWorkerMessage): void {
 node.onChange((machines) => {
   post({ kind: 'event', name: 'changed', payload: machines });
 });
+node.remote.onStreamEvent((event) => {
+  if (event.kind === 'data')
+    post({
+      kind: 'event',
+      name: 'pty-data',
+      payload: { streamId: event.streamId, data: event.data },
+    });
+  else
+    post({
+      kind: 'event',
+      name: 'pty-closed',
+      payload: { streamId: event.streamId },
+    });
+});
 
 const OPS: Record<string, (payload: unknown) => Promise<unknown> | unknown> = {
   listMachines: () => node.listMachines(),
@@ -45,6 +59,48 @@ const OPS: Record<string, (payload: unknown) => Promise<unknown> | unknown> = {
     node.revokeMachine((payload as { peerId: string }).peerId),
   forgetMachine: (payload) =>
     node.forgetMachine((payload as { peerId: string }).peerId),
+  execOn: (payload) => {
+    const p = payload as {
+      peerId: string;
+      argv: string[];
+      cwd?: string;
+      env?: Record<string, string>;
+      stdin?: string;
+    };
+    return node.remote.execOn(p.peerId, p.argv, {
+      cwd: p.cwd,
+      env: p.env,
+      stdin: p.stdin,
+    });
+  },
+  ptyOpen: (payload) => {
+    const p = payload as {
+      peerId: string;
+      argv?: string[];
+      cwd?: string;
+      env?: Record<string, string>;
+      cols?: number;
+      rows?: number;
+    };
+    return node.remote.ptyOpen(p.peerId, {
+      argv: p.argv,
+      cwd: p.cwd,
+      env: p.env,
+      cols: p.cols,
+      rows: p.rows,
+    });
+  },
+  ptyWrite: (payload) => {
+    const p = payload as { streamId: string; data: string };
+    node.remote.ptyWrite(p.streamId, p.data);
+  },
+  ptyResize: (payload) => {
+    const p = payload as { streamId: string; cols: number; rows: number };
+    node.remote.ptyResize(p.streamId, p.cols, p.rows);
+  },
+  ptyClose: (payload) => {
+    node.remote.ptyClose((payload as { streamId: string }).streamId);
+  },
   shutdown: () => node.dispose(),
 };
 

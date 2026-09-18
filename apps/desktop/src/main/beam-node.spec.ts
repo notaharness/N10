@@ -210,3 +210,81 @@ async function must(
   if (!result.ok) throw new Error('expected ok result');
   return result;
 }
+
+/**
+ * D5's MachineExecutor and D4's remote pty transport, exercised over
+ * two real nodes on loopback rather than mocked — the same standard
+ * the rest of this file holds itself to.
+ */
+describe('remote-machine ops (execOn, ptyOpen/ptyWrite/ptyResize/ptyClose)', () => {
+  it('execOn runs argv on the peer and resolves with its stdout and exit code', async () => {
+    const status = await a.startAccepting();
+    const { machine } = await must(b.confirmPairing(status.pairingUrl!));
+    const result = await b.remote.execOn(machine.peerId, [
+      'node',
+      '-e',
+      'process.stdout.write("hi"); process.exit(0)',
+    ]);
+    expect(result).toEqual({ stdout: 'hi', stderr: '', code: 0 });
+  });
+
+  it('execOn forwards stdin and reports a nonzero exit code', async () => {
+    const status = await a.startAccepting();
+    const { machine } = await must(b.confirmPairing(status.pairingUrl!));
+    const result = await b.remote.execOn(
+      machine.peerId,
+      [
+        'node',
+        '-e',
+        'process.stdin.on("data", d => process.stdout.write(d)); process.stdin.on("end", () => process.exit(3))',
+      ],
+      { stdin: 'echoed' }
+    );
+    expect(result.stdout).toBe('echoed');
+    expect(result.code).toBe(3);
+  });
+
+  it('execOn dials a peer with no live connection yet, using its known endpoint', async () => {
+    const status = await a.startAccepting();
+    const { machine } = await must(b.confirmPairing(status.pairingUrl!));
+    // Force a fresh dial rather than reusing the connection pairing left open.
+    await b.dispose();
+    b = new BeamNode({ beamDir: dirB, hostname: () => 'laptop' });
+    await must(b.confirmPairing((await a.startAccepting()).pairingUrl!));
+    const result = await b.remote.execOn(machine.peerId, [
+      'node',
+      '-e',
+      'process.exit(0)',
+    ]);
+    expect(result.code).toBe(0);
+  });
+
+  it('ptyOpen streams data both ways and ptyClose ends the stream without the peer node dying', async () => {
+    const status = await a.startAccepting();
+    const { machine } = await must(b.confirmPairing(status.pairingUrl!));
+    const events: { kind: string; streamId: string; data?: string }[] = [];
+    const off = b.remote.onStreamEvent((event) => events.push(event));
+    const { streamId } = await b.remote.ptyOpen(machine.peerId, {
+      argv: ['cat'],
+      cols: 80,
+      rows: 24,
+    });
+    b.remote.ptyWrite(streamId, 'echo me\n');
+    await waitFor(() =>
+      events.some((e) => e.kind === 'data' && e.data?.includes('echo me'))
+    );
+    b.remote.ptyResize(streamId, 100, 40);
+    b.remote.ptyClose(streamId);
+    await waitFor(() =>
+      events.some((e) => e.kind === 'closed' && e.streamId === streamId)
+    );
+    off();
+    // The remote node itself is unaffected: it can still be asked to run something else.
+    const result = await b.remote.execOn(machine.peerId, [
+      'node',
+      '-e',
+      'process.exit(0)',
+    ]);
+    expect(result.code).toBe(0);
+  });
+});

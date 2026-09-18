@@ -18,4 +18,10 @@ export interface BeamNodeRequest {
 export type BeamWorkerMessage =
   | { kind: 'response'; id: number; ok: true; result: unknown }
   | { kind: 'response'; id: number; ok: false; error: string }
-  | { kind: 'event'; name: 'changed'; payload: unknown };
+  | { kind: 'event'; name: 'changed'; payload: unknown }
+  | {
+      kind: 'event';
+      name: 'pty-data';
+      payload: { streamId: string; data: string };
+    }
+  | { kind: 'event'; name: 'pty-closed'; payload: { streamId: string } };

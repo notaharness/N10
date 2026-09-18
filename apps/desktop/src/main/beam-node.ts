@@ -44,6 +44,8 @@ import type {
 import { classifyPairError, withTimeout } from './beam-node-errors.js';
 import { ReachabilityProber } from './beam-node-probe.js';
 import { localMachineView, peerMachineView } from './beam-node-view.js';
+import { RemoteOps } from './beam-node-remote-ops.js';
+export type { StreamEvent } from './beam-node-remote-ops.js';
 
 export interface BeamNodeOptions {
   /** Overridable for tests; defaults to the real `$BEAM_DIR`. */
@@ -80,6 +82,11 @@ export class BeamNode {
   private pairingUrl: string | null = null;
   private pairingExpiresAt: number | null = null;
   private readonly listeners = new Set<(machines: MachineView[]) => void>();
+  /** Remote-machine ops (D4/D5): a `MachineExecutor` (`execOn`) and a
+   *  pty stream opener, implemented in `beam-node-remote-ops.ts`.
+   *  Public so the worker's OPS table can call it directly rather than
+   *  BeamNode re-declaring every method as a one-line delegation. */
+  readonly remote: RemoteOps;
   private disposed = false;
 
   constructor(options: BeamNodeOptions = {}) {
@@ -113,6 +120,12 @@ export class BeamNode {
     this.connections.onConnect(() => this.notify());
     this.connections.onDisconnect(() => this.notify());
     this.prober.sync();
+    this.remote = new RemoteOps({
+      getIdentity: () => this.identity,
+      peers: this.peers,
+      connections: this.connections,
+      registry: this.registry,
+    });
   }
 
   private envContext(): NodeEnvContext {
@@ -337,6 +350,7 @@ export class BeamNode {
     this.disposed = true;
     this.prober.stop();
     this.mailbox.dispose();
+    this.remote.dispose();
     if (this.host) {
       await this.host.close();
       this.host = null;
