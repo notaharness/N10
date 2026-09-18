@@ -1,10 +1,13 @@
 import Link from 'next/link';
+import { Logo } from '@/components/logo';
 import { ThemeImage } from '@/components/theme-image';
 import { buttonVariants } from '@/components/ui/button';
 
 export function Hero() {
   return (
     <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-4 py-16 text-center sm:py-24">
+      {/* Starts split and mixes on load; hover splits it again. */}
+      <Logo intro hover className="h-20 w-auto sm:h-24" />
       <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
         Run coding agents across git worktrees
       </h1>

@@ -22,3 +22,40 @@
 .dark {
   --color-fd-primary: #0078d4;
 }
+
+/* The n10 mark (src/components/logo.tsx). Only the 10 pane moves; 38
+ * units is the distance that fully clears the N (LOGO_SPLIT_OFFSET).
+ * Inside an SVG, CSS transform px are user units, so this scales with
+ * however large the mark is rendered.
+ *
+ * The intro uses `backwards` fill on purpose: it holds the split state
+ * through the delay, then hands control back to the normal rules once
+ * done — `both`/`forwards` would pin the final keyframe and swallow the
+ * hover rule below. */
+.n10-logo-ten {
+  transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.n10-logo--hover:hover .n10-logo-ten {
+  transform: translateX(38px);
+}
+
+.n10-logo--intro .n10-logo-ten {
+  animation: n10-logo-mix 1100ms cubic-bezier(0.22, 1, 0.36, 1) 500ms backwards;
+}
+
+@keyframes n10-logo-mix {
+  from {
+    transform: translateX(38px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .n10-logo-ten {
+    transition: none;
+    animation: none;
+  }
+}
