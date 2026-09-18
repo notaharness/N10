@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures/desktop.js';
-import { openPalette, tab } from './setup/app.js';
+import { openPalette, sidebarRow, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
+import { openNewTerminalDialog } from './setup/terminals.js';
 
 /**
  * Phase 4: the machines panel, with nothing paired.
@@ -91,4 +92,79 @@ test.describe('Machines — D8 regression', () => {
       page.getByRole('button', { name: 'Appearance' })
     ).toBeVisible();
   });
+
+  // Phase 7b: the agent launch flow's own D8 guard — the one the
+  // terminal dialog already had, that this launch surface (and the
+  // "New terminal" dialog it shares the machine picker with) did not.
+  // Unit tests already cover the decision (`hasPeerMachines`,
+  // `machineSelectOptions`); this proves the real, mounted control is
+  // absent for a user who paired nothing, which unit tests cannot.
+  test('no machine control in the New terminal dialog with only the local machine registered', async ({
+    desktop,
+  }) => {
+    const { app, page } = desktop;
+    const dialog = await openNewTerminalDialog(app, page);
+    await expect(dialog.getByRole('combobox', { name: 'Machine' })).toHaveCount(
+      0
+    );
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+  });
 });
+
+test.describe('Machines — agent launch surface, D8 regression', () => {
+  test.use({ repo: { worktrees: [{ branch: 'd8-worktree' }] } });
+
+  test('no machine control in the agent launch dialog, and a locally launched agent carries no machine badge or tab prefix', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const row = sidebarRow(page, /d8-worktree/).first();
+    await row.click();
+
+    // The session menu (LaunchDialog) offers no machine control with
+    // nothing paired — a user must not be asked to pick a machine at
+    // all, on either launch surface.
+    await page
+      .getByRole('button', { name: /^(Launch|Relaunch) agent$/, exact: true })
+      .click();
+    const menu = page.locator('[data-launch-dialog]');
+    await menu.waitFor({ state: 'visible' });
+    await expect(menu.getByRole('combobox', { name: 'Machine' })).toHaveCount(
+      0
+    );
+
+    // Launch for real, and confirm the running session's row carries
+    // no machine badge (ux-machines.md §6's `RowBadges`, only rendered
+    // for more than one registered machine) and its tab carries no
+    // `<machine> · ` prefix — both gates proven end to end, not only
+    // at the unit level (`hasPeerMachines`, `tabPresentation`).
+    await menu
+      .getByRole('button', {
+        name: /^(Start new session|Continue with .+|Open .+)$/,
+      })
+      .click();
+    await menu.waitFor({ state: 'hidden' });
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+
+    await expect(tab(page, /d8-worktree/)).toBeVisible();
+    await expect(tab(page, /·/)).toHaveCount(0);
+    await expect(row.locator('.bg-muted')).toHaveCount(0);
+  });
+});
+
+/**
+ * What is NOT covered here, and why: proving the control is *present*
+ * and *working* for a registered peer — the other half of ux-machines.md
+ * §5 — needs a second real machine (a reachable beam peer) to select
+ * and launch on. No fixture here stands one up (the empty-state and D8
+ * suites above are deliberately the only machines coverage at this
+ * level), and faking one at the IPC layer would prove the mock, not the
+ * feature. That side of the machine `Select` — which options are
+ * enabled or disabled and why, the step progress, a failure leaving the
+ * dialog open with input intact — is covered at the unit level instead:
+ * `machine-model.spec.ts` (`machineSelectOptions`, `isMachineSelectable`,
+ * `hasPeerMachines`) and `launch-request.spec.ts` /
+ * `terminal-launch-request.spec.ts` (the request a chosen machine
+ * produces).
+ */
