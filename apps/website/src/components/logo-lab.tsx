@@ -207,6 +207,23 @@ export function LogoLab() {
             </div>
           ))}
         </div>
+        <p className="text-fd-muted-foreground text-sm">
+          Same pairs with the N and the 10 swapped.
+        </p>
+        <div className="flex flex-wrap items-center gap-x-12 gap-y-8 py-6">
+          {PALETTES.map((p, i) => (
+            <div key={p.name} className="flex items-center gap-3">
+              <span className="text-fd-muted-foreground w-4 text-right font-mono text-xs">
+                {i + 1}s
+              </span>
+              <Logo
+                hover
+                colors={{ n: p.colors.ten, ten: p.colors.n }}
+                className="h-6 w-auto"
+              />
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="flex flex-col gap-6">
