@@ -36,6 +36,11 @@ const PALETTES: { name: string; note: string; colors: LogoColors }[] = [
     note: "The desktop's accent blue; darker, mixes to a forest green.",
     colors: { n: '#0078d4', ten: '#ffb830' },
   },
+  {
+    name: 'Red / Blue',
+    note: 'Anaglyph glasses. Complements share no channel, so the overlap goes near-black — a dark plum here, which is what real filters do too.',
+    colors: { n: '#3b6bff', ten: '#ff3b3b' },
+  },
 ];
 
 /** Timing variants, applied through the logo's CSS custom properties. */
@@ -69,6 +74,9 @@ const MOTIONS: { name: string; note: string; vars: Record<string, string> }[] =
       },
     },
   ];
+
+/** Stave overlap fractions to compare, 100% down to the default 50%. */
+const OVERLAPS = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
 
 function channel(hex: string, i: number): number {
   return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
@@ -178,6 +186,27 @@ export function LogoLab() {
                   />
                 </div>
               </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-6">
+        <h2 className="text-lg font-medium">Overlap</h2>
+        <div className="grid gap-6 sm:grid-cols-3">
+          {OVERLAPS.map((o) => (
+            <div
+              key={o}
+              className="flex flex-col gap-4 rounded-lg border border-fd-border p-5"
+            >
+              <Logo key={run} intro hover overlap={o} className="h-20 w-auto" />
+              <div className="flex items-center gap-3">
+                <Logo hover overlap={o} className="h-6 w-auto" />
+                <span className="text-fd-muted-foreground text-xs">
+                  nav size
+                </span>
+              </div>
+              <div className="font-medium">{Math.round(o * 100)}%</div>
             </div>
           ))}
         </div>

@@ -23,9 +23,10 @@
   --color-fd-primary: #0078d4;
 }
 
-/* The n10 mark (src/components/logo.tsx). Only the 10 pane moves; 32
- * units clears the N (LOGO_SPLIT_OFFSET). Inside an SVG, CSS transform
- * px are user units, so this scales with however large the mark is.
+/* The n10 mark (src/components/logo.tsx). Only the 10 pane moves, by
+ * --n10-logo-split, which the component sets from its overlap. Inside an
+ * SVG, CSS transform px are user units, so this scales with however
+ * large the mark is.
  *
  * Two different motions, on purpose:
  *
@@ -62,7 +63,7 @@
 }
 
 .n10-logo--hover:hover .n10-logo-ten {
-  transform: translateX(32px);
+  transform: translateX(var(--n10-logo-split));
 }
 
 .n10-logo--intro .n10-logo-ten {
@@ -72,7 +73,7 @@
 
 @keyframes n10-logo-mix {
   from {
-    transform: translateX(32px);
+    transform: translateX(var(--n10-logo-split));
   }
   to {
     transform: translateX(0);

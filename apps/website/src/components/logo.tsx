@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import type { CSSProperties, SVGProps } from 'react';
 import { cn } from '@/lib/cn';
 
 /**
@@ -22,25 +22,30 @@ import { cn } from '@/lib/cn';
  * blend, so the mark is identical on light and dark.
  *
  * Letterforms are bars and an ellipse rather than text, so nothing
- * depends on a font. Units: 100 = cap height, 28 = stroke; the merged
- * mark is 220 wide. The same geometry is flattened into
- * src/app/icon.svg for the favicon.
+ * depends on a font. Units: 100 = cap height, 28 = stroke; at the
+ * default overlap the merged mark is 220 wide. The same geometry is
+ * flattened into src/app/icon.svg for the favicon.
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
  * into the N); `hover` slides the 10 back out on hover to reveal its own
  * colour. Both are pure CSS — see the `.n10-logo` rules in global.css;
  * the `--n10-logo-*` custom properties there can be overridden per
- * instance through `style` to tune timing.
+ * instance through `style` to tune timing. The slide distance follows
+ * `overlap` and is passed to the CSS as `--n10-logo-split`.
  */
 export const LOGO_BLUE = '#2ba3ff';
 export const LOGO_YELLOW = '#ffd93d';
 /** LOGO_BLUE × LOGO_YELLOW, for contexts that can't blend (the favicon). */
 export const LOGO_MIX = '#2b8b3d';
-/**
- * How far the 10 slides right (in mark units) to separate: the 1 then
- * sits the same 18 units from the N as the 0 sits from the 1.
- */
-export const LOGO_SPLIT_OFFSET = 32;
+/** Fraction of the N's right stave the 1 covers. */
+export const LOGO_OVERLAP = 0.5;
+
+/** Stroke width; the N is 92 wide, the 10 is 142 wide. */
+const STROKE = 28;
+const N_RIGHT_STAVE = 64;
+const TEN_WIDTH = 142;
+/** Gap between N and 1 when split, matching the gap between 1 and 0. */
+const SPLIT_GAP = 18;
 
 export interface LogoColors {
   n: string;
@@ -51,19 +56,27 @@ export function Logo({
   intro = false,
   hover = false,
   colors,
+  overlap = LOGO_OVERLAP,
   className,
+  style,
   ...props
 }: {
   intro?: boolean;
   hover?: boolean;
   /** Pane colours; defaults to the brand pair. */
   colors?: LogoColors;
+  /** Fraction of the N's right stave the 1 covers, 0–1. */
+  overlap?: number;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   const n = colors?.n ?? LOGO_BLUE;
   const ten = colors?.ten ?? LOGO_YELLOW;
+  // Where the 10 pane starts; how far it slides right to clear the N.
+  const tenX = N_RIGHT_STAVE + STROKE * (1 - overlap);
+  const split = N_RIGHT_STAVE + STROKE + SPLIT_GAP - tenX;
+  const vars = { '--n10-logo-split': `${split}px` } as CSSProperties;
   return (
     <svg
-      viewBox="0 0 220 100"
+      viewBox={`0 0 ${tenX + TEN_WIDTH} 100`}
       role="img"
       aria-label="n10"
       overflow="visible"
@@ -73,7 +86,7 @@ export function Logo({
         hover && 'n10-logo--hover',
         className
       )}
-      style={{ isolation: 'isolate' }}
+      style={{ isolation: 'isolate', ...vars, ...style }}
       {...props}
     >
       <title>n10</title>
@@ -83,10 +96,10 @@ export function Logo({
         <polygon points="0,0 34,0 92,100 58,100" />
         <rect x="64" y="0" width="28" height="100" />
       </g>
-      {/* 10 pane. The outer group positions the 1 half-on the N's right
-          stave (stave 64–92, bar 78–106); the inner group is what the
-          CSS animates, so its transform never collides with this one. */}
-      <g transform="translate(78 0)">
+      {/* 10 pane. The outer group positions the 1 on the N's right
+          stave; the inner group is what the CSS animates, so its
+          transform never collides with this one. */}
+      <g transform={`translate(${tenX} 0)`}>
         <g
           className="n10-logo-ten"
           fill={ten}
