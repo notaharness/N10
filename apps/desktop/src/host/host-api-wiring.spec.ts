@@ -86,6 +86,7 @@ vi.mock('./services/sessions.js', () =>
     'writeSession',
     'resizeSession',
     'killSession',
+    'reconnectSession',
   ])
 );
 vi.mock('./services/terminals.js', () =>
@@ -215,6 +216,7 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['writeSession', ['b', 'ls\n'], 'sessions.writeSession'],
   ['resizeSession', ['b', 120, 40], 'sessions.resizeSession'],
   ['killSession', ['b'], 'sessions.killSession'],
+  ['reconnectSession', ['b'], 'sessions.reconnectSession'],
 
   [
     'launchTerminal',
@@ -268,6 +270,7 @@ describe('host API wiring', () => {
       'setDesktopPrefs', // also notifies main.ts; covered separately
       'onSessionData',
       'onSessionExit',
+      'onLaunchStep',
       'onMenuCommand',
       'onBabysitChanged',
       'onSyncNotice',

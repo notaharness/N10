@@ -94,6 +94,8 @@ export function createHostApi(): N10HostApi {
     resizeSession: (name, cols, rows) =>
       Promise.resolve(sessions.resizeSession(name, cols, rows)),
     killSession: (name) => Promise.resolve(sessions.killSession(name)),
+    reconnectSession: (name) =>
+      Promise.resolve(sessions.reconnectSession(name)),
     saveClipboardImage: (data, mimeType) =>
       Promise.resolve(clipboardImage.saveClipboardImage(data, mimeType)),
     launchTerminal: (req) => terminals.launchTerminal(req),
@@ -105,6 +107,7 @@ export function createHostApi(): N10HostApi {
       return () => undefined;
     },
     onSessionExit: () => () => undefined,
+    onLaunchStep: () => () => undefined,
 
     fetchDiffText: (sourceBranch, targetBranch) =>
       reviews.getDiffText(sourceBranch, targetBranch),
@@ -237,6 +240,7 @@ export function registerHostHandlers(
     [IPC.writeSession]: api.writeSession as HostMethod,
     [IPC.resizeSession]: api.resizeSession as HostMethod,
     [IPC.killSession]: api.killSession as HostMethod,
+    [IPC.reconnectSession]: api.reconnectSession as HostMethod,
     [IPC.saveClipboardImage]: api.saveClipboardImage as HostMethod,
     [IPC.launchTerminal]: api.launchTerminal as HostMethod,
     [IPC.listTerminals]: api.listTerminals as HostMethod,

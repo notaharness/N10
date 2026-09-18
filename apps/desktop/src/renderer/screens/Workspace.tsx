@@ -307,6 +307,8 @@ function WorkspaceInner({
           onLaunch={terminalTabs.launchTerminal}
           onClose={terminalTabs.closeDialog}
           busy={terminalTabs.busy}
+          remoteStep={terminalTabs.remoteStep}
+          remoteError={terminalTabs.remoteError}
         />
       )}
       {closer.confirmDialog}

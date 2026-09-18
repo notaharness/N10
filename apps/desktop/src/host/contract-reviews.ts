@@ -35,6 +35,13 @@ export interface ReviewLaunchRequest {
   instruction?: string;
   cols?: number;
   rows?: number;
+  /** A beam peerId to launch on, or omitted for local (decisions.md
+   *  D2). Only meaningful for a fresh worktree — an existing one is
+   *  already qualified to whatever machine it was created on. */
+  machine?: string;
+  /** Set only alongside `machine`: correlates this launch's
+   *  `onLaunchStep` events. Ignored for a local launch. */
+  launchId?: string;
 }
 
 /**

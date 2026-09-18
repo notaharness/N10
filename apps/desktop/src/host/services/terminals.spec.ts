@@ -195,6 +195,29 @@ describe('launchTerminal', () => {
     expect(state.recents).toEqual([]);
   });
 
+  it('emits a start step for a remote launch, keyed to launchId', async () => {
+    await terminals.launchTerminal(
+      {
+        kind: 'shell',
+        cwd: '/remote/dir',
+        machine: 'peer-abc',
+        launchId: 'L1',
+      },
+      HOME
+    );
+    expect(state.broadcasts).toEqual([
+      {
+        channel: 'n10/launch/step',
+        payload: { launchId: 'L1', step: 'start' },
+      },
+    ]);
+  });
+
+  it('emits no steps for a local launch', async () => {
+    await terminals.launchTerminal({ kind: 'shell', cwd: '/x' }, HOME);
+    expect(state.broadcasts).toEqual([]);
+  });
+
   it('gives each terminal in the same directory its own session', async () => {
     const a = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },

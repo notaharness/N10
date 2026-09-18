@@ -40,6 +40,8 @@ const state = vi.hoisted(() => ({
     machine?: { id: string };
   }[],
   knownMachines: new Set<string>(),
+  /** Names `reconnectSession` called the fake backend's `reconnect()` for. */
+  reconnectCalls: [] as string[],
 }));
 
 vi.mock('./repo.js', () => ({
@@ -171,6 +173,7 @@ vi.mock('@n10/core', async (importOriginal) => {
             onExit: () => undefined,
             write: () => undefined,
             resize: () => undefined,
+            reconnect: () => state.reconnectCalls.push(name),
           },
         });
       return state.entries.get(name);
@@ -208,6 +211,7 @@ let launchAgent: typeof sessions.launchAgent;
 let checkoutPlan: typeof sessions.checkoutPlan;
 let launchReviewAgent: typeof sessions.launchReviewAgent;
 let listSessions: typeof sessions.listSessions;
+let reconnectSession: typeof sessions.reconnectSession;
 
 beforeEach(async () => {
   state.cwd = '/repo-a';
@@ -226,6 +230,7 @@ beforeEach(async () => {
   state.checkoutFails = new Set();
   state.createWorktreeCalls = [];
   state.knownMachines = new Set();
+  state.reconnectCalls = [];
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -237,6 +242,7 @@ beforeEach(async () => {
     launchAgent,
     launchReviewAgent,
     listSessions,
+    reconnectSession,
   } = sessions);
   sessions.setSessionBroadcaster(() => undefined);
 });
@@ -289,6 +295,33 @@ describe('launchAgent', () => {
     ).rejects.toThrow(/not available/);
     expect(state.createWorktreeCalls).toHaveLength(0);
     expect(state.spawns).toHaveLength(0);
+  });
+
+  it('emits worktree then start steps for a remote launch, keyed to launchId', async () => {
+    state.knownMachines.add('peer-abc');
+    const broadcasts: unknown[] = [];
+    sessions.setSessionBroadcaster((channel, payload) => {
+      if (channel === 'n10/launch/step') broadcasts.push(payload);
+    });
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      machine: 'peer-abc',
+      launchId: 'launch-1',
+    });
+    expect(broadcasts).toEqual([
+      { launchId: 'launch-1', step: 'worktree' },
+      { launchId: 'launch-1', step: 'start' },
+    ]);
+  });
+
+  it('emits no steps for a local launch', async () => {
+    const broadcasts: unknown[] = [];
+    sessions.setSessionBroadcaster((channel, payload) => {
+      if (channel === 'n10/launch/step') broadcasts.push(payload);
+    });
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    expect(broadcasts).toEqual([]);
   });
 
   it('a local launch never touches the machine resolver, and creates the worktree exactly as today', async () => {
@@ -591,6 +624,19 @@ describe('session buffer', () => {
     const { data } = getSessionBuffer(worktreeSessionKey('big', '/repo-a'));
     expect(data.length).toBeLessThanOrEqual(512 * 1024);
     expect(data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('reconnectSession', () => {
+  it('calls the backend’s manual retry (the pane’s Reconnect action)', async () => {
+    await launchAgent({ branch: 'buf', intent: 'continue-or-blank' });
+    const name = worktreeSessionKey('buf', '/repo-a');
+    reconnectSession(name);
+    expect(state.reconnectCalls).toEqual([name]);
+  });
+
+  it('is a no-op for a session that is not there', () => {
+    expect(() => reconnectSession('nothing')).not.toThrow();
   });
 });
 

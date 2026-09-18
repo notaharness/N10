@@ -3,8 +3,13 @@ import type { MachineView } from '../../../host/contract-machines.js';
 import {
   fingerprintGroups,
   formatCountdown,
+  hasPeerMachines,
+  isMachineSelectable,
+  launchStepLabel,
   machinePresentation,
+  machineSelectOptions,
   queueBadgeLabel,
+  resolveMachineLabel,
 } from './machine-model.js';
 
 function machine(overrides: Partial<MachineView> = {}): MachineView {
@@ -128,5 +133,116 @@ describe('queueBadgeLabel', () => {
   it('names the count once non-zero', () => {
     expect(queueBadgeLabel(1)).toBe('1 waiting');
     expect(queueBadgeLabel(4)).toBe('4 waiting');
+  });
+});
+
+const local = machine({
+  peerId: 'me',
+  label: 'You',
+  isLocal: true,
+  state: 'connected',
+});
+
+describe('hasPeerMachines (D8)', () => {
+  it('is false with only the local machine — the gate every surface checks', () => {
+    expect(hasPeerMachines([local])).toBe(false);
+  });
+
+  it('is true the moment a peer is registered, whatever its state', () => {
+    expect(hasPeerMachines([local, machine({ state: 'unknown' })])).toBe(true);
+  });
+
+  it('is false for an empty list', () => {
+    expect(hasPeerMachines([])).toBe(false);
+  });
+});
+
+describe('isMachineSelectable', () => {
+  it('the local machine is always selectable', () => {
+    expect(isMachineSelectable(local)).toBe(true);
+  });
+
+  it('connected and reachable peers are selectable', () => {
+    expect(isMachineSelectable(machine({ state: 'connected' }))).toBe(true);
+    expect(isMachineSelectable(machine({ state: 'reachable' }))).toBe(true);
+  });
+
+  it('unreachable, unknown, no-endpoint and revoked peers are not', () => {
+    for (const state of [
+      'unreachable',
+      'unknown',
+      'no-endpoint',
+      'revoked',
+    ] as const) {
+      expect(isMachineSelectable(machine({ state }))).toBe(false);
+    }
+  });
+});
+
+describe('machineSelectOptions', () => {
+  it('enabled options carry no reason', () => {
+    const [opt] = machineSelectOptions([machine({ state: 'connected' })]);
+    expect(opt).toMatchObject({ disabled: false, reason: null });
+  });
+
+  it('a disabled option always carries its reason, never omits it', () => {
+    const [opt] = machineSelectOptions([
+      machine({ state: 'unreachable', lastSeenAt: Date.now() - 60_000 }),
+    ]);
+    expect(opt.disabled).toBe(true);
+    expect(opt.reason).toMatch(/^Unreachable — last seen/);
+  });
+
+  it('no-endpoint is disabled but its reason never reads as a fault', () => {
+    const [opt] = machineSelectOptions([
+      machine({ state: 'no-endpoint', endpoints: [] }),
+    ]);
+    expect(opt.disabled).toBe(true);
+    expect(opt.reason).toBe(
+      'Can reach us only — this machine cannot be dialled from here'
+    );
+  });
+
+  it('unknown is disabled with "Checking…", never "Unreachable"', () => {
+    const [opt] = machineSelectOptions([machine({ state: 'unknown' })]);
+    expect(opt.reason).toBe('Checking…');
+  });
+});
+
+describe('resolveMachineLabel', () => {
+  const machines = [local, machine({ peerId: 'peer-1', label: 'workbox' })];
+
+  it('is null for local — the caller shows no prefix at all', () => {
+    expect(resolveMachineLabel('local', machines)).toBeNull();
+    expect(resolveMachineLabel(undefined, machines)).toBeNull();
+  });
+
+  it('resolves a registered peer to its label, never the bare id', () => {
+    expect(resolveMachineLabel('peer-1', machines)).toBe('workbox');
+  });
+
+  it('names a machine no longer in the registered list rather than vanishing', () => {
+    expect(resolveMachineLabel('gone-peer', machines)).toBe('Unknown machine');
+  });
+
+  it('is honest even before the machines list has loaded', () => {
+    expect(resolveMachineLabel('peer-1', undefined)).toBe('Unknown machine');
+  });
+});
+
+describe('launchStepLabel', () => {
+  it('names the worktree step by machine', () => {
+    expect(launchStepLabel('worktree', 'workbox', 'claude')).toBe(
+      'Creating worktree on workbox…'
+    );
+  });
+
+  it('names the start step by what is being started, not the machine', () => {
+    expect(launchStepLabel('start', 'workbox', 'claude')).toBe(
+      'Starting claude…'
+    );
+    expect(launchStepLabel('start', 'workbox', 'shell')).toBe(
+      'Starting shell…'
+    );
   });
 });

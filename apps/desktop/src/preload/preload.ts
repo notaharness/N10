@@ -3,11 +3,13 @@ import {
   BABYSIT_EVENTS,
   DISCOVERY_EVENTS,
   IPC,
+  LAUNCH_EVENTS,
   MACHINES_EVENTS,
   MENU_EVENTS,
   SESSION_EVENTS,
   SYNC_EVENTS,
   type N10HostApi,
+  type LaunchStepEvent,
   type MachinesChangedEvent,
   type MenuCommandEvent,
   type SessionDataEvent,
@@ -76,6 +78,7 @@ const api: N10HostApi = {
   resizeSession: (name, cols, rows) =>
     ipcRenderer.invoke(IPC.resizeSession, name, cols, rows),
   killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
+  reconnectSession: (name) => ipcRenderer.invoke(IPC.reconnectSession, name),
   saveClipboardImage: (data, mimeType) =>
     ipcRenderer.invoke(IPC.saveClipboardImage, data, mimeType),
   launchTerminal: (req) => ipcRenderer.invoke(IPC.launchTerminal, req),
@@ -96,6 +99,11 @@ const api: N10HostApi = {
     const listener = (_e: unknown, payload: SessionExitEvent) => cb(payload);
     ipcRenderer.on(SESSION_EVENTS.exit, listener);
     return () => ipcRenderer.removeListener(SESSION_EVENTS.exit, listener);
+  },
+  onLaunchStep: (cb) => {
+    const listener = (_e: unknown, payload: LaunchStepEvent) => cb(payload);
+    ipcRenderer.on(LAUNCH_EVENTS.step, listener);
+    return () => ipcRenderer.removeListener(LAUNCH_EVENTS.step, listener);
   },
 
   fetchDiffText: (sourceBranch, targetBranch) =>

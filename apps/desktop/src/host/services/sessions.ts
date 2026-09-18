@@ -27,7 +27,11 @@ import {
   ownSessionNames,
   stopOwnWorktreeSession,
 } from './session-registry.js';
-import { relayBuffer, setSessionBroadcaster } from './session-relay.js';
+import {
+  broadcastLaunchStep,
+  relayBuffer,
+  setSessionBroadcaster,
+} from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
   PlanCheckoutRequest,
@@ -114,6 +118,18 @@ export function launchAgent(
   return promise;
 }
 
+/** Named launch progress (ux-machines.md §5) — a no-op unless `req`
+ *  names both a machine and a launchId, which only a remote launch's
+ *  request ever does. Split out to keep `doLaunchAgent` readable. */
+function noteLaunchStep(
+  req: SessionLaunchRequest,
+  step: 'worktree' | 'start'
+): void {
+  if (req.machine && req.launchId) {
+    broadcastLaunchStep({ launchId: req.launchId, step });
+  }
+}
+
 async function doLaunchAgent(
   req: SessionLaunchRequest,
   name: string,
@@ -129,11 +145,13 @@ async function doLaunchAgent(
   // exact branch. machineFor() throws for a machine it cannot build, so
   // createWorktree runs on the right machine or not at all.
   const machine = req.machine ? machineFor(req.machine) : undefined;
+  if (!knownWorktreePath) noteLaunchStep(req, 'worktree');
   const wtPath =
     knownWorktreePath ?? (await createWorktree(req.branch, repoCwd, machine));
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
+  noteLaunchStep(req, 'start');
   // Config comes from the repo root, like the TUI — per-project config
   // is keyed by cwd hash, so reading from the worktree path resolved a
   // different (empty) project bag.
@@ -189,6 +207,8 @@ export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
     systemGuidance: request.systemGuidance,
     cols: req.cols,
     rows: req.rows,
+    machine: req.machine,
+    launchId: req.launchId,
   });
 }
 
@@ -323,6 +343,18 @@ export function killSession(name: string): void {
   // Qualified identity also protects entries this host did not launch.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
   stopOwnWorktreeSession(name);
+}
+
+/** Manual retry after Phase 5's bounded automatic reconnect (3
+ *  attempts) gives up — the pane's `Reconnect` action. Shared by
+ *  worktree sessions and terminal tabs, which both register through
+ *  the same `@n10/core` PTY registry `getSession` reads. A no-op for a
+ *  backend with no manual retry (a local session, or a name that is
+ *  not there any more): rendering the button requires `failed`, which
+ *  only a remote backend ever reports, so this never has to explain
+ *  "nothing happened" to the caller. */
+export function reconnectSession(name: string): void {
+  getSession(name)?.pty.reconnect?.();
 }
 
 // `name` is only a tmux label — tmux-launch.ts's create path reuses one

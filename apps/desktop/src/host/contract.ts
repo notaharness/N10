@@ -75,6 +75,7 @@ import type {
 } from './contract-reviews.js';
 import type {
   BabysitChangedEvent,
+  LaunchStepEvent,
   MachinesChangedEvent,
   MenuCommandEvent,
   SessionDataEvent,
@@ -126,6 +127,11 @@ export interface SessionLaunchRequest {
    *  D2). Only meaningful for a fresh worktree session — an existing
    *  one is already qualified to whatever machine it was created on. */
   machine?: string;
+  /** Set only alongside `machine`: correlates this launch's
+   *  `onLaunchStep` events, so a second concurrent launch — or a retry
+   *  — never shows the wrong one's progress. Ignored for a local
+   *  launch, which emits no steps. */
+  launchId?: string;
 }
 
 /**
@@ -373,6 +379,11 @@ export interface N10HostApi {
   writeSession(name: string, data: string): Promise<void>;
   resizeSession(name: string, cols: number, rows: number): Promise<void>;
   killSession(name: string): Promise<void>;
+  /** Manual retry after Phase 5's bounded automatic reconnect (3
+   *  attempts) gives up and `connectionState` reads `failed` — the
+   *  pane's `Reconnect` action. A no-op for a session whose backend has
+   *  no manual retry (a local session, or one already connected). */
+  reconnectSession(name: string): Promise<void>;
   /** Write an image pasted into a terminal to a temp file and return
    *  its path, which is how a terminal agent can be given a picture —
    *  a PTY carries text, not bytes. Rejects anything that is not a
@@ -390,6 +401,10 @@ export interface N10HostApi {
   /** Subscribe to PTY output. Returns an unsubscribe function. */
   onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
   onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
+  /** Named launch progress for a remote launch (ux-machines.md §5) —
+   *  filter by the request's own `launchId`. Never fires for a local
+   *  launch. */
+  onLaunchStep(cb: (payload: LaunchStepEvent) => void): () => void;
 
   // ── Diff ─────────────────────────────────────────────────────
   fetchDiffText(sourceBranch: string, targetBranch: string): Promise<string>;
@@ -496,6 +511,7 @@ export const IPC = {
   writeSession: 'n10/session/write',
   resizeSession: 'n10/session/resize',
   killSession: 'n10/session/kill',
+  reconnectSession: 'n10/session/reconnect',
   saveClipboardImage: 'n10/session/clipboard-image',
   launchTerminal: 'n10/terminal/launch',
   listTerminals: 'n10/terminal/list',

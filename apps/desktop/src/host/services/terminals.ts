@@ -24,6 +24,7 @@ import { ensureRecent } from './recent-repos.js';
 import { isGitRepo } from './repo.js';
 import {
   attachRelay,
+  broadcastLaunchStep,
   newRelayEntry,
   relayBuffer,
   type RelayEntry,
@@ -91,6 +92,8 @@ interface TerminalSize {
   rows?: number;
   fresh?: boolean;
   machine?: string;
+  /** Set only alongside `machine`: correlates `onLaunchStep` events. */
+  launchId?: string;
 }
 const starting = new Map<
   string,
@@ -142,6 +145,12 @@ async function performStart(
   size: TerminalSize,
   mode?: 'open' | 'attach'
 ): Promise<string> {
+  // A terminal has no worktree step — only a remote fresh launch (never
+  // a restart, which ignores `machine`) gets a step at all, and it is
+  // the one step a plain terminal ever has.
+  if (!requestedName && size.machine && size.launchId) {
+    broadcastLaunchStep({ launchId: size.launchId, step: 'start' });
+  }
   // Config for the directory, not for whatever repository is open: an
   // agent at a repository root should be that repository's agent.
   const launched = await launchTerminalSession({

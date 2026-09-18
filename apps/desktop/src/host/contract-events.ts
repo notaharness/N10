@@ -38,6 +38,30 @@ export const SESSION_EVENTS = {
   exit: 'n10/session/exit',
 } as const;
 
+// ── Remote launch progress (ux-machines.md §5) ────────────────────
+
+/**
+ * A remote create is a worktree add, then a session create + tag
+ * writes + agent start, all over a network — not instant the way a
+ * local launch is. The vocabulary is deliberately closed and small: a
+ * worktree checkout on the far machine, then getting the session (or
+ * plain terminal) running there. Only emitted for a launch whose
+ * request named a machine; a local launch is fast enough that adding a
+ * step display to it would be a regression in feel.
+ */
+export type LaunchStep = 'worktree' | 'start';
+
+export interface LaunchStepEvent {
+  /** Echoes the request's own `launchId`, so two concurrent launches —
+   *  or a retry after a failure — never cross streams. */
+  launchId: string;
+  step: LaunchStep;
+}
+
+export const LAUNCH_EVENTS = {
+  step: 'n10/launch/step',
+} as const;
+
 // ── Machines (beam peers) ─────────────────────────────────────────
 
 /**

@@ -23,6 +23,9 @@ export interface TerminalLaunchRequest {
    *  D2). Ignored when restarting an existing `sessionName` — that
    *  terminal's machine is whatever it was created on. */
   machine?: string;
+  /** Set only alongside `machine`: correlates this launch's
+   *  `onLaunchStep` events. Ignored for a local launch. */
+  launchId?: string;
 }
 
 /**
