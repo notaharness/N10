@@ -211,6 +211,14 @@ describe('BeamNodeBridge', () => {
       deadAgain.emit('exit', 1);
       await vi.advanceTimersByTimeAsync(120_000);
       expect(fork).not.toHaveBeenCalled();
+
+      // Second-pass finding 3: the cap lived only on the exit path —
+      // `ensureChild` refused to fork solely on `shuttingDown` — so an
+      // ordinary request after the budget ran out forked again anyway,
+      // once per poll tick, forever. An exhausted budget must also
+      // reject a fresh request rather than forking around the cap.
+      await expect(bridge.listMachines()).rejects.toThrow('gave up restarting');
+      expect(fork).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -300,6 +308,67 @@ describe('BeamNodeBridge', () => {
     });
     expect(received).toEqual([
       { kind: 'data', streamId: freshHandle.streamId, data: 'hello' },
+    ]);
+  });
+
+  it('a late message from an already-replaced worker keeps its own (dead) generation, never the live one (finding 4, second pass)', async () => {
+    const bridge = new BeamNodeBridge();
+
+    // Generation 1: open a stream, worker calls it "pty-1".
+    const firstOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+    await tick();
+    const firstReq = child.postMessage.mock.calls.find(
+      (c) => (c[0] as { op: string }).op === 'ptyOpen'
+    )?.[0] as { id: number };
+    child.emit('message', {
+      kind: 'response',
+      id: firstReq.id,
+      ok: true,
+      result: { streamId: 'pty-1' },
+    });
+    const staleHandle = await firstOpen;
+    const deadChild = child;
+
+    // The worker dies. `onExit` only *schedules* a backed-off restart,
+    // so bump `this.generation` to 2 the same way the "cross-wire"
+    // test above does: a fresh request forces `ensureChild` to fork a
+    // replacement immediately, ahead of that timer.
+    const replacement = makeChild();
+    fork.mockReturnValue(replacement);
+    deadChild.emit('exit', 1);
+    await tick();
+    child = replacement;
+    const secondOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+    await tick();
+    const secondReq = child.postMessage.mock.calls.find(
+      (c) => (c[0] as { op: string }).op === 'ptyOpen'
+    )?.[0] as { id: number };
+    child.emit('message', {
+      kind: 'response',
+      id: secondReq.id,
+      ok: true,
+      result: { streamId: 'pty-1' },
+    });
+    await secondOpen;
+
+    // A late 'pty-data' arrives on the dead child's own event emitter,
+    // after generation 2 is already live — Electron delivering a
+    // message after 'exit' is the scenario this guards, whether or
+    // not it can really happen.
+    const received: { kind: string; streamId: string; data?: string }[] = [];
+    bridge.onPtyEvent((e) => received.push(e));
+    deadChild.emit('message', {
+      kind: 'event',
+      name: 'pty-data',
+      payload: { streamId: 'pty-1', data: 'late' },
+    });
+
+    // Must be labelled with generation 1 (the dead worker's own), never
+    // generation 2 (the replacement's) — reading `this.generation` at
+    // message time instead of capturing it at fork time would wrap this
+    // as "2:pty-1", indistinguishable from the replacement's own stream.
+    expect(received).toEqual([
+      { kind: 'data', streamId: staleHandle.streamId, data: 'late' },
     ]);
   });
 

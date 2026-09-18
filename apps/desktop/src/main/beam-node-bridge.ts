@@ -72,6 +72,14 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
   private readonly openStreams = new Set<string>();
   private restartAttempts = 0;
   private restartTimer?: ReturnType<typeof setTimeout>;
+  /** Set once `scheduleRestart` spends the budget (finding 3, second
+   *  pass): the cap lived only on the exit → restart path, but
+   *  `ensureChild` refused to fork solely on `shuttingDown`, so the
+   *  very next ordinary `request()` after the budget ran out — and
+   *  `RemoteSessionPoller` fires one every second — forked again with
+   *  no backoff and no budget, once per poll tick, forever. The cap
+   *  now lives wherever a fork can happen, not only on the exit path. */
+  private restartBudgetExhausted = false;
 
   private ensureChild(): Promise<UtilityProcess> {
     if (this.child) return Promise.resolve(this.child);
@@ -82,7 +90,12 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     // instead of failing, undoing the very shutdown in progress.
     if (this.shuttingDown)
       return Promise.reject(new Error('beam node is shutting down'));
+    if (this.restartBudgetExhausted)
+      return Promise.reject(
+        new Error('beam node exited repeatedly and gave up restarting')
+      );
     this.generation += 1;
+    const gen = this.generation;
     this.starting = new Promise((resolve) => {
       const child = utilityProcess.fork(
         join(import.meta.dirname, 'beam-node-worker.js'),
@@ -90,7 +103,7 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
         { stdio: 'ignore', serviceName: 'n10 beam node' }
       );
       child.on('message', (message: BeamWorkerMessage) =>
-        this.onMessage(message)
+        this.onMessage(message, gen)
       );
       child.once('exit', (code) => this.onExit(code));
       this.child = child;
@@ -101,7 +114,17 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     });
   }
 
-  private onMessage(message: BeamWorkerMessage): void {
+  /** `gen` is the generation captured in the fork closure at the
+   *  handler's own creation time, not read from `this.generation` —
+   *  the handler stays bound to its child for that child's whole life,
+   *  but `this.generation` is bumped the moment a replacement forks.
+   *  Without this, a `pty-data`/`pty-closed` from an old, already-dead
+   *  child delivered after its replacement forked would be wrapped
+   *  with the *new* generation and could land on the new worker's
+   *  same-numbered stream — the exact cross-wire finding 1 (first
+   *  pass) closed, through the one path it left open (finding 4,
+   *  second pass). */
+  private onMessage(message: BeamWorkerMessage, gen: number): void {
     // Any message at all is proof the worker started successfully —
     // reset the backoff counter so a later, unrelated crash gets the
     // same bounded retries a fresh install would.
@@ -111,11 +134,11 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
         receiveMachinesUpdate(message.payload as MachineView[]);
       } else if (message.name === 'pty-data') {
         const { streamId, data } = message.payload;
-        const wrapped = wrapStreamId(this.generation, streamId);
+        const wrapped = wrapStreamId(gen, streamId);
         for (const cb of this.ptyEventListeners)
           cb({ kind: 'data', streamId: wrapped, data });
       } else if (message.name === 'pty-closed') {
-        const wrapped = wrapStreamId(this.generation, message.payload.streamId);
+        const wrapped = wrapStreamId(gen, message.payload.streamId);
         this.openStreams.delete(wrapped);
         for (const cb of this.ptyEventListeners)
           cb({ kind: 'closed', streamId: wrapped });
@@ -169,11 +192,17 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
    */
   private onExit(code: number | null): void {
     this.child = null;
-    this.closeOpenStreams();
+    // Drain pending before closing streams: closeOpenStreams runs
+    // listener callbacks synchronously, and a listener that reacts by
+    // starting a reconnect must never have its brand-new request caught
+    // by the reject-and-clear loop below, which would otherwise leak an
+    // orphan remote pty once the new worker answers (finding 4, second
+    // pass, minor).
     for (const pending of this.pending.values()) {
       pending.reject(new Error(`beam node exited unexpectedly (${code})`));
     }
     this.pending.clear();
+    this.closeOpenStreams();
     if (this.shuttingDown) return;
     const synthetic = getLastKnownMachines().map(
       (m): MachineView =>
@@ -192,7 +221,14 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
    *  "unreachable" push from `onExit` on screen rather than looping
    *  forever with nothing to show for it. */
   private scheduleRestart(): void {
-    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) return;
+    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
+      // Budget spent: block `ensureChild` outright rather than merely
+      // not scheduling another timer-driven attempt, so an ordinary
+      // `request()` — the poller fires one every second — cannot fork
+      // its own way around the cap (finding 3, second pass).
+      this.restartBudgetExhausted = true;
+      return;
+    }
     const delay = restartDelayFor(this.restartAttempts);
     this.restartAttempts += 1;
     this.restartTimer = setTimeout(() => void this.ensureChild(), delay);
