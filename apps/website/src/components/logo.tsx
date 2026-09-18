@@ -19,9 +19,9 @@ import { cn } from '@/lib/cn';
  * blend, so the mark is identical on light and dark.
  *
  * Letterforms are bars and an ellipse rather than text, so nothing
- * depends on a font. Units: 100 = cap height; the merged mark is 178
- * wide. The same geometry is flattened into src/app/icon.svg for the
- * favicon.
+ * depends on a font. Units: 100 = cap height, 28 = stroke; the merged
+ * mark is 206 wide. The same geometry is flattened into
+ * src/app/icon.svg for the favicon.
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
  * into the N); `hover` slides the 10 back out on hover to reveal its own
@@ -33,9 +33,9 @@ export const LOGO_YELLOW = '#ffd93d';
 export const LOGO_MIX = '#2b8b3d';
 /**
  * How far the 10 slides right (in mark units) to separate: the 1 then
- * sits the same 16 units from the N as the 0 sits from the 1.
+ * sits the same 18 units from the N as the 0 sits from the 1.
  */
-export const LOGO_SPLIT_OFFSET = 38;
+export const LOGO_SPLIT_OFFSET = 46;
 
 export function Logo({
   intro = false,
@@ -48,7 +48,7 @@ export function Logo({
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   return (
     <svg
-      viewBox="0 0 178 100"
+      viewBox="0 0 206 100"
       role="img"
       aria-label="n10"
       overflow="visible"
@@ -62,30 +62,30 @@ export function Logo({
       {...props}
     >
       <title>n10</title>
-      {/* N pane: two staves and a diagonal, all 22 wide. */}
+      {/* N pane: two staves and a diagonal, all 28 wide. */}
       <g fill={LOGO_BLUE} style={{ mixBlendMode: 'multiply' }}>
-        <rect x="0" y="0" width="22" height="100" />
-        <polygon points="0,0 26,0 78,100 52,100" />
-        <rect x="56" y="0" width="22" height="100" />
+        <rect x="0" y="0" width="28" height="100" />
+        <polygon points="0,0 34,0 92,100 58,100" />
+        <rect x="64" y="0" width="28" height="100" />
       </g>
       {/* 10 pane. The outer group positions the 1 on the N's right
           stave; the inner group is what the CSS animates, so its
           transform never collides with this one. */}
-      <g transform="translate(56 0)">
+      <g transform="translate(64 0)">
         <g
           className="n10-logo-ten"
           fill={LOGO_YELLOW}
           style={{ mixBlendMode: 'multiply' }}
         >
-          <rect x="0" y="0" width="22" height="100" />
+          <rect x="0" y="0" width="28" height="100" />
           <ellipse
-            cx="80"
+            cx="94"
             cy="50"
-            rx="31"
-            ry="39"
+            rx="34"
+            ry="36"
             fill="none"
             stroke={LOGO_YELLOW}
-            strokeWidth="22"
+            strokeWidth="28"
           />
         </g>
       </g>

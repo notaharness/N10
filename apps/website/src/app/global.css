@@ -23,20 +23,15 @@
   --color-fd-primary: #0078d4;
 }
 
-/* The n10 mark (src/components/logo.tsx). Only the 10 pane moves; 38
+/* The n10 mark (src/components/logo.tsx). Only the 10 pane moves; 46
  * units is the distance that fully clears the N (LOGO_SPLIT_OFFSET).
  * Inside an SVG, CSS transform px are user units, so this scales with
  * however large the mark is rendered.
  *
- * The motion is a rigid pane snapping into place, so it borrows two
- * things from animation principles: anticipation (a small pull *away*
- * before the move, so the motion reads as intended rather than
- * happening to the pane) and a spring settle (a ~5% overshoot that
- * damps out, which is what makes a snap feel resolved). Both are
- * encoded as real spring curves in `linear()` easing; the values are
- * fractions of the travel, so <0 is the pull-back and >1 is the
- * overshoot past the stave. Browsers without `linear()` get a bezier
- * with a milder overshoot and no anticipation.
+ * The motion is a single critically-damped ease — a fast start and a
+ * long, smooth deceleration into rest, with no overshoot and no wind-up.
+ * That curve is the shape of Apple's default system motion, and it's
+ * what reads as calm: the pane arrives, it doesn't bounce.
  *
  * The intro holds the split state first so the eye reads "N 10" before
  * the mix happens, and uses `backwards` fill on purpose: it shows the
@@ -44,55 +39,24 @@
  * rules once done — `both`/`forwards` would pin the final keyframe and
  * swallow the hover rule. */
 :root {
-  --n10-logo-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --n10-logo-intro: cubic-bezier(0.34, 1.4, 0.64, 1);
-}
-
-@supports (animation-timing-function: linear(0, 1)) {
-  :root {
-    --n10-logo-spring: linear(
-      0,
-      0.42 18%,
-      0.8 34%,
-      1.03 50%,
-      1.05 58%,
-      1.01 72%,
-      0.995 84%,
-      1
-    );
-    --n10-logo-intro: linear(
-      0,
-      -0.05 9%,
-      -0.07 15%,
-      -0.04 21%,
-      0.12 28%,
-      0.55 38%,
-      0.9 47%,
-      1.04 55%,
-      1.055 61%,
-      1.02 70%,
-      0.992 80%,
-      1.003 90%,
-      1
-    );
-  }
+  --n10-logo-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .n10-logo-ten {
-  transition: transform 450ms var(--n10-logo-spring);
+  transition: transform 500ms var(--n10-logo-ease);
 }
 
 .n10-logo--hover:hover .n10-logo-ten {
-  transform: translateX(38px);
+  transform: translateX(46px);
 }
 
 .n10-logo--intro .n10-logo-ten {
-  animation: n10-logo-mix 1200ms var(--n10-logo-intro) 700ms backwards;
+  animation: n10-logo-mix 1100ms var(--n10-logo-ease) 700ms backwards;
 }
 
 @keyframes n10-logo-mix {
   from {
-    transform: translateX(38px);
+    transform: translateX(46px);
   }
   to {
     transform: translateX(0);
