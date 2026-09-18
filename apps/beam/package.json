@@ -1,0 +1,134 @@
+{
+  "name": "@notaharness/beam",
+  "version": "1.0.0-beta.7",
+  "description": "Standalone CLI for beam: pairs machines and carries pty, exec and message streams between them.",
+  "author": "Hermann Bjorgvin",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "beam": "./main.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/notaharness/n10.git",
+    "directory": "apps/beam"
+  },
+  "nx": {
+    "name": "beam-cli",
+    "tags": [
+      "type:app",
+      "scope:beam"
+    ],
+    "targets": {
+      "build": {
+        "executor": "@nx/esbuild:esbuild",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "platform": "node",
+          "outputPath": "apps/beam/dist",
+          "format": [
+            "esm"
+          ],
+          "bundle": true,
+          "thirdParty": true,
+          "external": [
+            "node-pty"
+          ],
+          "main": "apps/beam/src/main.ts",
+          "tsConfig": "apps/beam/tsconfig.app.json",
+          "assets": [
+            "apps/beam/package.json"
+          ],
+          "esbuildOptions": {
+            "banner": {
+              "js": "#!/usr/bin/env node\nimport { createRequire as __beamCreateRequire } from \"node:module\";\nconst require = __beamCreateRequire(import.meta.url);\nimport { dirname as __beamDirname } from \"node:path\";\nimport { fileURLToPath as __beamFileURLToPath } from \"node:url\";\nconst __filename = __beamFileURLToPath(import.meta.url);\nconst __dirname = __beamDirname(__filename);"
+            },
+            "sourcemap": true,
+            "outExtension": {
+              ".js": ".js"
+            }
+          }
+        },
+        "configurations": {
+          "development": {},
+          "production": {
+            "esbuildOptions": {
+              "banner": {
+                "js": "#!/usr/bin/env node\nimport { createRequire as __beamCreateRequire } from \"node:module\";\nconst require = __beamCreateRequire(import.meta.url);\nimport { dirname as __beamDirname } from \"node:path\";\nimport { fileURLToPath as __beamFileURLToPath } from \"node:url\";\nconst __filename = __beamFileURLToPath(import.meta.url);\nconst __dirname = __beamDirname(__filename);"
+              },
+              "sourcemap": false,
+              "outExtension": {
+                ".js": ".js"
+              }
+            }
+          }
+        }
+      },
+      "prune-lockfile": {
+        "dependsOn": [
+          "build"
+        ],
+        "cache": true,
+        "executor": "@nx/js:prune-lockfile",
+        "outputs": [
+          "{workspaceRoot}/apps/beam/dist/package.json",
+          "{workspaceRoot}/apps/beam/dist/package-lock.json"
+        ],
+        "options": {
+          "buildTarget": "build"
+        }
+      },
+      "copy-workspace-modules": {
+        "dependsOn": [
+          "build"
+        ],
+        "cache": true,
+        "outputs": [
+          "{workspaceRoot}/apps/beam/dist/workspace_modules"
+        ],
+        "executor": "@nx/js:copy-workspace-modules",
+        "options": {
+          "buildTarget": "build"
+        }
+      },
+      "prune": {
+        "dependsOn": [
+          "prune-lockfile",
+          "copy-workspace-modules"
+        ],
+        "executor": "nx:noop"
+      },
+      "install-global": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "chmod +x apps/beam/dist/main.js && npm install -g ./apps/beam/dist"
+        }
+      },
+      "publish": {
+        "dependsOn": [
+          "prune"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "npm publish --tag beta apps/beam/dist"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@n10/beam": "*"
+  },
+  "devDependencies": {}
+}
