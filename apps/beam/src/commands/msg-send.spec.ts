@@ -1,0 +1,108 @@
+import { rmSync } from 'node:fs';
+import { PeerTable } from '@n10/beam';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { runMsgSend } from './msg-send.js';
+import { makeFakeIoWithBeamDir, type FakeIo } from '../test-support/fake-io.js';
+
+let io: FakeIo;
+let beamDir: string;
+
+beforeEach(() => {
+  ({ io, beamDir } = makeFakeIoWithBeamDir());
+});
+
+afterEach(() => {
+  rmSync(beamDir, { recursive: true, force: true });
+});
+
+describe('beam msg send', () => {
+  it('to a disconnected peer exits 0, is durable, and tells the caller not to resend it', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [], // never dialable — the disconnected case
+    });
+
+    const code = await runMsgSend(['workbox', '--message', 'hello'], io);
+    expect(code).toBe(0);
+    const text = io.stdoutText();
+    expect(text).toContain('queued for workbox');
+    expect(text).toMatch(/not connected/);
+    expect(text).toMatch(/do not send it again/i);
+  });
+
+  it('to an unknown peer exits 1 and names the cause', async () => {
+    const code = await runMsgSend(['nobody', '--message', 'hello'], io);
+    expect(code).toBe(1);
+    expect(io.stderrText()).toContain('unknown peer');
+  });
+
+  it('to a revoked peer exits 1 and names the cause', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+    peers.revoke('aaaaaaaaaaaaaaaa');
+
+    const code = await runMsgSend(['workbox', '--message', 'hi'], io);
+    expect(code).toBe(1);
+    expect(io.stderrText()).toContain('revoked');
+  });
+
+  it('--json prints exactly the local-IPC send outcome object, one value, nothing else', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+
+    const code = await runMsgSend(
+      ['workbox', '--message', 'hello', '--json'],
+      io
+    );
+    expect(code).toBe(0);
+    const lines = io.stdoutText().trimEnd().split('\n');
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0] as string) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      status: 'queued',
+      to: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+    });
+    expect(typeof parsed['queueDepth']).toBe('number');
+    expect(typeof parsed['reason']).toBe('string');
+  });
+
+  it('--json on an unknown peer still prints exactly one parseable rejected object', async () => {
+    const code = await runMsgSend(['nobody', '--message', 'hi', '--json'], io);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(io.stdoutText().trimEnd()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed).toEqual({ status: 'rejected', reason: 'unknown-peer' });
+  });
+
+  it('reads the payload from stdin when --message is "-"', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+    const promise = runMsgSend(['workbox', '--message', '-'], io);
+    io.stdin.push('from stdin');
+    io.stdin.end();
+    const code = await promise;
+    expect(code).toBe(0);
+    expect(io.stdoutText()).toContain('queued for workbox');
+  });
+});

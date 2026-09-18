@@ -1,0 +1,101 @@
+/**
+ * `beam exec <peer> [--cwd PATH] [--env K=V]... -- argv...` (D9): run argv
+ * on the peer, forward stdin, keep stdout/stderr separate, propagate the
+ * remote exit code as this process's own.
+ */
+
+import {
+  EXEC_CHANNEL_STDERR,
+  EXEC_CHANNEL_STDIN,
+  EXEC_CHANNEL_STDOUT,
+  decodeExecExit,
+  demuxExecData,
+  prefixChannel,
+} from '@n10/beam';
+import { parseArgs } from '../args.js';
+import { dialPeer } from '../dial-peer.js';
+import type { Io } from '../io.js';
+import { buildEphemeral } from '../node.js';
+import { resolvePeer } from '../peer-resolve.js';
+import { UsageError } from '../usage.js';
+
+function parseEnvEntries(entries: string[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const entry of entries) {
+    const eq = entry.indexOf('=');
+    if (eq <= 0) {
+      throw new UsageError(`--env expects KEY=VALUE, got: ${entry}`);
+    }
+    env[entry.slice(0, eq)] = entry.slice(eq + 1);
+  }
+  return env;
+}
+
+export async function runExec(args: string[], io: Io): Promise<number> {
+  const parsed = parseArgs(args, { valueFlags: ['cwd'], multiFlags: ['env'] });
+  const [nameOrId] = parsed.positionals;
+  if (!nameOrId || parsed.rest.length === 0) {
+    throw new UsageError(
+      'usage: beam exec <peer> [--cwd PATH] [--env K=V]... -- argv...'
+    );
+  }
+
+  const ctx = buildEphemeral(io);
+  const peer = resolvePeer(ctx.peers, nameOrId);
+  const connection = await dialPeer(ctx, peer);
+
+  const stream = await connection.openStream('exec', {
+    argv: parsed.rest,
+    cwd: parsed.values.get('cwd'),
+    env: parseEnvEntries(parsed.multi.get('env') ?? []),
+  });
+
+  const onStdinData = (chunk: Buffer | string): void => {
+    const bytes =
+      typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+    stream.write(prefixChannel(EXEC_CHANNEL_STDIN, bytes));
+  };
+  const onStdinEnd = (): void => stream.control({ kind: 'stdin-eof' });
+  io.stdin.on('data', onStdinData);
+  io.stdin.on('end', onStdinEnd);
+
+  stream.onData((data) => {
+    const { channel, payload } = demuxExecData(data);
+    const buffer = Buffer.from(payload);
+    if (channel === EXEC_CHANNEL_STDOUT)
+      io.stdout.write(buffer.toString('utf8'));
+    else if (channel === EXEC_CHANNEL_STDERR)
+      io.stderr.write(buffer.toString('utf8'));
+  });
+
+  const exitCode = await new Promise<number>((resolve) => {
+    stream.onClose((reason) => {
+      io.stdin.removeListener?.(
+        'data',
+        onStdinData as (...a: unknown[]) => void
+      );
+      io.stdin.removeListener?.('end', onStdinEnd as (...a: unknown[]) => void);
+      const exit = decodeExecExit(reason);
+      if (!exit) {
+        io.stderr.write(
+          `beam: exec ended without an exit code: ${
+            reason ?? 'stream closed'
+          }\n`
+        );
+        resolve(1);
+        return;
+      }
+      if (exit.signal) {
+        io.stderr.write(
+          `beam: remote process ended on signal ${exit.signal}\n`
+        );
+        resolve(1);
+        return;
+      }
+      resolve(exit.exitCode ?? 1);
+    });
+  });
+
+  connection.close();
+  return exitCode;
+}

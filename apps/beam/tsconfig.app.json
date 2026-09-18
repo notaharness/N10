@@ -15,5 +15,10 @@
     "vite.config.mts",
     "src/**/*.test.ts",
     "src/**/*.spec.ts"
+  ],
+  "references": [
+    {
+      "path": "../../libs/beam/tsconfig.lib.json"
+    }
   ]
 }
