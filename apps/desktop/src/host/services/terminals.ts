@@ -8,6 +8,7 @@ import {
   isSessionAlive,
   hasPersistedTerminalSession,
   killSession as killSessionEntry,
+  LOCAL_MACHINE,
   launchTerminalSession,
   releaseExitedSession,
   sessionIdentity,
@@ -222,6 +223,19 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
   };
 }
 
+/** Whether this request's terminal lives on a remote machine — from
+ *  the request itself for a fresh launch, or, on a restart
+ *  (`req.machine` is never sent: TerminalView.tsx sends only
+ *  `{sessionName, kind, cwd}`), from the retained tab's own identity
+ *  (D2's key). The caller not re-supplying a field it never carries in
+ *  the first place must not read as "local" (finding 6). */
+function isRemoteRequest(req: TerminalLaunchRequest): boolean {
+  const machine =
+    req.machine ??
+    (req.sessionName ? sessionIdentity(req.sessionName)?.machine : undefined);
+  return !!machine && machine !== LOCAL_MACHINE;
+}
+
 /** Open a new terminal. `home` is injectable for tests. */
 export async function launchTerminal(
   req: TerminalLaunchRequest,
@@ -232,10 +246,11 @@ export async function launchTerminal(
   // A retained-tab restart launches in the tab's own directory, not
   // whatever cwd the request happened to carry.
   const cwd = existing?.cwd ?? req.cwd;
+  const isRemote = isRemoteRequest(req);
   // A remote machine's filesystem is not this one's to `statSync` —
   // the remote tmux/session-create call is what validates the
   // directory there, loudly, if it is wrong.
-  if (!req.machine) assertLaunchableCwd(cwd);
+  if (!isRemote) assertLaunchableCwd(cwd);
   const name = await start(
     req.sessionName,
     existing?.kind ?? req.kind,
@@ -244,7 +259,7 @@ export async function launchTerminal(
   );
   // `terminalRepo`/`isGitRepo` stat the local filesystem: correct for
   // this machine's terminals, meaningless for `cwd` on another one.
-  if (!req.machine) noteRepository(cwd);
+  if (!isRemote) noteRepository(cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);
   return summarize(name, entry, home);
