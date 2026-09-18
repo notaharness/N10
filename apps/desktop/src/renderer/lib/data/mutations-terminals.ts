@@ -30,3 +30,15 @@ export function useKillTerminal() {
     },
   });
 }
+
+/** The pane's manual "Reconnect" action (ux-machines.md §6), for a
+ *  session in `connectionState: 'failed'` — after Phase 5's bounded
+ *  automatic retry has given up. Works for a worktree session's pane
+ *  as much as a terminal tab's: both read `getSession` from the same
+ *  registry host-side, and the host op is shared. No invalidation here
+ *  — `connectionState` rides the existing sessions/terminals poll. */
+export function useReconnectSession() {
+  return useMutation({
+    mutationFn: (name: string) => window.n10.reconnectSession(name),
+  });
+}
