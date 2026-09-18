@@ -49,7 +49,25 @@ export function truncateLeading(path: string, max: number): string {
  * then the bare key, so a tab never turns back into a slug because the
  * user looked at another repository.
  */
+/**
+ * `machineLabel`, resolved by the caller (never a peerId — meaning
+ * nothing to the user), is `null` for a local tab and omitted from the
+ * title entirely: D8 says a user who never pairs anything sees today's
+ * tab strip exactly. For a remote one, the machine comes first —
+ * `workbox · feature/x` — because when scanning tabs spanning several
+ * machines, the machine is the disambiguator (ux-machines.md §6).
+ */
 export function tabPresentation(
+  tab: Tab,
+  item: SidebarItem | undefined,
+  machineLabel?: string | null
+): { label: string; face: TabFace } {
+  const base = basePresentation(tab, item);
+  if (!machineLabel || tab.kind === 'settings') return base;
+  return { ...base, label: `${machineLabel} · ${base.label}` };
+}
+
+function basePresentation(
   tab: Tab,
   item: SidebarItem | undefined
 ): { label: string; face: TabFace } {
