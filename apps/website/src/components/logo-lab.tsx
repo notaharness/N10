@@ -192,6 +192,24 @@ export function LogoLab() {
       </section>
 
       <section className="flex flex-col gap-6">
+        <h2 className="text-lg font-medium">Colour at nav size</h2>
+        <p className="text-fd-muted-foreground -mt-4 text-sm">
+          Every palette at the navbar&apos;s h-6, spaced like a row of browser
+          tabs. Step back from the screen.
+        </p>
+        <div className="flex flex-wrap items-center gap-x-12 gap-y-8 py-6">
+          {PALETTES.map((p, i) => (
+            <div key={p.name} className="flex items-center gap-3">
+              <span className="text-fd-muted-foreground w-4 text-right font-mono text-xs">
+                {i + 1}
+              </span>
+              <Logo hover colors={p.colors} className="h-6 w-auto" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-6">
         <h2 className="text-lg font-medium">Overlap</h2>
         <div className="grid gap-6 sm:grid-cols-3">
           {OVERLAPS.map((o) => (
