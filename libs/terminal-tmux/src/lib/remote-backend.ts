@@ -30,7 +30,11 @@ export interface RemotePtyHandle {
 }
 
 export interface RemotePtyOpenParams {
-  argv: string[];
+  /** Absent or empty means the login shell (beam's D1). This backend
+   *  always passes one (attaching a tmux client), but the type stays
+   *  optional so a `RemotePtyOpener` is usable for a plain remote
+   *  shell too. */
+  argv?: string[];
   cwd?: string;
   env?: Record<string, string>;
   cols: number;
