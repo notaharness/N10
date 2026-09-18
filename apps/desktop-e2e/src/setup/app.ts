@@ -27,8 +27,12 @@ export function sidebarRow(page: Page, name: string | RegExp): Locator {
   return sidebar(page).getByRole('button', { name });
 }
 
-export function tab(page: Page, name: string | RegExp): Locator {
-  return page.getByRole('tab', { name });
+/** `exact` matters for proving a tab's label carries *no* prefix (D8):
+ *  a substring match for the branch alone would still pass with
+ *  `workbox · branch`, so a guard against a regression there needs the
+ *  full accessible name, not a fragment of it. */
+export function tab(page: Page, name: string | RegExp, exact = false): Locator {
+  return page.getByRole('tab', { name, exact });
 }
 
 export function tabs(page: Page): Locator {

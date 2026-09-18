@@ -147,9 +147,16 @@ test.describe('Machines — agent launch surface, D8 regression', () => {
     await menu.waitFor({ state: 'hidden' });
     await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
 
-    await expect(tab(page, /d8-worktree/)).toBeVisible();
-    await expect(tab(page, /·/)).toHaveCount(0);
-    await expect(row.locator('.bg-muted')).toHaveCount(0);
+    // The tab's accessible name is exactly the branch title, with no
+    // "<machine> · " prefix at all — an exact match, not a substring
+    // one, so a regression that adds a prefix (in any wording, not
+    // just today's "·" separator) fails this rather than passing
+    // because the branch name still appears somewhere in a longer
+    // label. `data-testid="machine-badge"` on the row similarly names
+    // what is being asserted absent, rather than a CSS class that
+    // would silently stop matching if the badge were restyled.
+    await expect(tab(page, 'd8-worktree Close tab', true)).toBeVisible();
+    await expect(row.getByTestId('machine-badge')).toHaveCount(0);
   });
 });
 

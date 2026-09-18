@@ -60,7 +60,10 @@ function RowBadges({
   return (
     <>
       {machineLabel && (
-        <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground">
+        <span
+          data-testid="machine-badge"
+          className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground"
+        >
           {machineLabel}
         </span>
       )}
