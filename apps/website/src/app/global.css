@@ -73,9 +73,13 @@
   }
 }
 
+/* Reduced motion drops the intro, which plays unprompted on load, but
+ * keeps the hover transition: it's user-initiated, a few pixels of
+ * travel with no layout change, and the still frame at either end is
+ * the same mark. Note GNOME's "Animation Effects" toggle sets this
+ * query in every browser, so it's on for more people than you'd think. */
 @media (prefers-reduced-motion: reduce) {
-  .n10-logo-ten {
-    transition: none;
+  .n10-logo--intro .n10-logo-ten {
     animation: none;
   }
 }
