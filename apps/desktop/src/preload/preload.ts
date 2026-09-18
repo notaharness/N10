@@ -3,10 +3,12 @@ import {
   BABYSIT_EVENTS,
   DISCOVERY_EVENTS,
   IPC,
+  MACHINES_EVENTS,
   MENU_EVENTS,
   SESSION_EVENTS,
   SYNC_EVENTS,
   type N10HostApi,
+  type MachinesChangedEvent,
   type MenuCommandEvent,
   type SessionDataEvent,
   type SessionExitEvent,
@@ -136,6 +138,24 @@ const api: N10HostApi = {
     const listener = (_e: unknown, payload: BabysitChangedEvent) => cb(payload);
     ipcRenderer.on(BABYSIT_EVENTS.changed, listener);
     return () => ipcRenderer.removeListener(BABYSIT_EVENTS.changed, listener);
+  },
+
+  listMachines: () => ipcRenderer.invoke(IPC.listMachines),
+  getAcceptingStatus: () => ipcRenderer.invoke(IPC.getAcceptingStatus),
+  setAccepting: (enabled) => ipcRenderer.invoke(IPC.setAccepting, enabled),
+  regeneratePairingUrl: () => ipcRenderer.invoke(IPC.regeneratePairingUrl),
+  previewPairing: (url) => ipcRenderer.invoke(IPC.previewPairing, url),
+  confirmPairing: (url, force) =>
+    ipcRenderer.invoke(IPC.confirmPairing, url, force),
+  renameMachine: (peerId, label) =>
+    ipcRenderer.invoke(IPC.renameMachine, peerId, label),
+  revokeMachine: (peerId) => ipcRenderer.invoke(IPC.revokeMachine, peerId),
+  forgetMachine: (peerId) => ipcRenderer.invoke(IPC.forgetMachine, peerId),
+  onMachinesChanged: (cb) => {
+    const listener = (_e: unknown, payload: MachinesChangedEvent) =>
+      cb(payload);
+    ipcRenderer.on(MACHINES_EVENTS.changed, listener);
+    return () => ipcRenderer.removeListener(MACHINES_EVENTS.changed, listener);
   },
 };
 

@@ -40,6 +40,15 @@ export type { BabysitStatus, PullRequestLookup, SidebarItem } from '@n10/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
+// Machines: other n10 hosts paired over beam, and this one's own
+// identity and accept-connections state.
+export type * from './contract-machines.js';
+import type {
+  AcceptingStatus,
+  MachineView,
+  PairConfirmResult,
+  PairPreviewResult,
+} from './contract-machines.js';
 // Terminal tabs — sessions bound to a directory rather than a worktree.
 export type * from './contract-terminals.js';
 import type {
@@ -66,6 +75,7 @@ import type {
 } from './contract-reviews.js';
 import type {
   BabysitChangedEvent,
+  MachinesChangedEvent,
   MenuCommandEvent,
   SessionDataEvent,
   SessionExitEvent,
@@ -411,6 +421,32 @@ export interface N10HostApi {
    *  refetches. */
   onDiscoveryChanged(cb: () => void): () => void;
 
+  // ── Machines (beam peers) ───────────────────────────────────
+  /** Every machine: the local one first, then paired peers. Repo
+   *  independent — like `listTerminals`, this answers the same
+   *  whatever repository (if any) is open. */
+  listMachines(): Promise<MachineView[]>;
+  getAcceptingStatus(): Promise<AcceptingStatus>;
+  /** Turn accepting on or off. Off does not drop existing connections. */
+  setAccepting(enabled: boolean): Promise<AcceptingStatus>;
+  /** A fresh pairing token/URL — the running one's TTL expired. */
+  regeneratePairingUrl(): Promise<AcceptingStatus>;
+  /** Step 1 of pairing: fetch the descriptor a URL names, without
+   *  spending its token or storing anything. */
+  previewPairing(url: string): Promise<PairPreviewResult>;
+  /** Step 2: spend the token and store the peer. `force` replaces an
+   *  existing peer's key on a `key-mismatch` failure. */
+  confirmPairing(url: string, force?: boolean): Promise<PairConfirmResult>;
+  /** Local-only: the name this machine goes by here. Works for the
+   *  local row (renames this machine's own identity) or a peer. */
+  renameMachine(peerId: string, label: string): Promise<MachineView>;
+  /** Kept, but refused from now on. The other machine's sessions keep
+   *  running. */
+  revokeMachine(peerId: string): Promise<MachineView>;
+  /** Forgets the peer entirely (not just revoked). */
+  forgetMachine(peerId: string): Promise<void>;
+  onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
+
   // ── Babysitting ──────────────────────────────────────────────
   /** Watch a pull request and brief its agent — CI, unresolved review
    *  threads, conflicts — once the news has settled and the agent is
@@ -487,6 +523,15 @@ export const IPC = {
   showAbout: 'n10/shell/about',
   startBabysit: 'n10/babysit/start',
   stopBabysit: 'n10/babysit/stop',
+  listMachines: 'n10/machines/list',
+  getAcceptingStatus: 'n10/machines/accepting-status',
+  setAccepting: 'n10/machines/set-accepting',
+  regeneratePairingUrl: 'n10/machines/regenerate-pairing-url',
+  previewPairing: 'n10/machines/preview-pairing',
+  confirmPairing: 'n10/machines/confirm-pairing',
+  renameMachine: 'n10/machines/rename',
+  revokeMachine: 'n10/machines/revoke',
+  forgetMachine: 'n10/machines/forget',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

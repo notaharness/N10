@@ -14,6 +14,8 @@
  * split.
  */
 
+import type { MachineView } from './contract-machines.js';
+
 // ── Sessions (agent terminals) ───────────────────────────────────
 
 export interface SessionDataEvent {
@@ -35,6 +37,23 @@ export const SESSION_EVENTS = {
   data: 'n10/session/data',
   exit: 'n10/session/exit',
 } as const;
+
+// ── Machines (beam peers) ─────────────────────────────────────────
+
+/**
+ * The whole machines list, pushed on any change: a peer connects or
+ * disconnects, a probe result lands, a queue drains, a peer is paired,
+ * renamed, revoked or forgotten. The renderer writes this straight into
+ * the query cache (no round trip) — see decisions.md D6/D7 for why the
+ * five reachability states and queue depth have to be pushed rather
+ * than polled: a probe interval measured in tens of seconds would
+ * otherwise make a freshly-connected peer look unreachable for a while.
+ */
+export const MACHINES_EVENTS = {
+  changed: 'n10/machines/changed',
+} as const;
+
+export type MachinesChangedEvent = MachineView[];
 
 // ── Native menus ─────────────────────────────────────────────────
 

@@ -19,6 +19,7 @@ import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 import * as babysit from './services/babysit.js';
+import * as machines from './services/machines.js';
 import { resolvePickedFolder } from './services/terminal-home.js';
 
 /**
@@ -130,6 +131,18 @@ export function createHostApi(): N10HostApi {
     startBabysit: (prId) => babysit.startBabysit(prId),
     stopBabysit: (prId) => Promise.resolve(babysit.stopBabysit(prId)),
     onBabysitChanged: () => () => undefined,
+
+    listMachines: () => machines.listMachines(),
+    getAcceptingStatus: () => machines.getAcceptingStatus(),
+    setAccepting: (enabled) => machines.setAccepting(enabled),
+    regeneratePairingUrl: () => machines.regeneratePairingUrl(),
+    previewPairing: (url) => machines.previewPairing(url),
+    confirmPairing: (url, force) =>
+      machines.confirmPairing(url, force ?? false),
+    renameMachine: (peerId, label) => machines.renameMachine(peerId, label),
+    revokeMachine: (peerId) => machines.revokeMachine(peerId),
+    forgetMachine: (peerId) => machines.forgetMachine(peerId),
+    onMachinesChanged: () => () => undefined,
   };
 }
 
@@ -255,6 +268,15 @@ export function registerHostHandlers(
     [IPC.showAbout]: api.showAbout as HostMethod,
     [IPC.startBabysit]: api.startBabysit as HostMethod,
     [IPC.stopBabysit]: api.stopBabysit as HostMethod,
+    [IPC.listMachines]: api.listMachines as HostMethod,
+    [IPC.getAcceptingStatus]: api.getAcceptingStatus as HostMethod,
+    [IPC.setAccepting]: api.setAccepting as HostMethod,
+    [IPC.regeneratePairingUrl]: api.regeneratePairingUrl as HostMethod,
+    [IPC.previewPairing]: api.previewPairing as HostMethod,
+    [IPC.confirmPairing]: api.confirmPairing as HostMethod,
+    [IPC.renameMachine]: api.renameMachine as HostMethod,
+    [IPC.revokeMachine]: api.revokeMachine as HostMethod,
+    [IPC.forgetMachine]: api.forgetMachine as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

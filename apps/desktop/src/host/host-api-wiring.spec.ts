@@ -114,6 +114,19 @@ vi.mock('./services/babysit.js', () =>
 vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
 );
+vi.mock('./services/machines.js', () =>
+  recorder('machines', [
+    'listMachines',
+    'getAcceptingStatus',
+    'setAccepting',
+    'regeneratePairingUrl',
+    'previewPairing',
+    'confirmPairing',
+    'renameMachine',
+    'revokeMachine',
+    'forgetMachine',
+  ])
+);
 
 const { createHostApi } = await import('./register-handlers.js');
 
@@ -215,6 +228,20 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
 
   ['startBabysit', [7], 'babysit.startBabysit'],
   ['stopBabysit', [7], 'babysit.stopBabysit'],
+
+  ['listMachines', [], 'machines.listMachines'],
+  ['getAcceptingStatus', [], 'machines.getAcceptingStatus'],
+  ['setAccepting', [true], 'machines.setAccepting'],
+  ['regeneratePairingUrl', [], 'machines.regeneratePairingUrl'],
+  ['previewPairing', ['http://host/pair#token=x'], 'machines.previewPairing'],
+  [
+    'confirmPairing',
+    ['http://host/pair#token=x', true],
+    'machines.confirmPairing',
+  ],
+  ['renameMachine', ['peer-1', 'workbox'], 'machines.renameMachine'],
+  ['revokeMachine', ['peer-1'], 'machines.revokeMachine'],
+  ['forgetMachine', ['peer-1'], 'machines.forgetMachine'],
 ];
 
 describe('host API wiring', () => {
@@ -246,6 +273,7 @@ describe('host API wiring', () => {
       'onSyncNotice',
       'onRemoteUpdated',
       'onDiscoveryChanged',
+      'onMachinesChanged',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

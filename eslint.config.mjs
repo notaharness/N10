@@ -132,13 +132,18 @@ export default tseslint.config(
     },
   },
   {
-    // Two files are large because the thing they describe is large: a
-    // REST surface and an action catalog. Splitting either one spreads
-    // a single lookup table across files without making any part of it
-    // easier to read, so they get a ceiling instead of an exemption.
+    // These files are large because the thing they describe is large: a
+    // REST surface, an action catalog, and the desktop's whole bridge
+    // API + IPC channel map (contract-*.ts already splits every
+    // subject's *types* out; the single N10HostApi interface and IPC
+    // const are what "single source of truth" means and stay here).
+    // Splitting any of them spreads a single lookup table across files
+    // without making any part of it easier to read, so they get a
+    // ceiling instead of an exemption.
     files: [
       'libs/vcs/*/src/lib/provider.ts',
       'libs/core/src/lib/keybindings/registry.ts',
+      'apps/desktop/src/host/contract.ts',
     ],
     rules: {
       'max-lines': [

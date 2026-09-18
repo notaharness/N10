@@ -26,6 +26,10 @@ import { stopRemoteSyncLoop } from '../host/services/remote-sync.js';
 import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
+import {
+  installBeamNodeBridge,
+  type BeamNodeBridge,
+} from './beam-node-bridge.js';
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -274,6 +278,11 @@ setShellGlue({
 
 installHostEventBridge();
 
+// Sets the machines service's port; forks nothing yet. The utility
+// process starts lazily on the first machines call (decisions.md D10) —
+// an app that launches with nothing paired never spawns a beam node.
+const beamNodeBridge: BeamNodeBridge = installBeamNodeBridge();
+
 // ── App lifecycle ────────────────────────────────────────────────
 
 // One instance at a time: a second launch focuses the existing
@@ -338,6 +347,10 @@ app.on('will-quit', () => {
   stopRemoteSyncLoop();
   stopDiscovery();
   stopAllBabysitters();
+  // Stop accepting, close connections, let the mailbox flush what it
+  // can — best effort, bounded by the bridge's own timeout, since
+  // nothing here can block the app from actually quitting.
+  void beamNodeBridge.shutdown();
   try {
     killAll();
   } catch {

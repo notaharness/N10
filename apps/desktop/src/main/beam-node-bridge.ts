@@ -1,0 +1,181 @@
+import { utilityProcess, type UtilityProcess } from 'electron';
+import { join } from 'node:path';
+import type {
+  AcceptingStatus,
+  MachineView,
+  PairConfirmResult,
+  PairPreviewResult,
+} from '../host/contract-machines.js';
+import {
+  getLastKnownMachines,
+  receiveMachinesUpdate,
+  setMachinesPort,
+  type MachinesPort,
+} from '../host/services/machines.js';
+import type {
+  BeamNodeRequest,
+  BeamWorkerMessage,
+} from './beam-node-protocol.js';
+
+interface Pending {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+}
+
+/**
+ * Forks the beam node's utility process on first use (lazily — the app
+ * must not start a node just because it launched, decisions.md D10) and
+ * keeps it running for the app's life, restarting it if it exits
+ * unexpectedly. This is the entire main-process footprint of beam: the
+ * main process owns this request/response call, the event forwarding,
+ * and the restart policy — nothing about identity, peers, accepting or
+ * streams, which all live in `beam-node.ts`, run inside the worker.
+ */
+export class BeamNodeBridge implements MachinesPort {
+  private child: UtilityProcess | null = null;
+  private starting: Promise<UtilityProcess> | null = null;
+  private nextId = 1;
+  private readonly pending = new Map<number, Pending>();
+  private shuttingDown = false;
+
+  private ensureChild(): Promise<UtilityProcess> {
+    if (this.child) return Promise.resolve(this.child);
+    if (this.starting) return this.starting;
+    this.starting = new Promise((resolve) => {
+      const child = utilityProcess.fork(
+        join(import.meta.dirname, 'beam-node-worker.js'),
+        [],
+        { stdio: 'ignore', serviceName: 'n10 beam node' }
+      );
+      child.on('message', (message: BeamWorkerMessage) =>
+        this.onMessage(message)
+      );
+      child.once('exit', (code) => this.onExit(code));
+      this.child = child;
+      resolve(child);
+    });
+    return this.starting.finally(() => {
+      this.starting = null;
+    });
+  }
+
+  private onMessage(message: BeamWorkerMessage): void {
+    if (message.kind === 'event') {
+      if (message.name === 'changed') {
+        receiveMachinesUpdate(message.payload as MachineView[]);
+      }
+      return;
+    }
+    const pending = this.pending.get(message.id);
+    if (!pending) return;
+    this.pending.delete(message.id);
+    if (message.ok) pending.resolve(message.result);
+    else pending.reject(new Error(message.error));
+  }
+
+  /**
+   * An unexpected exit must read as every machine going away, never as
+   * "no machines" — the two look identical in an empty list, but they
+   * are not the same fact, and a user with a healthy paired machine
+   * must see a fault, not have it quietly disappear (the brief's own
+   * regression to guard against). Local stays as it was — it is still
+   * this process, whatever the node is doing — and a revoked peer stays
+   * revoked, since that state does not depend on the node being alive.
+   */
+  private onExit(code: number | null): void {
+    this.child = null;
+    for (const pending of this.pending.values()) {
+      pending.reject(new Error(`beam node exited unexpectedly (${code})`));
+    }
+    this.pending.clear();
+    if (this.shuttingDown) return;
+    const synthetic = getLastKnownMachines().map(
+      (m): MachineView =>
+        m.isLocal || m.state === 'revoked'
+          ? m
+          : { ...m, state: 'unreachable', transport: null }
+    );
+    if (synthetic.length > 0) receiveMachinesUpdate(synthetic);
+    void this.ensureChild();
+  }
+
+  private request<T>(op: string, payload?: unknown): Promise<T> {
+    return this.ensureChild().then(
+      (child) =>
+        new Promise<T>((resolve, reject) => {
+          const id = this.nextId++;
+          this.pending.set(id, {
+            resolve: resolve as (value: unknown) => void,
+            reject,
+          });
+          const request: BeamNodeRequest = { id, op, payload };
+          child.postMessage(request);
+        })
+    );
+  }
+
+  listMachines(): Promise<MachineView[]> {
+    return this.request('listMachines');
+  }
+
+  getAcceptingStatus(): Promise<AcceptingStatus> {
+    return this.request('getAcceptingStatus');
+  }
+
+  setAccepting(enabled: boolean): Promise<AcceptingStatus> {
+    return this.request('setAccepting', { enabled });
+  }
+
+  regeneratePairingUrl(): Promise<AcceptingStatus> {
+    return this.request('regeneratePairingUrl');
+  }
+
+  previewPairing(url: string): Promise<PairPreviewResult> {
+    return this.request('previewPairing', { url });
+  }
+
+  confirmPairing(url: string, force: boolean): Promise<PairConfirmResult> {
+    return this.request('confirmPairing', { url, force });
+  }
+
+  renameMachine(peerId: string, label: string): Promise<MachineView> {
+    return this.request('renameMachine', { peerId, label });
+  }
+
+  revokeMachine(peerId: string): Promise<MachineView> {
+    return this.request('revokeMachine', { peerId });
+  }
+
+  forgetMachine(peerId: string): Promise<void> {
+    return this.request('forgetMachine', { peerId });
+  }
+
+  /**
+   * App quit: ask the node to stop accepting, close connections and let
+   * the mailbox flush what it can, then let it exit itself. Bounded —
+   * a hung worker must not block the app from quitting.
+   */
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    if (!this.child) return;
+    try {
+      await Promise.race([
+        this.request('shutdown'),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    } catch {
+      // The worker may have exited before answering — fine, we are
+      // shutting down either way.
+    }
+    this.child?.kill();
+    this.child = null;
+  }
+}
+
+/** Installs the bridge as the machines service's port. Call once at
+ *  startup, before the first machines API call. */
+export function installBeamNodeBridge(): BeamNodeBridge {
+  const bridge = new BeamNodeBridge();
+  setMachinesPort(bridge);
+  return bridge;
+}
