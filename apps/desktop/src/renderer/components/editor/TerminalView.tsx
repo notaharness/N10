@@ -1,23 +1,16 @@
 import { Button } from '../ui/button.js';
-import { useLaunchTerminal } from '../../lib/data/mutations-terminals.js';
+import {
+  useLaunchTerminal,
+  useReconnectSession,
+} from '../../lib/data/mutations-terminals.js';
+import { resolveMachineLabel } from '../../lib/machines/machine-model.js';
+import { terminalPaneState } from '../../lib/terminals/terminal-pane-state.js';
 import { errorMessage } from '../../lib/utils.js';
 import type { TerminalTab } from '../../lib/tabs/tabs.js';
 import type { TerminalSummary } from '../../../host/contract.js';
 import { useMachines, useTerminals } from '../../lib/data/queries.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { ConnectionBanner } from '../terminal/ConnectionBanner.js';
-
-/** A remote machine's peerId resolved to its label, for display —
- *  never the bare id, which means nothing to the user. Falls back to
- *  the id itself only if the machines list has not loaded yet. */
-function machineLabelFor(
-  machineId: string | undefined,
-  machines: { peerId: string; label: string }[] | undefined
-): string {
-  return (
-    machines?.find((m) => m.peerId === machineId)?.label ?? machineId ?? ''
-  );
-}
 
 /** The exited-agent affordance ("Resume agent" / "Start new"). Gated
  *  entirely on `processState` (via `!session.running`), never on
@@ -77,26 +70,36 @@ export function TerminalView({
   const terminals = useTerminals();
   const session = terminals.data?.find((t) => t.name === tab.name);
   const machines = useMachines();
+  const reconnect = useReconnectSession();
   const epoch = session?.spawnedAt ?? 0;
-  // The agent did not exit: processState (ExitedAgentBar, gated on
-  // session.running) and connectionState are independent, and this
-  // banner is driven by the latter only — AGENTS.md, ux-machines.md §6.
-  const connectionState = session?.connectionState;
-  const showBanner =
-    connectionState === 'reconnecting' || connectionState === 'failed';
+  // processState (ExitedAgentBar) and connectionState (the banner) are
+  // independent by construction — terminalPaneState pins that, so a
+  // dropped connection can never read as the agent having exited
+  // (AGENTS.md, ux-machines.md §6). No listing yet: nothing to show.
+  const pane = session
+    ? terminalPaneState(session)
+    : { bannerState: null, inputDisabled: false, showExitedBar: false };
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-terminal-pane>
-      {showBanner && (
+      {pane.bannerState && (
         <ConnectionBanner
-          state={connectionState}
-          machineLabel={machineLabelFor(session?.machine, machines.data)}
+          state={pane.bannerState}
+          machineLabel={
+            resolveMachineLabel(session?.machine, machines.data) ??
+            'this machine'
+          }
+          onReconnect={() => reconnect.mutate(tab.name)}
+          reconnecting={reconnect.isPending}
         />
       )}
-      {session?.kind === 'agent' && !session.running && (
-        <ExitedAgentBar session={session} />
-      )}
+      {pane.showExitedBar && session && <ExitedAgentBar session={session} />}
       <div className="relative min-h-0 flex-1">
-        <SessionTerminal name={tab.name} epoch={epoch} active={active} />
+        <SessionTerminal
+          name={tab.name}
+          epoch={epoch}
+          active={active}
+          disabled={pane.inputDisabled}
+        />
       </div>
     </div>
   );
