@@ -47,9 +47,33 @@ const TEN_WIDTH = 142;
 /** Gap between N and 1 when split, matching the gap between 1 and 0. */
 const SPLIT_GAP = 18;
 
+/**
+ * A flag for the 1: a slanted bar from the top-left of the stem reaching
+ * `reach` units left, cut vertically at the tip so it sits flush against
+ * the N's stave edge. Local to the 10 pane.
+ */
+function flagPoints(reach: number): string {
+  const drop = reach * 0.85;
+  return `0,0 ${-reach},${drop} ${-reach},${drop + 20} 0,20`;
+}
+
 export interface LogoColors {
   n: string;
   ten: string;
+}
+
+const BRAND: LogoColors = { n: LOGO_BLUE, ten: LOGO_YELLOW };
+
+/** Where the 10 pane sits, how far it slides, and the 1's flag if any. */
+function geometry(overlap: number, flag: boolean) {
+  const tenX = N_RIGHT_STAVE + STROKE * (1 - overlap);
+  const reach = tenX - N_RIGHT_STAVE;
+  return {
+    tenX,
+    width: tenX + TEN_WIDTH,
+    split: N_RIGHT_STAVE + STROKE + SPLIT_GAP - tenX,
+    flagPts: flag && reach > 0 ? flagPoints(reach) : null,
+  };
 }
 
 export function Logo({
@@ -57,6 +81,7 @@ export function Logo({
   hover = false,
   colors,
   overlap = LOGO_OVERLAP,
+  flag = false,
   className,
   style,
   ...props
@@ -67,16 +92,18 @@ export function Logo({
   colors?: LogoColors;
   /** Fraction of the N's right stave the 1 covers, 0–1. */
   overlap?: number;
+  /**
+   * Give the 1 a flag. It reaches left exactly as far as the bar is off
+   * the stave, so its tip lands on the stave's left edge.
+   */
+  flag?: boolean;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
-  const n = colors?.n ?? LOGO_BLUE;
-  const ten = colors?.ten ?? LOGO_YELLOW;
-  // Where the 10 pane starts; how far it slides right to clear the N.
-  const tenX = N_RIGHT_STAVE + STROKE * (1 - overlap);
-  const split = N_RIGHT_STAVE + STROKE + SPLIT_GAP - tenX;
+  const { n, ten } = colors ?? BRAND;
+  const { tenX, width, split, flagPts } = geometry(overlap, flag);
   const vars = { '--n10-logo-split': `${split}px` } as CSSProperties;
   return (
     <svg
-      viewBox={`0 0 ${tenX + TEN_WIDTH} 100`}
+      viewBox={`0 0 ${width} 100`}
       role="img"
       aria-label="n10"
       overflow="visible"
@@ -106,6 +133,7 @@ export function Logo({
           style={{ mixBlendMode: 'multiply' }}
         >
           <rect x="0" y="0" width="28" height="100" />
+          {flagPts && <polygon points={flagPts} />}
           <ellipse
             cx="94"
             cy="50"

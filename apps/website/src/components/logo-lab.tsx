@@ -227,6 +227,23 @@ export function LogoLab() {
       </section>
 
       <section className="flex flex-col gap-6">
+        <h2 className="text-lg font-medium">Flagged 1 at 50%</h2>
+        <div className="grid gap-6 sm:grid-cols-3">
+          <div className="flex flex-col gap-4 rounded-lg border border-fd-border p-5">
+            <Logo key={run} intro hover flag className="h-20 w-auto" />
+            <div className="flex items-center gap-3">
+              <Logo hover flag className="h-6 w-auto" />
+              <span className="text-fd-muted-foreground text-xs">nav size</span>
+            </div>
+            <p className="text-fd-muted-foreground text-sm">
+              The flag reaches left by the same 14 units the bar sits off the
+              stave, so its tip lands on the stave&apos;s left edge.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-6">
         <h2 className="text-lg font-medium">Overlap</h2>
         <div className="grid gap-6 sm:grid-cols-3">
           {OVERLAPS.map((o) => (
