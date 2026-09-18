@@ -76,7 +76,7 @@ const MOTIONS: { name: string; note: string; vars: Record<string, string> }[] =
   ];
 
 /** Stave overlap fractions to compare, 100% down to the default 50%. */
-const OVERLAPS = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
+const OVERLAPS = [1, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 
 function channel(hex: string, i: number): number {
   return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
