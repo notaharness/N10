@@ -3,45 +3,8 @@
 import { useState, type CSSProperties } from 'react';
 import { Logo, type LogoColors } from '@/components/logo';
 import { buttonVariants } from '@/components/ui/button';
-
-/**
- * Candidate pane pairs. Multiply blending only gives a clean third colour
- * when the two share a channel, so every pair here is two of the
- * subtractive primaries (cyan / magenta / yellow) or a near neighbour;
- * the mix column is the real product the browser will paint.
- */
-const PALETTES: { name: string; note: string; colors: LogoColors }[] = [
-  {
-    name: 'Azure / Yellow',
-    note: 'Current. Sky and sun; mixes to a leaf green.',
-    colors: { n: '#2ba3ff', ten: '#ffd93d' },
-  },
-  {
-    name: 'Cyan / Magenta',
-    note: 'The print primaries; mixes to a deep indigo blue.',
-    colors: { n: '#33d6ff', ten: '#ff5fb8' },
-  },
-  {
-    name: 'Magenta / Yellow',
-    note: 'Warm and loud; mixes to a red-orange.',
-    colors: { n: '#ff5fb8', ten: '#ffd93d' },
-  },
-  {
-    name: 'Violet / Pink',
-    note: 'One family, two tints; mixes to a saturated purple.',
-    colors: { n: '#7c6cff', ten: '#ff8fd8' },
-  },
-  {
-    name: 'Brand blue / Amber',
-    note: "The desktop's accent blue; darker, mixes to a forest green.",
-    colors: { n: '#0078d4', ten: '#ffb830' },
-  },
-  {
-    name: 'Red / Cyan',
-    note: 'Anaglyph glasses. True complements, so the overlap goes to black — exactly what stacked 3D filters do.',
-    colors: { n: '#ff2222', ten: '#18e0e0' },
-  },
-];
+import { LogoLabInteractive } from '@/components/logo-lab-interactive';
+import { PALETTES, Swatch, multiply } from '@/components/logo-lab-shared';
 
 /** Timing variants, applied through the logo's CSS custom properties. */
 const MOTIONS: { name: string; note: string; vars: Record<string, string> }[] =
@@ -78,34 +41,11 @@ const MOTIONS: { name: string; note: string; vars: Record<string, string> }[] =
 /** Stave overlap fractions to compare, 100% down to the default 50%. */
 const OVERLAPS = [1, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 
-function channel(hex: string, i: number): number {
-  return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
-}
-
-/** The multiply product of two hex colours, as the browser will paint it. */
-function multiply(a: string, b: string): string {
-  const hex = [0, 1, 2]
-    .map((i) => Math.round((channel(a, i) * channel(b, i)) / 255))
-    .map((v) => v.toString(16).padStart(2, '0'))
-    .join('');
-  return `#${hex}`;
-}
-
-function Swatch({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-xs">
-      <span
-        className="inline-block size-3 rounded-sm border border-fd-border"
-        style={{ background: color }}
-      />
-      {label} {color}
-    </span>
-  );
-}
-
 export function LogoLab() {
   // Bumping the key remounts every intro logo so the mix replays.
   const [run, setRun] = useState(0);
+  const [overlap, setOverlap] = useState(0.5);
+  const [colors, setColors] = useState<LogoColors>(PALETTES[0].colors);
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-12">
@@ -125,6 +65,13 @@ export function LogoLab() {
           Replay intros
         </button>
       </header>
+
+      <LogoLabInteractive
+        overlap={overlap}
+        setOverlap={setOverlap}
+        colors={colors}
+        setColors={setColors}
+      />
 
       <section className="flex flex-col gap-6">
         <h2 className="text-lg font-medium">Motion</h2>
@@ -224,6 +171,20 @@ export function LogoLab() {
             </div>
           ))}
         </div>
+        <p className="text-fd-muted-foreground text-sm">
+          Your own pick from the Interactive panel above, at the same size.
+        </p>
+        <div className="flex items-center gap-3 py-6">
+          <span className="text-fd-muted-foreground w-4 text-right font-mono text-xs">
+            ✎
+          </span>
+          <Logo
+            hover
+            colors={colors}
+            overlap={overlap}
+            className="h-6 w-auto"
+          />
+        </div>
       </section>
 
       <section className="flex flex-col gap-6">
@@ -236,8 +197,9 @@ export function LogoLab() {
               <span className="text-fd-muted-foreground text-xs">nav size</span>
             </div>
             <p className="text-fd-muted-foreground text-sm">
-              The flag reaches left by the same 14 units the bar sits off the
-              stave, so its tip lands on the stave&apos;s left edge.
+              A 45° slab, one stroke deep, reaching left by the same 14 units
+              the bar sits off the stave so its flat end sits flush on the
+              stave&apos;s edge.
             </p>
           </div>
         </div>
