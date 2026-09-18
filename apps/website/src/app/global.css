@@ -33,9 +33,12 @@
  * That curve is the shape of Apple's default system motion, and it's
  * what reads as calm: the pane arrives, it doesn't bounce.
  *
- * Hover and intro share one duration and curve, so the pane moves the
- * same way whichever way it's going; a short hover transition next to a
- * long intro reads as a snap.
+ * Hover uses a symmetric ease-in-out instead: the intro starts from a
+ * held pose the eye is already waiting on, so a fast launch reads as
+ * release, but a hover starts from rest under the cursor at nav size
+ * (~8px of travel), and the decel curve dumps most of that into the
+ * first 200ms — it reads as a jump. Easing in makes the departure
+ * visible, and the same curve plays back on mouse-leave.
  *
  * The intro holds the split state first so the eye reads "N 10" before
  * the mix happens, and uses `backwards` fill on purpose: it shows the
@@ -44,11 +47,12 @@
  * swallow the hover rule. */
 :root {
   --n10-logo-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --n10-logo-hover-ease: cubic-bezier(0.65, 0, 0.35, 1);
   --n10-logo-duration: 1100ms;
 }
 
 .n10-logo-ten {
-  transition: transform var(--n10-logo-duration) var(--n10-logo-ease);
+  transition: transform 800ms var(--n10-logo-hover-ease);
 }
 
 .n10-logo--hover:hover .n10-logo-ten {
