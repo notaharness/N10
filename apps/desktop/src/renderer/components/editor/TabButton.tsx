@@ -161,6 +161,7 @@ export function TabButton({
   foreignRepo,
   startsGroup,
   running = false,
+  machineLabel,
 }: {
   tab: Tab;
   item: SidebarItem | undefined;
@@ -174,9 +175,12 @@ export function TabButton({
   foreignRepo: string | null;
   /** First tab of its repository's run — draw the group separator. */
   startsGroup: boolean;
+  /** The tab's machine, resolved by the caller — null for a local tab,
+   *  or with only the local machine registered (ux-machines.md §6, D8). */
+  machineLabel?: string | null;
 }) {
   const tabs = useTabs();
-  const { label, face } = tabPresentation(tab, item);
+  const { label, face } = tabPresentation(tab, item, machineLabel);
   const Icon = FACE_ICON[face];
   // A plan is built inside a tab and then navigated away from, so the
   // count has to be visible from wherever the user ends up.
