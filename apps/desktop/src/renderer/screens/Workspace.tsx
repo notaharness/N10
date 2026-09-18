@@ -300,6 +300,9 @@ function WorkspaceInner({
         onToggleSidebar={toggleSidebar}
         onSwitchRepo={onSwitchRepo}
         onNewTerminal={terminalTabs.openDialog}
+        onOpenTerminalOnMachine={(machine) =>
+          terminalTabs.launchTerminal('shell', '', machine)
+        }
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       {terminalTabs.dialogOpen && (
