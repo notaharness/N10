@@ -222,7 +222,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       },
     });
     expect(state.listOurSessionsWith).toHaveBeenCalledWith(
-      state.machine.executor
+      (state.machine as { executor: unknown }).executor
     );
     expect(state.createRemote.mock.calls[0][1]).toMatchObject({
       mode: 'attach',
@@ -245,7 +245,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       },
     });
     expect(state.listOurSessionsWith).toHaveBeenCalledWith(
-      state.machine.executor
+      (state.machine as { executor: unknown }).executor
     );
     expect(state.createRemote.mock.calls[0][1]).toMatchObject({
       mode: 'create',
