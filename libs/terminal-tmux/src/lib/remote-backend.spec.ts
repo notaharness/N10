@@ -228,4 +228,62 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(backend.connectionState).toBe('reconnecting');
     expect(backend.processState?.running).toBe(true);
   });
+
+  // Finding 3: tmux missing on the remote, a socket permission error, or
+  // an exec handler returning non-zero must never read as "the agent
+  // exited" — only a thrown error (a call that could not run at all)
+  // may. `run` resolving with a non-zero `code` (as opposed to
+  // rejecting) is exactly the case that used to slip through:
+  // `tmuxListSessionsDetailedWith` turned it into an empty list, which
+  // the poller then read as "session gone".
+  it('a non-zero exit from list-sessions (not a thrown error) also marks the backend reconnecting, never exited', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions'))
+        return { stdout: '', stderr: 'tmux: command not found', code: 127 };
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const exited = vi.fn();
+    backend.onExit(exited);
+    await flushMicrotasks();
+    expect(backend.connectionState).toBe('reconnecting');
+    expect(backend.processState?.running).toBe(true);
+    expect(exited).not.toHaveBeenCalled();
+  });
+
+  // The other half of the same distinction: a *successful* call that
+  // genuinely lists nothing for this session (exit 0, no matching row)
+  // must still mean the session is gone — matched here against the
+  // 127/non-zero case above so a fix cannot solve one by breaking the
+  // other (e.g. treating every non-zero-or-empty result as a failure).
+  it('a genuinely empty listing (exit 0, session not present) still means the session exited', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions'))
+        return { stdout: '', stderr: '', code: 0 };
+      if (argv.includes('capture-pane'))
+        return { stdout: 'final\n', stderr: '', code: 0 };
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const exited = vi.fn();
+    backend.onExit(exited);
+    await flushMicrotasks();
+    expect(backend.processState?.running).toBe(false);
+    expect(backend.connectionState).toBe('connected');
+    expect(exited).toHaveBeenCalled();
+  });
 });

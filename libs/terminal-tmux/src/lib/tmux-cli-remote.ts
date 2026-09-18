@@ -90,12 +90,28 @@ export async function tmuxCapturePaneWith(
   return result.exitCode === 0 ? result.stdout : null;
 }
 
+/**
+ * A non-zero exit must never read the same as an empty, successful
+ * listing — tmux missing on the remote, a socket permission error, or
+ * an `exec` handler returning non-zero all say "this call could not
+ * run", not "no sessions". `RemoteSessionPoller` relies on this: it
+ * only routes a *thrown* error to `onUnreachable`, matching the local
+ * backend's own rule (`tmux-backend.ts`: "A failed read says nothing
+ * about the pane"). Swallowing the distinction here (returning `[]`
+ * either way) is what let a machine-side tmux failure render as every
+ * session on it having exited, at exit code 0 (finding 3).
+ */
 export async function tmuxListSessionsDetailedWith(
   executor: MachineExecutor,
   options: readonly string[] = []
 ): Promise<TmuxSessionInfo[]> {
   const result = await runTmuxWith(executor, listSessionsArgv(options));
-  if (result.exitCode !== 0) return [];
+  if (result.exitCode !== 0)
+    throw new Error(
+      `tmux list-sessions failed (exit ${result.exitCode}): ${
+        result.stderr || result.stdout || 'no output'
+      }`
+    );
   return result.stdout
     .split('\n')
     .map((line) => line.trim())

@@ -128,6 +128,23 @@ describe('RemoteSessionPoller (D3: one list-sessions call fans out to every back
     poller.dispose();
   });
 
+  it('marks every subscribed backend unreachable when list-sessions resolves with a non-zero exit, not as an empty listing (finding 3)', async () => {
+    run.mockResolvedValue({
+      stdout: '',
+      stderr: 'tmux: command not found',
+      code: 127,
+    });
+    const poller = new RemoteSessionPoller(executor, 1000);
+    const events: string[] = [];
+    poller.subscribe('a', {
+      onState: () => events.push('state'),
+      onUnreachable: () => events.push('unreachable'),
+    });
+    await flushImmediatePoll();
+    expect(events).toEqual(['unreachable']);
+    poller.dispose();
+  });
+
   it('reports a session tmux no longer lists as not found, distinct from a paneDead retained pane', async () => {
     run.mockResolvedValue({
       stdout: listSessionsOutput([{ name: 'other' }]),
