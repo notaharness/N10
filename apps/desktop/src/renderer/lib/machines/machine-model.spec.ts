@@ -4,10 +4,14 @@ import {
   fingerprintGroups,
   formatCountdown,
   hasPeerMachines,
+  inboundMailRows,
+  inboundRefusedBadgeLabel,
+  inboundWaitingBadgeLabel,
   isMachineSelectable,
   launchStepLabel,
   machinePresentation,
   machineSelectOptions,
+  oldestInboundMailAge,
   queueBadgeLabel,
   resolveMachineLabel,
 } from './machine-model.js';
@@ -24,6 +28,8 @@ function machine(overrides: Partial<MachineView> = {}): MachineView {
     queueDepth: 0,
     pairedAt: 1000,
     revokedAt: null,
+    inboundWaiting: [],
+    inboundRefused: [],
     ...overrides,
   };
 }
@@ -133,6 +139,42 @@ describe('queueBadgeLabel', () => {
   it('names the count once non-zero', () => {
     expect(queueBadgeLabel(1)).toBe('1 waiting');
     expect(queueBadgeLabel(4)).toBe('4 waiting');
+  });
+});
+
+describe('inbound mail (Phase 8: the desktop as a mailbox subscriber)', () => {
+  it('badges are null when there is nothing waiting or refused', () => {
+    const m = machine();
+    expect(inboundWaitingBadgeLabel(m)).toBeNull();
+    expect(inboundRefusedBadgeLabel(m)).toBeNull();
+    expect(oldestInboundMailAge(m)).toBeNull();
+  });
+
+  it('names the count once non-zero, for each list independently', () => {
+    const m = machine({
+      inboundWaiting: [{ id: 'a', target: 'tmux:x', receivedAt: 1 }],
+      inboundRefused: [
+        { id: 'b', target: 'tmux:y', reason: 'nope', receivedAt: 1 },
+        { id: 'c', target: 'tmux:z', reason: 'nope', receivedAt: 1 },
+      ],
+    });
+    expect(inboundWaitingBadgeLabel(m)).toBe('1 waiting to be delivered');
+    expect(inboundRefusedBadgeLabel(m)).toBe('2 refused');
+  });
+
+  it('rows are sorted oldest first and carry the reason only when refused', () => {
+    const rows = inboundMailRows([
+      { id: 'newer', target: 'tmux:x', receivedAt: 2000 },
+      {
+        id: 'older',
+        target: 'tmux:y',
+        reason: 'a shell owns it',
+        receivedAt: 1000,
+      },
+    ]);
+    expect(rows.map((r) => r.id)).toEqual(['older', 'newer']);
+    expect(rows[0]?.reason).toBe('a shell owns it');
+    expect(rows[1]?.reason).toBeUndefined();
   });
 });
 

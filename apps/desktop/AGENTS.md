@@ -17,6 +17,12 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are prepared in `main/tmux-session-worker.ts`, an Electron utility process:
   direct Node child-process spawning on Linux inherits Chromium descriptors
   into the persistent server. The main process only attaches local clients.
+- The beam node's mailbox subscriber runs in the utility process
+  (`main/beam-node-mail.ts`); resolving a target and delivering into a pane
+  runs in main (`main/beam-mail-relay.ts`), since the PTY registry only
+  exists here. Only a successful delivery acks; a refusal or a target with
+  no live connection leaves the envelope unacked and durable
+  (`docs/beam.md`, `libs/core/AGENTS.md`'s relay-targeting rule).
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo

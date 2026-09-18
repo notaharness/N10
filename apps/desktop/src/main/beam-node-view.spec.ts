@@ -53,6 +53,8 @@ describe('localMachineView', () => {
       queueDepth: 0,
       pairedAt: null,
       revokedAt: null,
+      inboundWaiting: [],
+      inboundRefused: [],
     });
   });
 });

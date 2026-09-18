@@ -465,6 +465,11 @@ export interface N10HostApi {
   /** Forgets the peer entirely (not just revoked). */
   forgetMachine(peerId: string): Promise<void>;
   onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
+  /** Discards a refused inbound report without delivering it — the
+   *  only thing that acks it, removing it from the sender's mailbox
+   *  for good. Reflected back through the next `onMachinesChanged`
+   *  push, not returned here. */
+  dismissInboundMail(id: string): Promise<void>;
 
   // ── Babysitting ──────────────────────────────────────────────
   /** Watch a pull request and brief its agent — CI, unresolved review
@@ -552,6 +557,7 @@ export const IPC = {
   renameMachine: 'n10/machines/rename',
   revokeMachine: 'n10/machines/revoke',
   forgetMachine: 'n10/machines/forget',
+  dismissInboundMail: 'n10/machines/dismiss-inbound-mail',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

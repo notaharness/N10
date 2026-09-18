@@ -159,6 +159,7 @@ const api: N10HostApi = {
     ipcRenderer.invoke(IPC.renameMachine, peerId, label),
   revokeMachine: (peerId) => ipcRenderer.invoke(IPC.revokeMachine, peerId),
   forgetMachine: (peerId) => ipcRenderer.invoke(IPC.forgetMachine, peerId),
+  dismissInboundMail: (id) => ipcRenderer.invoke(IPC.dismissInboundMail, id),
   onMachinesChanged: (cb) => {
     const listener = (_e: unknown, payload: MachinesChangedEvent) =>
       cb(payload);

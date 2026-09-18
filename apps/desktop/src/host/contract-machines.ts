@@ -19,6 +19,20 @@ export type MachineState =
   | 'no-endpoint'
   | 'revoked';
 
+/** One report from this machine, either waiting for its target session
+ *  to connect or refused delivery — the inbound half of the mailbox
+ *  relay (docs/beam.md, decisions.md D13/D14). `reason` is set only for
+ *  a refused item; a waiting one carries none because waiting is not a
+ *  failure. */
+export interface InboundMailItem {
+  id: string;
+  /** The envelope's local target, e.g. `tmux:n10-feature-x` — shown
+   *  beside the reason, never the raw peerId. */
+  target: string;
+  reason?: string;
+  receivedAt: number;
+}
+
 /** One row of the machines list — the local machine, or a paired peer. */
 export interface MachineView {
   /** beam peerId — the fingerprint, grouped in fours for display. */
@@ -37,6 +51,13 @@ export interface MachineView {
   pairedAt: number | null;
   /** Set only once `state === 'revoked'`. */
   revokedAt: number | null;
+  /** Reports from this machine known locally and waiting for their
+   *  target session to connect. Oldest first. */
+  inboundWaiting: InboundMailItem[];
+  /** Reports from this machine refused delivery (D14: never a foreign
+   *  session, a shell terminal, or one on another machine). Oldest
+   *  first; each can be dismissed. */
+  inboundRefused: InboundMailItem[];
 }
 
 /** This machine's accept-connections state — the "B" side of pairing. */

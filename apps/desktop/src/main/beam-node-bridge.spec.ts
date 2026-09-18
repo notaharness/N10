@@ -52,6 +52,8 @@ function localOnly(): MachineView {
     queueDepth: 0,
     pairedAt: null,
     revokedAt: null,
+    inboundWaiting: [],
+    inboundRefused: [],
   };
 }
 
@@ -67,6 +69,8 @@ function peer(state: MachineView['state']): MachineView {
     queueDepth: 0,
     pairedAt: 500,
     revokedAt: null,
+    inboundWaiting: [],
+    inboundRefused: [],
   };
 }
 
@@ -391,5 +395,38 @@ describe('BeamNodeBridge', () => {
     child.emit('exit', 0);
     await shutdownPromise;
     expect(pushed).toEqual([]); // no synthetic "everyone unreachable" push
+  });
+
+  it('forwards a mail-inbound event from the worker to every listener', async () => {
+    const bridge = new BeamNodeBridge();
+    bridge.listMachines().catch(() => undefined);
+    await tick();
+    const events: unknown[] = [];
+    bridge.onInboundMail((e) => events.push(e));
+    child.emit('message', {
+      kind: 'event',
+      name: 'mail-inbound',
+      payload: { id: 'env-1', from: 'peer-1', fromLabel: 'workbox' },
+    });
+    expect(events).toEqual([
+      { id: 'env-1', from: 'peer-1', fromLabel: 'workbox' },
+    ]);
+  });
+
+  it('ackInboundMail sends the ackMail op with the envelope id', async () => {
+    const bridge = new BeamNodeBridge();
+    const acking = bridge.ackInboundMail('env-1');
+    await tick();
+    const req = child.postMessage.mock.calls.find(
+      (c) => (c[0] as { op: string }).op === 'ackMail'
+    )?.[0] as { id: number; payload: { id: string } };
+    expect(req.payload).toEqual({ id: 'env-1' });
+    child.emit('message', {
+      kind: 'response',
+      id: req.id,
+      ok: true,
+      result: true,
+    });
+    await acking;
   });
 });

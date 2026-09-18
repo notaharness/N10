@@ -23,6 +23,11 @@ export function localMachineView(
     queueDepth: 0,
     pairedAt: null,
     revokedAt: null,
+    // Inbound mail is addressed to this machine's peers, never to
+    // itself; the main-process overlay (beam-mail-relay.ts, applied in
+    // services/inbound-mail.ts) only ever fills these in for a peer row.
+    inboundWaiting: [],
+    inboundRefused: [],
   };
 }
 
@@ -51,5 +56,10 @@ export function peerMachineView(
     queueDepth: status.queueDepth,
     pairedAt: record.pairedAt,
     revokedAt: record.revokedAt ?? null,
+    // Filled in by the main-process overlay, which knows peerId →
+    // waiting/refused mail; the worker (where this view is built) has
+    // no view of pty-registry to know either.
+    inboundWaiting: [],
+    inboundRefused: [],
   };
 }

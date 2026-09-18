@@ -45,7 +45,9 @@ import { classifyPairError, withTimeout } from './beam-node-errors.js';
 import { ReachabilityProber } from './beam-node-probe.js';
 import { localMachineView, peerMachineView } from './beam-node-view.js';
 import { RemoteOps } from './beam-node-remote-ops.js';
+import { InboundMailSubscriber } from './beam-node-mail.js';
 export type { StreamEvent } from './beam-node-remote-ops.js';
+export type { InboundMailEvent } from './beam-node-mail.js';
 
 export interface BeamNodeOptions {
   /** Overridable for tests; defaults to the real `$BEAM_DIR`. */
@@ -87,6 +89,13 @@ export class BeamNode {
    *  Public so the worker's OPS table can call it directly rather than
    *  BeamNode re-declaring every method as a one-line delegation. */
   readonly remote: RemoteOps;
+  /** The subscriber side of the desktop's mailbox relay (D13/D14): every
+   *  inbound envelope this node accepts is pushed here and held unacked
+   *  until `mail.ack(id)` is called — `beam-node-worker.ts` forwards
+   *  events to the bridge, and `beam-mail-relay.ts` in main is what
+   *  resolves a target and calls back with the ack once delivery
+   *  actually succeeds. Public for the same reason `remote` is. */
+  readonly mail: InboundMailSubscriber;
   private disposed = false;
 
   constructor(options: BeamNodeOptions = {}) {
@@ -126,6 +135,7 @@ export class BeamNode {
       connections: this.connections,
       registry: this.registry,
     });
+    this.mail = new InboundMailSubscriber(this.mailbox, this.peers);
   }
 
   private envContext(): NodeEnvContext {
@@ -351,6 +361,7 @@ export class BeamNode {
     this.prober.stop();
     this.mailbox.dispose();
     this.remote.dispose();
+    this.mail.dispose();
     if (this.host) {
       await this.host.close();
       this.host = null;

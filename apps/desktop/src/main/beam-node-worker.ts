@@ -62,6 +62,9 @@ if ('node' in started) {
         payload: { streamId: event.streamId },
       });
   });
+  node.mail.onMail((event) => {
+    post({ kind: 'event', name: 'mail-inbound', payload: event });
+  });
 } else {
   post({
     kind: 'event',
@@ -137,6 +140,7 @@ function buildOps(
     ptyClose: (payload) => {
       node.remote.ptyClose((payload as { streamId: string }).streamId);
     },
+    ackMail: (payload) => node.mail.ack((payload as { id: string }).id),
     shutdown: () => node.dispose(),
   };
 }

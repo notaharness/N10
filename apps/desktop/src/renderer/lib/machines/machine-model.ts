@@ -1,5 +1,6 @@
 import type { LaunchStep } from '../../../host/contract-events.js';
 import type {
+  InboundMailItem,
   MachineState,
   MachineView,
 } from '../../../host/contract-machines.js';
@@ -100,6 +101,59 @@ export function formatCountdown(msRemaining: number): string {
  *  a failure, and never announce there being none of it either). */
 export function queueBadgeLabel(depth: number): string | null {
   return depth > 0 ? `${depth} waiting` : null;
+}
+
+// ── Phase 8: inbound mail relay (docs/beam.md, decisions.md D13/D14) ──
+//
+// A report from this machine that is waiting for its target session to
+// connect, or one that was refused, oldest-first. Never a failure for
+// `waiting` (ux-machines.md §7's rule extends to this: "queued" is not
+// a failure, and neither is waiting for a pane to reconnect); a
+// refusal is always visible and named — machine label, target, reason.
+
+/** `1 waiting to be delivered` / `3 waiting to be delivered`, or null
+ *  when there is nothing waiting — same "no badge at zero" rule as
+ *  `queueBadgeLabel`. */
+export function inboundWaitingBadgeLabel(machine: MachineView): string | null {
+  const n = machine.inboundWaiting.length;
+  return n > 0 ? `${n} waiting to be delivered` : null;
+}
+
+/** `1 refused` / `2 refused`, or null when there is nothing refused. */
+export function inboundRefusedBadgeLabel(machine: MachineView): string | null {
+  const n = machine.inboundRefused.length;
+  return n > 0 ? `${n} refused` : null;
+}
+
+export interface InboundMailRow {
+  id: string;
+  target: string;
+  reason?: string;
+  age: string;
+}
+
+/** Oldest first, formatted for display — the rows a machine row's
+ *  expandable inbound-mail panel renders. */
+export function inboundMailRows(
+  items: readonly InboundMailItem[]
+): InboundMailRow[] {
+  return [...items]
+    .sort((a, b) => a.receivedAt - b.receivedAt)
+    .map((i) => ({
+      id: i.id,
+      target: i.target,
+      reason: i.reason,
+      age: relativeTime(i.receivedAt),
+    }));
+}
+
+/** The oldest item's age across both waiting and refused mail, for a
+ *  one-line summary beside the badges — `null` when there is nothing
+ *  from this machine at all. */
+export function oldestInboundMailAge(machine: MachineView): string | null {
+  const all = [...machine.inboundWaiting, ...machine.inboundRefused];
+  if (all.length === 0) return null;
+  return relativeTime(Math.min(...all.map((i) => i.receivedAt)));
 }
 
 // ── Phase 7: launching on a machine (ux-machines.md §5, §6) ────────

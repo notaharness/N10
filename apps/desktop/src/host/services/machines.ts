@@ -4,6 +4,7 @@ import type {
   PairConfirmResult,
   PairPreviewResult,
 } from '../contract-machines.js';
+import { withMailOverlay } from './inbound-mail.js';
 
 /**
  * The main-process face of the beam node. Every real machine belongs to
@@ -48,10 +49,20 @@ export function setMachinesNotifier(
 }
 
 /** Fed by the bridge whenever the node pushes a fresh list, and by the
- *  bridge's own crash-supervision synthesis (see beam-node-bridge.ts). */
+ *  bridge's own crash-supervision synthesis (see beam-node-bridge.ts).
+ *  Also the seam `refreshMailOverlay` calls when only inbound-mail
+ *  state changed — `withMailOverlay` replaces its two fields wholesale,
+ *  so re-running it on an already-merged list (`lastKnown`) is safe. */
 export function receiveMachinesUpdate(machines: MachineView[]): void {
-  lastKnown = machines;
-  changed?.(machines);
+  lastKnown = withMailOverlay(machines);
+  changed?.(lastKnown);
+}
+
+/** Called after a delivery, a refusal or a dismiss — an inbound-mail
+ *  change with no beam connection change behind it, so nothing else
+ *  would otherwise trigger a fresh push. */
+export function refreshMailOverlay(): void {
+  receiveMachinesUpdate(lastKnown);
 }
 
 export function getLastKnownMachines(): MachineView[] {
@@ -65,8 +76,8 @@ function requirePort(): MachinesPort {
 
 export async function listMachines(): Promise<MachineView[]> {
   const machines = await requirePort().listMachines();
-  lastKnown = machines;
-  return machines;
+  lastKnown = withMailOverlay(machines);
+  return lastKnown;
 }
 
 // `async` on every one of these, deliberately: `requirePort()`'s throw

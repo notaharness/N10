@@ -9,9 +9,15 @@ import type {
 import {
   getLastKnownMachines,
   receiveMachinesUpdate,
+  refreshMailOverlay,
   setMachinesPort,
   type MachinesPort,
 } from '../host/services/machines.js';
+import {
+  notifyInboundMailChanged,
+  setInboundMailChangeNotifier,
+  setInboundMailPort,
+} from '../host/services/inbound-mail.js';
 import type {
   BeamNodeRequest,
   BeamWorkerMessage,
@@ -22,6 +28,8 @@ import type {
 } from '../host/services/remote-machines.js';
 import { setRemoteMachinePort } from '../host/services/remote-machines.js';
 import { parseStreamId, wrapStreamId } from './beam-stream-id.js';
+import type { InboundMailEvent } from './beam-node-mail.js';
+import { MailRelay, type RelayPort } from './beam-mail-relay.js';
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -51,7 +59,9 @@ function restartDelayFor(attempt: number): number {
  * and the restart policy — nothing about identity, peers, accepting or
  * streams, which all live in `beam-node.ts`, run inside the worker.
  */
-export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
+export class BeamNodeBridge
+  implements MachinesPort, RemoteMachinePort, RelayPort
+{
   private child: UtilityProcess | null = null;
   private starting: Promise<UtilityProcess> | null = null;
   private nextId = 1;
@@ -59,6 +69,7 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
   private readonly ptyEventListeners = new Set<
     (event: StreamEventPayload) => void
   >();
+  private readonly mailListeners = new Set<(event: InboundMailEvent) => void>();
   private shuttingDown = false;
   /** Bumped once per forked worker. Every pty stream id handed to a
    *  caller is wrapped with the generation that opened it
@@ -142,6 +153,9 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
         this.openStreams.delete(wrapped);
         for (const cb of this.ptyEventListeners)
           cb({ kind: 'closed', streamId: wrapped });
+      } else if (message.name === 'mail-inbound') {
+        const event = message.payload as InboundMailEvent;
+        for (const cb of this.mailListeners) cb(event);
       }
       // 'startup-failed' needs no bridge-side reaction beyond the
       // failure message every pending call already gets: the worker
@@ -345,6 +359,24 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     return () => this.ptyEventListeners.delete(cb);
   }
 
+  /** `RelayPort` (`beam-mail-relay.ts`): pushes every inbound envelope
+   *  the worker's mailbox subscriber accepts. */
+  onInboundMail(cb: (event: InboundMailEvent) => void): () => void {
+    this.mailListeners.add(cb);
+    return () => this.mailListeners.delete(cb);
+  }
+
+  /** The subscriber ack (docs/beam.md) — only sent once
+   *  `beam-mail-relay.ts` has actually delivered the envelope. Routed
+   *  to the worker's `InboundMailSubscriber` by envelope id, which is
+   *  globally unique, so this needs no generation-wrapping the way pty
+   *  stream ids do: an id an old, already-dead worker never acked is
+   *  simply redelivered when the replacement worker's mailbox replays
+   *  its backlog at subscribe time (drain on start). */
+  ackInboundMail(id: string): Promise<void> {
+    return this.request('ackMail', { id });
+  }
+
   /**
    * App quit: ask the node to stop accepting, close connections and let
    * the mailbox flush what it can, then let it exit itself. Bounded —
@@ -368,12 +400,23 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
   }
 }
 
-/** Installs the bridge as both the machines service's port and the
- *  remote-machine (executor + pty) port. Call once at startup, before
- *  the first machines API call. */
+/** Installs the bridge as the machines service's port, the
+ *  remote-machine (executor + pty) port, and the mailbox relay's
+ *  `RelayPort` — then starts the relay itself (`beam-mail-relay.ts`),
+ *  which resolves and delivers every inbound envelope the worker
+ *  forwards. Call once at startup, before the first machines API call. */
 export function installBeamNodeBridge(): BeamNodeBridge {
   const bridge = new BeamNodeBridge();
   setMachinesPort(bridge);
   setRemoteMachinePort(bridge);
+  const relay = new MailRelay({
+    port: bridge,
+    onChange: () => notifyInboundMailChanged(),
+  });
+  setInboundMailPort({
+    snapshotFor: (peerId) => relay.snapshotFor(peerId),
+    dismiss: (id) => relay.dismiss(id),
+  });
+  setInboundMailChangeNotifier(() => refreshMailOverlay());
   return bridge;
 }

@@ -128,6 +128,9 @@ vi.mock('./services/machines.js', () =>
     'forgetMachine',
   ])
 );
+vi.mock('./services/inbound-mail.js', () =>
+  recorder('inboundMail', ['dismissInboundMail'])
+);
 
 const { createHostApi } = await import('./register-handlers.js');
 
@@ -244,6 +247,7 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['renameMachine', ['peer-1', 'workbox'], 'machines.renameMachine'],
   ['revokeMachine', ['peer-1'], 'machines.revokeMachine'],
   ['forgetMachine', ['peer-1'], 'machines.forgetMachine'],
+  ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 
 describe('host API wiring', () => {

@@ -20,6 +20,7 @@ import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 import * as babysit from './services/babysit.js';
 import * as machines from './services/machines.js';
+import * as inboundMail from './services/inbound-mail.js';
 import { resolvePickedFolder } from './services/terminal-home.js';
 
 /**
@@ -145,6 +146,7 @@ export function createHostApi(): N10HostApi {
     renameMachine: (peerId, label) => machines.renameMachine(peerId, label),
     revokeMachine: (peerId) => machines.revokeMachine(peerId),
     forgetMachine: (peerId) => machines.forgetMachine(peerId),
+    dismissInboundMail: (id) => inboundMail.dismissInboundMail(id),
     onMachinesChanged: () => () => undefined,
   };
 }
@@ -281,6 +283,7 @@ export function registerHostHandlers(
     [IPC.renameMachine]: api.renameMachine as HostMethod,
     [IPC.revokeMachine]: api.revokeMachine as HostMethod,
     [IPC.forgetMachine]: api.forgetMachine as HostMethod,
+    [IPC.dismissInboundMail]: api.dismissInboundMail as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

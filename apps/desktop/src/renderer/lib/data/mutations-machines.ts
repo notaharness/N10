@@ -78,3 +78,15 @@ export function useForgetMachine() {
     },
   });
 }
+
+/** Discards a refused report without delivering it — the confirm text
+ *  says this removes it from the sender's mailbox for good. */
+export function useDismissInboundMail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => window.n10.dismissInboundMail(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.machines });
+    },
+  });
+}

@@ -86,6 +86,7 @@ describe('beam-node-worker: the happy path is unchanged', () => {
       this.listMachines = listMachines;
       this.onChange = () => undefined;
       this.remote = { onStreamEvent: () => undefined };
+      this.mail = { onMail: () => undefined, ack: () => false };
     });
     await import('./beam-node-worker.js');
     parentPort.emit('message', { data: { id: 7, op: 'listMachines' } });
@@ -97,6 +98,53 @@ describe('beam-node-worker: the happy path is unchanged', () => {
       id: 7,
       ok: true,
       result: ['fake-machine'],
+    });
+  });
+
+  it('forwards a mail-inbound event pushed by the node', async () => {
+    let push: ((event: unknown) => void) | undefined;
+    BeamNodeCtor.mockImplementation(function fakeBeamNode(
+      this: Record<string, unknown>
+    ) {
+      this.onChange = () => undefined;
+      this.remote = { onStreamEvent: () => undefined };
+      this.mail = {
+        onMail: (cb: (event: unknown) => void) => {
+          push = cb;
+        },
+        ack: () => false,
+      };
+    });
+    await import('./beam-node-worker.js');
+    push?.({ id: 'env-1', from: 'peer-1' });
+    expect(parentPort.postMessage).toHaveBeenCalledWith({
+      kind: 'event',
+      name: 'mail-inbound',
+      payload: { id: 'env-1', from: 'peer-1' },
+    });
+  });
+
+  it("routes the ackMail op to the node's mail subscriber", async () => {
+    const ack = vi.fn().mockReturnValue(true);
+    BeamNodeCtor.mockImplementation(function fakeBeamNode(
+      this: Record<string, unknown>
+    ) {
+      this.onChange = () => undefined;
+      this.remote = { onStreamEvent: () => undefined };
+      this.mail = { onMail: () => undefined, ack };
+    });
+    await import('./beam-node-worker.js');
+    parentPort.emit('message', {
+      data: { id: 9, op: 'ackMail', payload: { id: 'env-1' } },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ack).toHaveBeenCalledWith('env-1');
+    expect(parentPort.postMessage).toHaveBeenCalledWith({
+      kind: 'response',
+      id: 9,
+      ok: true,
+      result: true,
     });
   });
 });
