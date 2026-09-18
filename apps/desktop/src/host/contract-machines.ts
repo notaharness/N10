@@ -35,6 +35,8 @@ export interface MachineView {
   queueDepth: number;
   /** null for the local row, which was never "paired". */
   pairedAt: number | null;
+  /** Set only once `state === 'revoked'`. */
+  revokedAt: number | null;
 }
 
 /** This machine's accept-connections state — the "B" side of pairing. */

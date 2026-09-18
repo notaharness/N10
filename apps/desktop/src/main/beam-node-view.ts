@@ -22,6 +22,7 @@ export function localMachineView(
     lastSeenAt: null,
     queueDepth: 0,
     pairedAt: null,
+    revokedAt: null,
   };
 }
 
@@ -49,5 +50,6 @@ export function peerMachineView(
     lastSeenAt: record.lastSeenAt ?? null,
     queueDepth: status.queueDepth,
     pairedAt: record.pairedAt,
+    revokedAt: record.revokedAt ?? null,
   };
 }

@@ -52,6 +52,7 @@ describe('localMachineView', () => {
       lastSeenAt: null,
       queueDepth: 0,
       pairedAt: null,
+      revokedAt: null,
     });
   });
 });

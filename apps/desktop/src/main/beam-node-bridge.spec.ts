@@ -51,6 +51,7 @@ function localOnly(): MachineView {
     lastSeenAt: null,
     queueDepth: 0,
     pairedAt: null,
+    revokedAt: null,
   };
 }
 
@@ -65,6 +66,7 @@ function peer(state: MachineView['state']): MachineView {
     lastSeenAt: 1000,
     queueDepth: 0,
     pairedAt: 500,
+    revokedAt: null,
   };
 }
 
