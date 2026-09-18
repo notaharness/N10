@@ -34,6 +34,12 @@ const state = vi.hoisted(() => ({
   injected: [] as { name: string; prompt: string }[],
   /** Branch names whose checkout core should report as failed. */
   checkoutFails: new Set<string>(),
+  createWorktreeCalls: [] as {
+    branch: string;
+    cwd: string;
+    machine?: { id: string };
+  }[],
+  knownMachines: new Set<string>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -58,11 +64,20 @@ vi.mock('@n10/terminal-tmux', () => ({
 
 vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
-  createWorktree: (branch: string) => {
+  createWorktree: (branch: string, cwd: string, machine?: { id: string }) => {
+    state.createWorktreeCalls.push({ branch, cwd, machine });
     if (state.createFails.has(branch)) {
       return Promise.reject(new Error(`git refused ${branch}`));
     }
     return Promise.resolve(`${state.cwd}/.claude/worktrees/${branch}`);
+  },
+}));
+
+vi.mock('./remote-machines.js', () => ({
+  machineFor: (peerId: string) => {
+    if (!state.knownMachines.has(peerId))
+      throw new Error(`Machine "${peerId}" is not available`);
+    return { id: peerId, executor: {}, ptyOpener: {} };
   },
 }));
 
@@ -209,6 +224,8 @@ beforeEach(async () => {
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
+  state.createWorktreeCalls = [];
+  state.knownMachines = new Set();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -242,6 +259,48 @@ describe('launchAgent', () => {
     );
     expect(state.spawns[0].cwd).toBe('/repo-a/.claude/worktrees/feature/x');
     expect(state.spawns[0].config).toEqual({ marker: 'root-config' });
+  });
+
+  it('creates the worktree on the named machine and keys the session with it (D2, D5)', async () => {
+    state.knownMachines.add('peer-abc');
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      machine: 'peer-abc',
+    });
+    expect(state.createWorktreeCalls[0]).toMatchObject({
+      branch: 'feature/x',
+      cwd: '/repo-a',
+      machine: { id: 'peer-abc' },
+    });
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/x', '/repo-a', 'peer-abc')
+    );
+  });
+
+  it('fails loudly rather than launching locally when the named machine is not available', async () => {
+    // peer-abc is never added to state.knownMachines.
+    await expect(
+      launchAgent({
+        branch: 'feature/x',
+        intent: 'continue-or-blank',
+        machine: 'peer-abc',
+      })
+    ).rejects.toThrow(/not available/);
+    expect(state.createWorktreeCalls).toHaveLength(0);
+    expect(state.spawns).toHaveLength(0);
+  });
+
+  it('a local launch never touches the machine resolver, and creates the worktree exactly as today', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    expect(state.createWorktreeCalls[0]).toMatchObject({
+      branch: 'feature/x',
+      cwd: '/repo-a',
+      machine: undefined,
+    });
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/x', '/repo-a')
+    );
   });
 
   it('launches a per-launch agent pick over the stored config', async () => {

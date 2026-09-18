@@ -12,6 +12,15 @@ export interface SessionSummary {
   name: string;
   running: boolean;
   spawnedAt: number;
+  /** The machine this session runs on — `'local'` or a beam peerId
+   *  (decisions.md D2, D8). The renderer resolves it to a label and
+   *  shows it only when more than one machine is registered. */
+  machine: string;
+  /** Local client health, independent of `running`: a dropped
+   *  connection must never render as the agent having exited
+   *  (decisions.md D4). Absent for a local session, which has no
+   *  separate transport to lose. */
+  connectionState?: 'connected' | 'reconnecting' | 'failed';
 }
 
 /**

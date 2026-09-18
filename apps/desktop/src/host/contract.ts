@@ -122,6 +122,10 @@ export interface SessionLaunchRequest {
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
+  /** A beam peerId to launch on, or omitted for local (decisions.md
+   *  D2). Only meaningful for a fresh worktree session — an existing
+   *  one is already qualified to whatever machine it was created on. */
+  machine?: string;
 }
 
 /**

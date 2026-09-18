@@ -122,6 +122,9 @@ vi.mock('@n10/core', () => ({
   },
   isSessionAlive: (name: string) => state.alive.has(name),
   getSpawnedAt: () => 1000,
+  // Every session in this suite is local; a real machine tag would be
+  // parsed off the qualified key (D2), which these fixture names never are.
+  sessionIdentity: () => null,
 }));
 
 let terminals: typeof TerminalsModule;

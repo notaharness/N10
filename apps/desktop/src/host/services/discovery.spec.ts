@@ -63,6 +63,7 @@ vi.mock('@n10/core', async (importOriginal) => {
   return {
     worktreeSessionKey: actual.worktreeSessionKey,
     sessionLabel: actual.sessionLabel,
+    sessionIdentity: actual.sessionIdentity,
     startSessionDiscovery: (opts: SessionDiscoveryOptions) => {
       state.opts = opts;
       return {

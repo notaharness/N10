@@ -10,6 +10,7 @@ import {
   killSession as killSessionEntry,
   launchTerminalSession,
   releaseExitedSession,
+  sessionIdentity,
   type DiscoveredTerminal,
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
@@ -89,6 +90,7 @@ interface TerminalSize {
   cols?: number;
   rows?: number;
   fresh?: boolean;
+  machine?: string;
 }
 const starting = new Map<
   string,
@@ -104,7 +106,7 @@ function startSignature(
   size: TerminalSize,
   mode?: 'open' | 'attach'
 ): string {
-  return JSON.stringify([kind, cwd, size.fresh, mode]);
+  return JSON.stringify([kind, cwd, size.fresh, mode, size.machine]);
 }
 
 function start(
@@ -151,6 +153,9 @@ async function performStart(
     config: readConfig(cwd),
     mode,
     fresh: size.fresh,
+    // A restart (requestedName set) ignores this: the retained
+    // terminal's own machine (carried in its key) wins.
+    machine: requestedName ? undefined : size.machine,
   });
   const name = launched.name;
   const prev = requestedName ? known.get(requestedName) : undefined;
@@ -187,18 +192,24 @@ function noteRepository(cwd: string): string | null {
 }
 
 function summarize(name: string, entry: KnownTerminal, home: string) {
+  const session = getSession(name);
+  const machine = sessionIdentity(name)?.machine ?? 'local';
   return {
     name,
-    ...(getSession(name)?.pty.name
-      ? { tmuxName: getSession(name)?.pty.name }
-      : {}),
+    ...(session?.pty.name ? { tmuxName: session.pty.name } : {}),
     kind: entry.kind,
-    agent: getSession(name)?.agent,
+    agent: session?.agent,
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
-    repo: terminalRepo(entry.cwd, isGitRepo),
+    // `terminalRepo`/`isGitRepo` stat the local filesystem: meaningless
+    // for a directory that lives on another machine.
+    repo: machine === 'local' ? terminalRepo(entry.cwd, isGitRepo) : null,
     running: isSessionAlive(name),
     spawnedAt: getSpawnedAt(name) ?? 0,
+    machine,
+    ...(session?.pty.connectionState
+      ? { connectionState: session.pty.connectionState }
+      : {}),
   };
 }
 
@@ -212,14 +223,19 @@ export async function launchTerminal(
   // A retained-tab restart launches in the tab's own directory, not
   // whatever cwd the request happened to carry.
   const cwd = existing?.cwd ?? req.cwd;
-  assertLaunchableCwd(cwd);
+  // A remote machine's filesystem is not this one's to `statSync` —
+  // the remote tmux/session-create call is what validates the
+  // directory there, loudly, if it is wrong.
+  if (!req.machine) assertLaunchableCwd(cwd);
   const name = await start(
     req.sessionName,
     existing?.kind ?? req.kind,
     cwd,
     req
   );
-  noteRepository(cwd);
+  // `terminalRepo`/`isGitRepo` stat the local filesystem: correct for
+  // this machine's terminals, meaningless for `cwd` on another one.
+  if (!req.machine) noteRepository(cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);
   return summarize(name, entry, home);

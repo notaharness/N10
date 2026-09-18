@@ -1,10 +1,9 @@
-import { worktreeSessionKey, sessionLabel } from '@n10/core';
+import { worktreeSessionKey } from '@n10/core';
 import {
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
-  stopSession,
   sessionIdentity,
   isSessionAlive,
   hasSessionConnection,
@@ -19,13 +18,16 @@ import { readConfig } from '@n10/vcs-core';
 import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
 import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
+import { machineFor } from './remote-machines.js';
 import {
-  attachRelay,
-  newRelayEntry,
-  relayBuffer,
-  setSessionBroadcaster,
-  type RelayEntry,
-} from './session-relay.js';
+  adoptSession,
+  foreignSessionError,
+  known,
+  ownSession,
+  ownSessionNames,
+  stopOwnWorktreeSession,
+} from './session-registry.js';
+import { relayBuffer, setSessionBroadcaster } from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
   PlanCheckoutRequest,
@@ -37,6 +39,12 @@ import type {
 } from '../contract.js';
 
 export type { SessionLaunchRequest, SessionSummary };
+export {
+  adoptSpawnedSession,
+  isForeignSession,
+  isOwnSessionAlive,
+  killOwnSession,
+} from './session-registry.js';
 
 /** What launching or reattaching an agent hands back to the caller. */
 interface LaunchResult {
@@ -51,117 +59,9 @@ const DEFAULT_ROWS = 40;
 // the broadcaster through this module.
 export { setSessionBroadcaster };
 
-interface KnownSession extends RelayEntry {
-  branch: string;
-  /** Repository displayed by this relay. Qualified keys let other repos stay live. */
-  repoCwd: string;
-}
-
-/**
- * Record a freshly spawned PTY and start relaying its output.
- *
- * `seq` is deliberately carried over when the name is respawned. A
- * mounted terminal remembers the sequence number its replayed snapshot
- * ended at and ignores anything at or below it, so restarting a session
- * behind a pane that is still on screen — relaunching a finished agent,
- * or restarting one with a plan — would emit chunks numbered from 1
- * again and the pane would drop every one of them. The scrollback
- * *is* reset: the new agent starts with an empty screen.
- */
-function adoptSession(name: string, branch: string, repoCwd: string): void {
-  const prev = known.get(name);
-  const entry: KnownSession =
-    prev && prev.repoCwd === repoCwd
-      ? Object.assign(prev, { branch, chunks: [], bytes: 0 })
-      : { ...newRelayEntry(), branch, repoCwd };
-  known.set(name, entry);
-  attachRelay(name, entry);
-}
-
-/**
- * Adopt a session another service had `@n10/core` spawn — the
- * babysitter's, started to receive an update when no agent was
- * running. Same bookkeeping as a launch from the renderer.
- */
-export function adoptSpawnedSession(name: string, branch: string): void {
-  adoptSession(name, branch, requireRepo());
-}
-
 /** The grid a session starts on when no pane has measured one yet. */
 export function defaultPaneSize(): { cols: number; rows: number } {
   return { cols: DEFAULT_COLS, rows: DEFAULT_ROWS };
-}
-
-// ── Known sessions ───────────────────────────────────────────────
-// The pty-registry has no iteration API (the CLI enumerates via its
-// own React state), so the desktop host tracks the sessions it
-// launched. Entries persist after exit so the final frame stays
-// viewable — matching TUI behavior.
-
-const known = new Map<string, KnownSession>();
-
-/** The session under `name`, but only when it belongs to the repo
- *  that's open now. Entries for other repos stay in the map (their
- *  agents are still running and are restored on switching back) but are
- *  invisible to this repo's UI and operations. */
-function ownSession(name: string): KnownSession | undefined {
-  const entry = known.get(name);
-  if (!entry) return undefined;
-  return entry.repoCwd === requireRepo() ? entry : undefined;
-}
-
-/** Names this host launched for the currently open repo. */
-function ownSessionNames(): string[] {
-  const cwd = requireRepo();
-  return [...known.entries()]
-    .filter(([, e]) => e.repoCwd === cwd)
-    .map(([name]) => name);
-}
-
-/** Whether this host holds a live session for the open repository. */
-export function isOwnSessionAlive(name: string): boolean {
-  return isSessionAlive(name) && ownSession(name) !== undefined;
-}
-
-/**
- * Stop `name`, unless it belongs to another repository — in which case
- * this repo has no agent under that name to stop (the guard in
- * `doLaunchAgent` makes a second one impossible), and killing it would
- * reach into the other repo's.
- *
- * Distinct from `killSession`, which throws: that one answers a user
- * pointing at a specific agent, where silence would be a lie. This one
- * is housekeeping inside a larger operation that is legitimate either
- * way, so it skips rather than aborting it.
- */
-export function killOwnSession(name: string): void {
-  if (known.has(name) && !ownSession(name)) return;
-  stopOwnWorktreeSession(name);
-}
-
-/** Shared by {@link killOwnSession} and {@link killSession}: stop `name`
- *  only when it is a worktree session this repository actually owns. */
-function stopOwnWorktreeSession(name: string): void {
-  const identity = sessionIdentity(name);
-  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
-    stopSession(name);
-  }
-}
-
-/** Whether a session under `name` is another repository's — known to
- *  this host, and not the open repository's. The babysitter asks
- *  before typing into one; the launch paths throw on the same test. */
-export function isForeignSession(name: string): boolean {
-  return known.has(name) && !ownSession(name);
-}
-
-/** Thrown when a session name is live but owned by another repository —
- *  acting on it would reach into that repo's agent. */
-function foreignSessionError(name: string): Error {
-  return new Error(
-    `The session "${sessionLabel(name)}" belongs to another repository. ` +
-      `Open that repository to manage it.`
-  );
 }
 
 // ── Operations ───────────────────────────────────────────────────
@@ -186,7 +86,7 @@ export function launchAgent(
   knownWorktreePath?: string
 ): Promise<LaunchResult> {
   const repo = requireRepo();
-  const name = worktreeSessionKey(req.branch, repo);
+  const name = worktreeSessionKey(req.branch, repo, req.machine);
   const signature = JSON.stringify([
     req.intent,
     req.agentId,
@@ -195,6 +95,7 @@ export function launchAgent(
     req.fresh,
     req.expected,
     knownWorktreePath,
+    req.machine,
   ]);
   const existing = inflightLaunches.get(name);
   if (existing) {
@@ -224,9 +125,12 @@ async function doLaunchAgent(
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
   }
-  // Use the actual checkout path reported by discovery, or resolve this exact branch.
+  // Use the actual checkout path reported by discovery, or resolve this
+  // exact branch. machineFor() throws for a machine it cannot build, so
+  // createWorktree runs on the right machine or not at all.
+  const machine = req.machine ? machineFor(req.machine) : undefined;
   const wtPath =
-    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd));
+    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd, machine));
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
@@ -367,6 +271,8 @@ export function listSessions(): SessionSummary[] {
     name,
     running: isSessionAlive(name),
     spawnedAt: getSpawnedAt(name) ?? 0,
+    machine: sessionIdentity(name)?.machine ?? 'local',
+    connectionState: getSession(name)?.pty.connectionState,
   }));
 }
 
