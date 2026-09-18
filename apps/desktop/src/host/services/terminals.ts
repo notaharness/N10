@@ -203,7 +203,8 @@ function noteRepository(cwd: string): string | null {
 
 function summarize(name: string, entry: KnownTerminal, home: string) {
   const session = getSession(name);
-  const machine = sessionIdentity(name)?.machine ?? 'local';
+  const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
+  const isLocal = machine === LOCAL_MACHINE;
   return {
     name,
     ...(session?.pty.name ? { tmuxName: session.pty.name } : {}),
@@ -213,11 +214,16 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
     displayPath: displayPath(entry.cwd, home),
     // `terminalRepo`/`isGitRepo` stat the local filesystem: meaningless
     // for a directory that lives on another machine.
-    repo: machine === 'local' ? terminalRepo(entry.cwd, isGitRepo) : null,
+    repo: isLocal ? terminalRepo(entry.cwd, isGitRepo) : null,
     running: isSessionAlive(name),
     spawnedAt: getSpawnedAt(name) ?? 0,
     machine,
-    ...(session?.pty.connectionState
+    // A local session must never carry a connectionState at all — the
+    // reconnecting/failed banner (ux-machines.md §6) is about a remote
+    // machine's transport, and TmuxBackend's own local-client reconnect
+    // (a distinct, older concern — libs/terminal-tmux/AGENTS.md) must
+    // not be read as that (finding 10).
+    ...(!isLocal && session?.pty.connectionState
       ? { connectionState: session.pty.connectionState }
       : {}),
   };

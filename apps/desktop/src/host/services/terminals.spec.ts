@@ -41,6 +41,9 @@ const state = vi.hoisted(() => ({
    *  every other name still answers `null`, matching every other test
    *  in this suite, which is local throughout (finding 6). */
   identityByName: new Map<string, { machine: string }>(),
+  /** Per-name `pty.connectionState`, read live — finding 10's test
+   *  flips this after a session exists. */
+  connectionStateByName: new Map<string, string>(),
   // Every path used across this file is a real directory as far as
   // launchTerminal's cwd check is concerned, unless a test says
   // otherwise — the check itself is exercised by its own describe
@@ -110,6 +113,9 @@ vi.mock('@n10/core', () => ({
         onData: (cb: (data: string) => void) => state.onData.set(name, cb),
         onExit: (cb: (code: number) => void) =>
           state.onExit.get(name)?.push(cb),
+        get connectionState() {
+          return state.connectionStateByName.get(name);
+        },
       },
     });
     return { name };
@@ -158,6 +164,7 @@ beforeEach(async () => {
   state.tmuxHolds = new Set();
   state.broadcasts = [];
   state.identityByName = new Map();
+  state.connectionStateByName = new Map();
   vi.resetModules();
   terminals = await import('./terminals.js');
   const relay = await import('./session-relay.js');
@@ -599,6 +606,31 @@ describe('a retained agent pane', () => {
     );
     expect(restarted.name).toBe(tab.name);
     expect(restarted.running).toBe(true);
+  });
+
+  // Finding 10: a local session must never carry a connectionState at
+  // all — TmuxBackend's own local-client reconnect (a distinct, older
+  // concern than the remote D4 banner) must not reach the renderer for
+  // a local terminal, even when it legitimately reports one.
+  it('omits connectionState for a local terminal even when the PTY reports one', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
+      HOME
+    );
+    state.connectionStateByName.set(tab.name, 'reconnecting');
+    const [summary] = terminals.listTerminals(HOME);
+    expect(summary?.connectionState).toBeUndefined();
+  });
+
+  it('still reports connectionState for a remote terminal', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/remote/checkout', machine: 'peer-1' },
+      HOME
+    );
+    state.identityByName.set(tab.name, { machine: 'peer-1' });
+    state.connectionStateByName.set(tab.name, 'reconnecting');
+    const [summary] = terminals.listTerminals(HOME);
+    expect(summary?.connectionState).toBe('reconnecting');
   });
 });
 

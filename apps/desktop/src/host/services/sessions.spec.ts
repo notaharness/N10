@@ -42,6 +42,9 @@ const state = vi.hoisted(() => ({
   knownMachines: new Set<string>(),
   /** Names `reconnectSession` called the fake backend's `reconnect()` for. */
   reconnectCalls: [] as string[],
+  /** Per-name `pty.connectionState`, read live (not just at entry
+   *  creation) — finding 10's tests flip this after a session exists. */
+  connectionStateByName: new Map<string, string>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -89,6 +92,7 @@ vi.mock('@n10/core', async (importOriginal) => {
     worktreeSessionKey: actual.worktreeSessionKey,
     sessionLabel: actual.sessionLabel,
     sessionIdentity: actual.sessionIdentity,
+    LOCAL_MACHINE: actual.LOCAL_MACHINE,
     resolveAgent: actual.resolveAgent,
     getSessionLaunchContext: () => ({
       exists: false,
@@ -174,6 +178,9 @@ vi.mock('@n10/core', async (importOriginal) => {
             write: () => undefined,
             resize: () => undefined,
             reconnect: () => state.reconnectCalls.push(name),
+            get connectionState() {
+              return state.connectionStateByName.get(name);
+            },
           },
         });
       return state.entries.get(name);
@@ -231,6 +238,7 @@ beforeEach(async () => {
   state.createWorktreeCalls = [];
   state.knownMachines = new Set();
   state.reconnectCalls = [];
+  state.connectionStateByName = new Map();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -468,6 +476,63 @@ describe('reusing an already-attached connection', () => {
       expected: incarnationFor(name()),
     });
     expect(state.spawns).toHaveLength(2);
+  });
+
+  // Finding 9: tmux session labels are `<repo>-<branch>` on both
+  // machines, so a *local* tmux session sharing the exact native name
+  // a remote one's registry key resolves to could otherwise answer for
+  // its incarnation check. `state.tmuxSnapshots` here is keyed exactly
+  // the way a colliding local session would be (the local mocks in
+  // this suite use the same string for a registry key and its native
+  // pty name throughout) — so the test only passes if the guard never
+  // asks local tmux at all for a remote session, not merely that this
+  // particular snapshot happens to disagree.
+  it('does not reuse a remote session by asking local tmux for its incarnation', async () => {
+    state.knownMachines.add('peer-1');
+    const remoteName = worktreeSessionKey('reuse-remote', '/repo-a', 'peer-1');
+    await launchAgent({
+      branch: 'reuse-remote',
+      intent: 'continue-or-blank',
+      machine: 'peer-1',
+    });
+    expect(state.spawns).toHaveLength(1);
+    state.tmuxSnapshots.set(remoteName, {
+      incarnation: incarnationFor(remoteName),
+    });
+
+    await launchAgent({
+      branch: 'reuse-remote',
+      intent: 'continue-or-blank',
+      machine: 'peer-1',
+      expected: incarnationFor(remoteName),
+    });
+    expect(state.spawns).toHaveLength(2);
+  });
+});
+
+describe('listSessions: a local session never carries a connectionState (finding 10)', () => {
+  it('omits connectionState for a local session even when the PTY reports one', async () => {
+    const name = worktreeSessionKey('local-conn', '/repo-a');
+    await launchAgent({ branch: 'local-conn', intent: 'continue-or-blank' });
+    // TmuxBackend's own local-client reconnect (a distinct, older
+    // concern than the remote D4 banner) can legitimately report this
+    // — it must still never reach the renderer for a local session.
+    state.connectionStateByName.set(name, 'reconnecting');
+    const summary = listSessions().find((s) => s.name === name);
+    expect(summary?.connectionState).toBeUndefined();
+  });
+
+  it('still reports connectionState for a remote session', async () => {
+    state.knownMachines.add('peer-1');
+    const name = worktreeSessionKey('remote-conn', '/repo-a', 'peer-1');
+    await launchAgent({
+      branch: 'remote-conn',
+      intent: 'continue-or-blank',
+      machine: 'peer-1',
+    });
+    state.connectionStateByName.set(name, 'reconnecting');
+    const summary = listSessions().find((s) => s.name === name);
+    expect(summary?.connectionState).toBe('reconnecting');
   });
 });
 

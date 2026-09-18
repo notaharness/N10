@@ -4,6 +4,7 @@ import {
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
+  LOCAL_MACHINE,
   sessionIdentity,
   isSessionAlive,
   hasSessionConnection,
@@ -287,13 +288,22 @@ function clampDim(value: number | undefined, fallback: number): number {
 }
 
 export function listSessions(): SessionSummary[] {
-  return ownSessionNames().map((name) => ({
-    name,
-    running: isSessionAlive(name),
-    spawnedAt: getSpawnedAt(name) ?? 0,
-    machine: sessionIdentity(name)?.machine ?? 'local',
-    connectionState: getSession(name)?.pty.connectionState,
-  }));
+  return ownSessionNames().map((name) => {
+    const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
+    return {
+      name,
+      running: isSessionAlive(name),
+      spawnedAt: getSpawnedAt(name) ?? 0,
+      machine,
+      // A local session must never carry a connectionState at all —
+      // see the matching comment in terminals.ts's summarize()
+      // (finding 10).
+      connectionState:
+        machine === LOCAL_MACHINE
+          ? undefined
+          : getSession(name)?.pty.connectionState,
+    };
+  });
 }
 
 export function writeSession(name: string, data: string): void {
@@ -363,10 +373,18 @@ export function reconnectSession(name: string): void {
 // `pty.name`, which cannot tell a live reuse from a same-named
 // replacement underneath it. A mismatch or unreadable snapshot falls
 // through to the full launch path's own guarded compare-and-swap.
+//
+// `tmuxSessionSnapshot` only ever asks *local* tmux — labels are
+// `<repo>-<branch>` on every machine, so a same-named local session
+// could answer for a remote one's incarnation check (finding 9). A
+// remote registry entry has no local snapshot to compare against, so
+// this reads it the same as an unreadable one: no match, fall through.
 function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
   if (req.fresh || !isSessionAlive(name) || !hasSessionConnection(name))
     return false;
   if (!req.expected) return true;
+  const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
+  if (machine !== LOCAL_MACHINE) return false;
   const nativeName = getSession(name)?.pty.name;
   const live = nativeName && tmuxSessionSnapshot(nativeName)?.incarnation;
   return !!live && sameTmuxIncarnation(live, req.expected);
