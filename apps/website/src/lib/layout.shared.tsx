@@ -15,6 +15,10 @@ export function baseOptions(): BaseLayoutProps {
         url: '/docs',
       },
       {
+        text: 'Beam',
+        url: '/beam',
+      },
+      {
         text: 'GitHub',
         url: 'https://github.com/notaharness/n10',
         external: true,

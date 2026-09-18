@@ -6,5 +6,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `https://n10.is${page.url}`,
   }));
 
-  return [{ url: 'https://n10.is' }, ...docs];
+  return [{ url: 'https://n10.is' }, { url: 'https://n10.is/beam' }, ...docs];
 }

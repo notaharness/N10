@@ -1,6 +1,10 @@
 const commands = [
   { label: 'Desktop app', command: 'npm install -g @notaharness/n10-desktop' },
   { label: 'Terminal UI and CLI', command: 'npm install -g @notaharness/n10' },
+  {
+    label: 'Beam (remote agents)',
+    command: 'npm install -g @notaharness/beam',
+  },
 ];
 
 export function InstallStrip() {

@@ -1,0 +1,117 @@
+---
+title: Beam
+description: Pair two machines and run agents, terminals and commands between them.
+---
+
+Beam lets one machine reach another — pair your laptop with a beefier
+workstation or a headless build box, and you can open a terminal on it, run
+a command, or send it a message, without setting up SSH keys or tunnels.
+It's what n10 and [Orchestra](/docs/providers#pair-with-orchestra) use to
+run an agent on a machine other than the one you're sitting at.
+
+Beam is its own package, so you can use it on its own too — from a plain
+shell script, with no n10 or Orchestra involved.
+
+```sh
+npm install -g @notaharness/beam
+```
+
+## Pairing two machines
+
+Pairing is a one-time handshake. Afterwards, either machine can reach the
+other, in whichever direction the network allows.
+
+On the machine you want to reach — call it the workbox — start a node and
+let it print a pairing link:
+
+```sh
+beam serve --label workbox
+```
+
+On your laptop, use that link:
+
+```sh
+beam pair "http://workbox.local:PORT/pair#token=..."
+```
+
+The CLI shows you the workbox's fingerprint before it commits, so you can
+check it matches what `beam serve` printed. Once you confirm, both machines
+remember each other by a stable id, and you can rename either side's label
+at any time without breaking the pairing.
+
+Pairing grants a shell on that machine, as the user running beam — treat it
+the same way you'd treat handing out an SSH key. If a machine is lost,
+decommissioned, or you're no longer sure you trust it, revoke it:
+
+```sh
+beam revoke workbox
+```
+
+## What you can do once paired
+
+| Command         | What it does                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `beam connect`   | Opens a real terminal on the other machine, the way you'd use `ssh` to get a shell.                                    |
+| `beam exec`      | Runs one command on the other machine and gives you back its output and exit code, the way `ssh host cmd` works.     |
+| `beam msg send`  | Sends a short message to a machine that isn't reachable right now. Beam holds onto it and delivers it the moment that machine comes back online. |
+
+That last one is what makes beam a good fit for agents: a report from an
+agent on a machine that's asleep or on a different network doesn't get
+lost, it just waits.
+
+## Command reference
+
+```sh
+# node and peers
+beam serve [--port N] [--label NAME]
+beam pair <pair-url> [--label NAME]
+beam peers [--json]
+beam peer rename <peer> <label>
+beam peer forget <peer>
+beam revoke <peer>
+beam status [--json]
+
+# terminals and commands
+beam connect <peer> [pty|pty:<program>] [-- argv...]
+beam exec <peer> [--cwd PATH] [--env K=V]... -- argv...
+
+# messages
+beam msg send <peer> [--topic T] [--message TEXT]
+beam msg listen [<peer>...] [--topic T]
+beam msg queue [<peer>]
+```
+
+`<peer>` accepts either a label (like `workbox`) or the machine's id.
+
+## Using it with n10 and Orchestra
+
+Once two machines are paired, n10 Desktop's launch dialogs let you pick a
+paired machine the same way you'd pick a local repository — the agent,
+its worktree and its tmux session all end up on that machine, and the
+pane behaves like any other, including reconnecting automatically if the
+connection drops.
+
+Orchestra's scripts gained a matching `--machine NAME` flag, so an
+orchestrator on your laptop can spawn, inspect, adopt and kill players on
+another machine from the command line, and a player can report back to an
+orchestrator that isn't reachable from where it's running.
+
+## Good to know
+
+- **The connection is authenticated, not yet encrypted end-to-end.** Both
+  machines prove who they are before anything is sent, so a third party
+  on the network can't impersonate either side — but today's transport
+  (WebSocket) doesn't encrypt the traffic itself. Treat a beam connection
+  like you would an internal network link, not the open internet, until
+  an encrypted transport lands.
+- **Paths aren't translated between machines.** If you tell it to work in
+  `~/code/n10`, that path has to make sense on the machine you're pointing
+  at.
+- **A quick terminal on a remote machine opens in your home directory.**
+  There's no remote folder picker yet — "Current repository" and "Other
+  folder…" always browse your local machine.
+- **Queued messages wait forever.** If a machine never comes back online,
+  anything queued for it just stays queued.
+
+Beam is early. If something above doesn't match what you see, please open
+an issue.
