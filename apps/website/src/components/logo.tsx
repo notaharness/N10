@@ -4,7 +4,10 @@ import { cn } from '@/lib/cn';
 /**
  * The n10 mark: two coloured glass panes. The N is one pane, the 10 is
  * another, and the 10 sits shifted left so the 1 — a plain bar, the
- * same width as the N's staves — lies exactly on the N's right stave.
+ * same width as the N's staves — overlaps the N's right stave by half.
+ * Half, not all: it splits the shared stave into three equal stripes
+ * (blue, green, yellow), so the static mark shows the mixing itself
+ * rather than leaning on the animation, and the 1 stays its own glyph.
  *
  * The panes use `mix-blend-mode: multiply` inside an isolated group.
  * Multiply is the physics of stacked gels or glass: each pane
@@ -20,7 +23,7 @@ import { cn } from '@/lib/cn';
  *
  * Letterforms are bars and an ellipse rather than text, so nothing
  * depends on a font. Units: 100 = cap height, 28 = stroke; the merged
- * mark is 206 wide. The same geometry is flattened into
+ * mark is 220 wide. The same geometry is flattened into
  * src/app/icon.svg for the favicon.
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
@@ -35,7 +38,7 @@ export const LOGO_MIX = '#2b8b3d';
  * How far the 10 slides right (in mark units) to separate: the 1 then
  * sits the same 18 units from the N as the 0 sits from the 1.
  */
-export const LOGO_SPLIT_OFFSET = 46;
+export const LOGO_SPLIT_OFFSET = 32;
 
 export function Logo({
   intro = false,
@@ -48,7 +51,7 @@ export function Logo({
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   return (
     <svg
-      viewBox="0 0 206 100"
+      viewBox="0 0 220 100"
       role="img"
       aria-label="n10"
       overflow="visible"
@@ -68,10 +71,10 @@ export function Logo({
         <polygon points="0,0 34,0 92,100 58,100" />
         <rect x="64" y="0" width="28" height="100" />
       </g>
-      {/* 10 pane. The outer group positions the 1 on the N's right
-          stave; the inner group is what the CSS animates, so its
-          transform never collides with this one. */}
-      <g transform="translate(64 0)">
+      {/* 10 pane. The outer group positions the 1 half-on the N's right
+          stave (stave 64–92, bar 78–106); the inner group is what the
+          CSS animates, so its transform never collides with this one. */}
+      <g transform="translate(78 0)">
         <g
           className="n10-logo-ten"
           fill={LOGO_YELLOW}
