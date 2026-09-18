@@ -74,6 +74,20 @@ test.describe('Visual @visual', () => {
     await expect(page).toHaveScreenshot('settings.png', shot);
   });
 
+  test('settings machines panel', async ({ desktop }) => {
+    const { page } = desktop;
+    await clickAppMenuItem(desktop.app, 'Settings…');
+    await expect(tab(page, /Settings/)).toBeVisible();
+    await page.getByRole('button', { name: 'Machines' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Add a machine' })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('switch', { name: 'Accept connections' })
+    ).toBeVisible();
+    await expect(page).toHaveScreenshot('settings-machines-empty.png', shot);
+  });
+
   test('remove worktree dialog', async ({ desktop }) => {
     const { page, app } = desktop;
     await createWorktree(page, 'visual-branch');
