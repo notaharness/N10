@@ -63,7 +63,6 @@ const DEFAULT_RETRY_INTERVAL_MS = 3_000;
 
 interface WaitingItem extends InboundMailItem {
   peerId: string;
-  key: string;
   message: string;
 }
 
@@ -102,6 +101,7 @@ export class MailRelay {
    *  until it actually confirms. */
   private readonly pendingAck = new Set<string>();
   private readonly timer: ReturnType<typeof setInterval>;
+  private readonly unsubscribe: () => void;
 
   constructor(options: MailRelayOptions) {
     this.port = options.port;
@@ -109,7 +109,7 @@ export class MailRelay {
     this.deliver = options.deliver ?? deliverToRunningSession;
     this.now = options.now ?? Date.now;
     this.onChange = options.onChange ?? (() => undefined);
-    this.port.onInboundMail((event) => this.handle(event));
+    this.unsubscribe = this.port.onInboundMail((event) => this.handle(event));
     this.timer = setInterval(
       () => this.retryWaiting(),
       options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS
@@ -122,7 +122,8 @@ export class MailRelay {
     const parsed = parseRelayPayload(event.payload, event.encoding);
     if (!parsed) {
       this.refuse(
-        event,
+        event.id,
+        event.from,
         '(no target)',
         'the message carries no "target: " header'
       );
@@ -138,7 +139,7 @@ export class MailRelay {
   ): void {
     const resolved = this.resolveTarget(target);
     if (resolved.kind === 'refused') {
-      this.refuse(event, target, resolved.reason);
+      this.refuse(event.id, event.from, target, resolved.reason);
       return;
     }
     if (this.deliver(resolved.key, message)) {
@@ -151,20 +152,20 @@ export class MailRelay {
       peerId: event.from,
       target,
       receivedAt: this.now(),
-      key: resolved.key,
       message,
     });
     this.onChange();
   }
 
   private refuse(
-    event: InboundMailEvent,
+    id: string,
+    peerId: string,
     target: string,
     reason: string
   ): void {
-    this.refused.set(event.id, {
-      id: event.id,
-      peerId: event.from,
+    this.refused.set(id, {
+      id,
+      peerId,
       target,
       reason,
       receivedAt: this.now(),
@@ -201,7 +202,21 @@ export class MailRelay {
     // same as everything else here.
     const staleAcks = [...this.pendingAck];
     for (const [id, item] of this.waiting) {
-      if (this.deliver(item.key, item.message)) this.ack(id);
+      // Re-resolve on every attempt (D14) rather than trust the key
+      // `attempt` cached: a registry key for a terminal is the tmux
+      // name itself, and the create path hands a freed name to the
+      // next session opened — a cached key could redeliver a
+      // stranger's report into whatever now holds that name (finding
+      // 3). Re-resolving also re-validates it (still an n10 agent, still
+      // local), so a target that has since become invalid is refused
+      // instead of blindly written into.
+      const resolved = this.resolveTarget(item.target);
+      if (resolved.kind === 'refused') {
+        this.waiting.delete(id);
+        this.refuse(id, item.peerId, item.target, resolved.reason);
+        continue;
+      }
+      if (this.deliver(resolved.key, item.message)) this.ack(id);
     }
     for (const id of staleAcks) this.sendAck(id);
   }
@@ -243,5 +258,6 @@ export class MailRelay {
 
   dispose(): void {
     clearInterval(this.timer);
+    this.unsubscribe();
   }
 }

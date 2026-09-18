@@ -144,6 +144,64 @@ describe('MailRelay', () => {
     expect(relay.snapshotFor('peer-1').inboundWaiting).toEqual([]);
   });
 
+  // ── Finding 3 (MEDIUM-HIGH): a retry must re-resolve, not reuse a
+  // cached key. Registry keys for terminals are the tmux name itself,
+  // and the create path reuses a freed name for its next session, so
+  // trusting the key `attempt` resolved once could redeliver into
+  // whatever now holds that name after the original was killed and
+  // replaced.
+
+  it('re-resolves the target on every retry instead of reusing the key from the first attempt', () => {
+    const { port, push } = fakePort();
+    let resolution: LocalDeliveryTarget = { kind: 'agent', key: 'old-key' };
+    const resolveTarget = vi.fn(() => resolution);
+    const deliver = vi.fn(() => false);
+    new MailRelay({ port, resolveTarget, deliver, retryIntervalMs: 1000 });
+    push(event());
+    expect(deliver).toHaveBeenLastCalledWith('old-key', 'hello there');
+
+    // The tmux name was freed and reused by an unrelated new session,
+    // which now resolves to a different registry key.
+    resolution = { kind: 'agent', key: 'new-key' };
+    deliver.mockReturnValue(true);
+    vi.advanceTimersByTime(1000);
+
+    // Called once with the original key (the first attempt) and once
+    // more with the freshly re-resolved key (the retry) — never twice
+    // with the stale one.
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver).toHaveBeenLastCalledWith('new-key', 'hello there');
+  });
+
+  it('refuses instead of delivering when a retry finds the recycled name no longer a valid target', () => {
+    const { port, push, acked } = fakePort();
+    let resolution: LocalDeliveryTarget = { kind: 'agent', key: 'old-key' };
+    const resolveTarget = vi.fn(() => resolution);
+    const deliver = vi.fn(() => false);
+    const relay = new MailRelay({
+      port,
+      resolveTarget,
+      deliver,
+      retryIntervalMs: 1000,
+    });
+    push(event());
+    expect(relay.snapshotFor('peer-1').inboundWaiting).toHaveLength(1);
+
+    // The freed tmux name is now a shell terminal, not an agent.
+    resolution = {
+      kind: 'refused',
+      reason: 'that session is a shell terminal, not an agent',
+    };
+    vi.advanceTimersByTime(1000);
+
+    expect(deliver).toHaveBeenCalledTimes(1); // only the first attempt
+    expect(acked).toEqual([]);
+    expect(relay.snapshotFor('peer-1').inboundWaiting).toEqual([]);
+    expect(relay.snapshotFor('peer-1').inboundRefused).toMatchObject([
+      { reason: 'that session is a shell terminal, not an agent' },
+    ]);
+  });
+
   it('refuses without acking for each way a target must not receive mail', () => {
     const cases: { reason: string }[] = [
       { reason: 'no session by that name is known here' },
@@ -194,6 +252,23 @@ describe('MailRelay', () => {
     relay.dismiss('env-1');
     expect(acked).toEqual(['env-1']);
     expect(relay.snapshotFor('peer-1').inboundRefused).toEqual([]);
+  });
+
+  // Finding 6 (LOW): the constructor discarded the unsubscribe
+  // `onInboundMail` returns, so `dispose()` only cleared the timer —
+  // latent today (one construction site), but a disposed relay must
+  // stop listening, or a second one would double-deliver every
+  // envelope.
+  it('stops listening for inbound mail once disposed', () => {
+    const { port, push } = fakePort();
+    const resolveTarget = vi.fn(
+      (): LocalDeliveryTarget => ({ kind: 'agent', key: 'key-1' })
+    );
+    const deliver = vi.fn(() => true);
+    const relay = new MailRelay({ port, resolveTarget, deliver });
+    relay.dispose();
+    push(event());
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it('an envelope with no "target: " header is refused, not guessed', () => {
