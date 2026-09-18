@@ -33,6 +33,10 @@
  * That curve is the shape of Apple's default system motion, and it's
  * what reads as calm: the pane arrives, it doesn't bounce.
  *
+ * Hover and intro share one duration and curve, so the pane moves the
+ * same way whichever way it's going; a short hover transition next to a
+ * long intro reads as a snap.
+ *
  * The intro holds the split state first so the eye reads "N 10" before
  * the mix happens, and uses `backwards` fill on purpose: it shows the
  * split state through the delay, then hands control back to the normal
@@ -40,10 +44,11 @@
  * swallow the hover rule. */
 :root {
   --n10-logo-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --n10-logo-duration: 1100ms;
 }
 
 .n10-logo-ten {
-  transition: transform 500ms var(--n10-logo-ease);
+  transition: transform var(--n10-logo-duration) var(--n10-logo-ease);
 }
 
 .n10-logo--hover:hover .n10-logo-ten {
@@ -51,7 +56,8 @@
 }
 
 .n10-logo--intro .n10-logo-ten {
-  animation: n10-logo-mix 1100ms var(--n10-logo-ease) 700ms backwards;
+  animation: n10-logo-mix var(--n10-logo-duration) var(--n10-logo-ease) 700ms
+    backwards;
 }
 
 @keyframes n10-logo-mix {
