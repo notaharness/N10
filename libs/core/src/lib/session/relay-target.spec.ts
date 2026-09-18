@@ -114,6 +114,18 @@ describe('resolveLocalRelayTarget', () => {
     });
   });
 
+  // Finding 7 (LOW): unreachable today (every registry key this class
+  // resolves is one its own launch paths built), but a defensive
+  // fallback must refuse, not silently treat "identity unknown" as
+  // "local".
+  it('refuses when the matched session has no readable identity, rather than treating it as local', () => {
+    sessionNames.mockReturnValue(['key-1']);
+    getSession.mockReturnValue(entry('n10-mystery', 'claude'));
+    sessionIdentity.mockReturnValue(null);
+    const result = resolveLocalRelayTarget('tmux:n10-mystery');
+    expect(result.kind).toBe('refused');
+  });
+
   it('refuses a session that lives on another machine', () => {
     sessionNames.mockReturnValue(['key-1']);
     getSession.mockReturnValue(entry('n10-remote', 'claude'));

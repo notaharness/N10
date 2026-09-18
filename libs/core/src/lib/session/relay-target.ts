@@ -90,8 +90,11 @@ export function resolveLocalRelayTarget(target: string): LocalDeliveryTarget {
       ? refused('that tmux session exists but is not managed by n10')
       : refused('no session by that name is known here');
   }
+  // No `identity &&` shortcut: an identity this class cannot read is
+  // not "assume local", it is exactly the case this refusal exists
+  // for — proceeding on a guess is what D14 rules out (finding 7).
   const identity = sessionIdentity(match.key);
-  if (identity && identity.machine !== 'local') {
+  if (!identity || identity.machine !== 'local') {
     return refused('that session lives on another machine, not here');
   }
   if (match.entry.agent === undefined) {
