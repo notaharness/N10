@@ -21,7 +21,9 @@ const state = vi.hoisted(() => ({
   machine: { id: 'peer-abc', executor: {} } as unknown,
   requireMachine: vi.fn(() => state.machine),
   pollerFor: vi.fn(() => 'the-poller'),
-  listOurSessionsWith: vi.fn(async () => []),
+  listOurSessionsWith: vi.fn<
+    (executor: unknown, machine: string) => Promise<TaggedSession[]>
+  >(async () => []),
 }));
 vi.mock('@n10/terminal-tmux', () => ({
   createTmuxBackend: state.create,
@@ -31,9 +33,30 @@ vi.mock('../pty-registry.js', () => ({
   spawnSession: state.register,
   sessionNames: () => [],
 }));
+// Honours the `sessions` argument rather than ignoring it (finding 5,
+// second pass): `undefined` means a local call (findSession passes no
+// list, letting the real resolver default to local tmux) and returns
+// `state.existing` for the local-suite tests below; an array means a
+// remote call whose `sessions` came from `listOurSessionsWith`, and the
+// match must actually be found in it. Without this, a regression where
+// `findSession` resolved a remote request against `undefined` (i.e.
+// local tmux) would still pass every remote test in this file, because
+// the old mock returned `state.existing` no matter what it was called
+// with — see the "finding 7" tests below, which no longer set
+// `state.existing` and rely entirely on this honouring the array.
 vi.mock('../session-resolver.js', () => ({
-  resolveSessionByName: () => state.existing,
-  resolveWorktreeSession: () => state.existing,
+  resolveSessionByName: (name: string, sessions?: TaggedSession[]) =>
+    sessions === undefined
+      ? state.existing
+      : sessions.find((s) => s.name === name) ?? null,
+  resolveWorktreeSession: (
+    repo: string,
+    branch: string,
+    sessions?: TaggedSession[]
+  ) =>
+    sessions === undefined
+      ? state.existing
+      : sessions.find((s) => s.repo === repo && s.branch === branch) ?? null,
   listOurSessions: () => [],
   listOurSessionsWith: state.listOurSessionsWith,
 }));
@@ -210,8 +233,18 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
   // remote request unconditionally, so a launch on a machine already
   // running this worktree's agent always took the `create` branch —
   // a second tmux session and a second agent in the same checkout.
+  //
+  // `state.existing` is deliberately left `null` here (second-pass
+  // finding 5): the match must come from `listOurSessionsWith`'s own
+  // resolved array, not from the mock's local-fallback branch — a
+  // regression that made `findSession` resolve this remote request
+  // against `undefined` (local tmux) instead of that array would make
+  // `resolveWorktreeSession`'s mock fall into its `sessions === undefined`
+  // branch and still return `state.existing`, unless that variable is
+  // left unset here.
   it('attaches to an existing session found on the machine, rather than creating a duplicate (finding 7)', async () => {
-    state.existing = { ...found, machine: 'peer-abc' };
+    const remoteExisting: TaggedSession = { ...found, machine: 'peer-abc' };
+    state.listOurSessionsWith.mockResolvedValue([remoteExisting]);
     await openSession({
       ...base,
       session: {
@@ -222,7 +255,8 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       },
     });
     expect(state.listOurSessionsWith).toHaveBeenCalledWith(
-      (state.machine as { executor: unknown }).executor
+      (state.machine as { executor: unknown }).executor,
+      'peer-abc'
     );
     expect(state.createRemote.mock.calls[0][1]).toMatchObject({
       mode: 'attach',
@@ -245,7 +279,8 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       },
     });
     expect(state.listOurSessionsWith).toHaveBeenCalledWith(
-      (state.machine as { executor: unknown }).executor
+      (state.machine as { executor: unknown }).executor,
+      'peer-abc'
     );
     expect(state.createRemote.mock.calls[0][1]).toMatchObject({
       mode: 'create',
