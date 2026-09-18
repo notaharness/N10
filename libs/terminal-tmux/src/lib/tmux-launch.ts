@@ -58,11 +58,20 @@ function checked(result: TmuxRunResult, operation: string): void {
 /** The server retains its original environment, so pin launch-specific
  *  additions. Exported so the remote executor path builds identical
  *  `-e` flags for a `new-session`/`respawn-pane` (decisions.md D5: the
- *  same plan, the same argv, wherever it runs). */
+ *  same plan, the same argv, wherever it runs) — which is exactly why
+ *  PATH/HOME never fall back to this process's own `process.env`
+ *  (second-pass finding 6): this function runs in whichever process is
+ *  orchestrating the launch, local or remote, so that fallback would
+ *  always describe *this* machine, never necessarily the one the
+ *  session ends up on. The caller (`open-session.ts`'s `sessionSpec`)
+ *  decides what belongs in `spec.env` for the machine it is actually
+ *  launching on; a remote plan that wants no override at all simply
+ *  leaves `spec.env` without PATH/HOME, and the tmux server's own
+ *  retained environment supplies them. */
 export function sessionEnvFlags(spec: SessionSpec): string[] {
   const vars = new Map<string, string>();
   for (const key of ['PATH', 'HOME']) {
-    const value = spec.env?.[key] ?? process.env[key];
+    const value = spec.env?.[key];
     if (value) vars.set(key, value);
   }
   for (const [key, value] of Object.entries(spec.envAdditions ?? {})) {

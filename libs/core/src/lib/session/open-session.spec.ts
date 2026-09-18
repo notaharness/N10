@@ -229,6 +229,39 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
     expect(state.pollerFor).toHaveBeenCalledWith(state.machine);
   });
 
+  // Second-pass finding 6: sessionSpec used to merge this machine's own
+  // process.env into `spec.env` unconditionally, local or remote.
+  // tmux-launch-remote.ts's sessionEnvFlags then pinned this machine's
+  // PATH/HOME onto the remote tmux session, and remote-backend.ts's
+  // sanitizedEnv forwarded almost the whole of it (everything but
+  // TMUX/TMUX_PANE) as the pty attach client's environment — a remote
+  // agent launched with the laptop's HOME/PATH and every other local
+  // variable. Only genuinely session-scoped additions may travel.
+  it("sends only session-scoped environment to a remote launch, never this machine's own (finding 6)", async () => {
+    const previousPath = process.env['PATH'];
+    const previousHome = process.env['HOME'];
+    process.env['PATH'] = '/this-laptop-only/bin';
+    process.env['HOME'] = '/Users/this-laptop-only';
+    try {
+      await openSession({
+        ...base,
+        session: {
+          type: 'worktree',
+          repo: '/repo',
+          branch: 'feature/x',
+          machine: 'peer-abc',
+        },
+      });
+      const spec = state.createRemote.mock.calls[0][0] as {
+        env?: Record<string, unknown>;
+      };
+      expect(spec.env).toEqual({});
+    } finally {
+      process.env['PATH'] = previousPath;
+      process.env['HOME'] = previousHome;
+    }
+  });
+
   // Finding 7: before this fix, findSession returned null for every
   // remote request unconditionally, so a launch on a machine already
   // running this worktree's agent always took the `create` branch —

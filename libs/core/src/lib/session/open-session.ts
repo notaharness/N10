@@ -144,7 +144,7 @@ async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
       }
     : launchPlan(session, existing, launch.agent, fresh, params.expected);
   const machineId = session.machine ?? LOCAL_MACHINE;
-  const spec = sessionSpec(params, launch.spec, !!fresh);
+  const spec = sessionSpec(params, launch.spec, !!fresh, machineId);
   const backend: SessionBackend =
     machineId === LOCAL_MACHINE
       ? await createTmuxBackend(spec, plan)
@@ -188,19 +188,35 @@ async function resolveOpenTarget(
   return existing;
 }
 
+/**
+ * `env` (the complete environment `sessionEnvFlags` and
+ * `remote-backend.ts`'s `sanitizedEnv` both read PATH/HOME and the rest
+ * from) must carry this machine's `process.env` only for a *local*
+ * launch, where it is genuinely the environment the spawned process
+ * inherits. A remote launch has no business shipping this machine's
+ * PATH, HOME or anything else it happens to have set — `docs/beam.md`'s
+ * "the accepting machine expands `~/`" principle for cwd applies here
+ * too: environment describing this machine must not travel, and the
+ * remote server's own environment (which it retains from how it was
+ * started) supplies the rest. `additions` — the launch's own
+ * session-scoped variables plus the fresh-conversation reset flags —
+ * are genuinely portable and always ride along, local or remote
+ * (second-pass finding 6).
+ */
 function sessionSpec(
   params: OpenSessionParams,
   launch: LaunchSpec,
-  fresh: boolean
+  fresh: boolean,
+  machineId: string
 ): SessionSpec {
   const additions = {
     ...launch.env,
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    ...additions,
-  };
+  const env: Record<string, string | undefined> =
+    machineId === LOCAL_MACHINE
+      ? { ...process.env, ...additions }
+      : { ...additions };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return {
