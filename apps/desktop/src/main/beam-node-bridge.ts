@@ -373,7 +373,7 @@ export class BeamNodeBridge
    *  stream ids do: an id an old, already-dead worker never acked is
    *  simply redelivered when the replacement worker's mailbox replays
    *  its backlog at subscribe time (drain on start). */
-  ackInboundMail(id: string): Promise<void> {
+  ackInboundMail(id: string): Promise<boolean> {
     return this.request('ackMail', { id });
   }
 

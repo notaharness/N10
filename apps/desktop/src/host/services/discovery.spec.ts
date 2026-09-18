@@ -102,6 +102,10 @@ vi.mock('@n10/core', async (importOriginal) => {
     isSessionAlive: (name: string) => state.alive.has(name),
     hasSessionConnection: (name: string) => state.alive.has(name),
     hasPersistedTerminalSession: (name: string) => state.alive.has(name),
+    // A local launch's remote-owner guard (finding 4) asks this too;
+    // no fixture here ever has a native-tmux-only session outside the
+    // registry, so it agrees with isSessionAlive.
+    hasLiveTmuxSession: (name: string) => state.alive.has(name),
     killSession: () => undefined,
     detachSession: (name: string) => {
       state.detached.push(name);

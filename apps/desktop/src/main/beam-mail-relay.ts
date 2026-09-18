@@ -39,7 +39,11 @@ export interface InboundMailItem {
 
 export interface RelayPort {
   onInboundMail(cb: (event: InboundMailEvent) => void): () => void;
-  ackInboundMail(id: string): Promise<void>;
+  /** `false` for "already acked or never seen" (docs/beam.md's two-
+   *  acknowledgement table) — not success, and not distinguished here
+   *  from a rejection: either way the caller must keep the envelope
+   *  live and retry. */
+  ackInboundMail(id: string): Promise<boolean>;
 }
 
 export interface MailRelayOptions {
@@ -76,11 +80,27 @@ export class MailRelay {
   private readonly onChange: () => void;
   private readonly waiting = new Map<string, WaitingItem>();
   private readonly refused = new Map<string, RefusedItem>();
-  /** Envelope ids already delivered-and-acked, so a mailbox-level
-   *  redelivery (a restart replaying the backlog before our ack has
-   *  landed, or any other at-least-once duplicate) can never reach
-   *  `deliver()` twice for the same report. */
+  /** Envelope ids already delivered — added the instant `deliver()`
+   *  returns true, before the ack is even sent, so a mailbox-level
+   *  redelivery (a worker restart replaying its backlog before our ack
+   *  has landed, or any other at-least-once duplicate) can never reach
+   *  `deliver()` twice for the same report within this run. Ids stay
+   *  here whether or not their ack has actually been confirmed yet —
+   *  see `pendingAck`. */
   private readonly delivered = new Set<string>();
+  /** Delivered (or dismissed) ids whose ack has not yet been confirmed
+   *  by the mailbox: `ackInboundMail` rejected (the worker exited, is
+   *  shutting down, or the restart budget is spent) or resolved
+   *  `false` ("already acked or never seen" — not success either).
+   *  `void`-ing that promise, as this used to, is not error handling
+   *  (AGENTS.md): unhandled here it is an unhandled rejection in main,
+   *  and worse, the envelope stays on disk — `delivered` above
+   *  suppresses redelivery only for the rest of *this* run, so an app
+   *  restart's fresh, empty `delivered` set would let the mailbox
+   *  replay it and paste the same report into the agent a second time
+   *  (finding 2). Retried by the same sweep that retries `waiting`,
+   *  until it actually confirms. */
+  private readonly pendingAck = new Set<string>();
   private readonly timer: ReturnType<typeof setInterval>;
 
   constructor(options: MailRelayOptions) {
@@ -155,14 +175,35 @@ export class MailRelay {
   private ack(id: string): void {
     this.waiting.delete(id);
     this.delivered.add(id);
-    void this.port.ackInboundMail(id);
+    this.sendAck(id);
     this.onChange();
   }
 
+  /** Send (or resend) the ack for an id already in `delivered`, and
+   *  handle whatever comes back: `true` confirms it, anything else —
+   *  a rejection or a `false` — leaves it in `pendingAck` for the next
+   *  retry sweep. Never left unhandled. */
+  private sendAck(id: string): void {
+    this.pendingAck.add(id);
+    this.port.ackInboundMail(id).then(
+      (acked) => {
+        if (!acked) return; // Not confirmed; retried on the next sweep.
+        this.pendingAck.delete(id);
+        this.onChange();
+      },
+      () => undefined // Rejected; retried on the next sweep.
+    );
+  }
+
   private retryWaiting(): void {
+    // Snapshot before the loop below adds this sweep's own fresh acks —
+    // those were just sent and deserve a full interval before a resend,
+    // same as everything else here.
+    const staleAcks = [...this.pendingAck];
     for (const [id, item] of this.waiting) {
       if (this.deliver(item.key, item.message)) this.ack(id);
     }
+    for (const id of staleAcks) this.sendAck(id);
   }
 
   /** What this machine has waiting or has refused from `peerId`, oldest
@@ -196,7 +237,7 @@ export class MailRelay {
   dismiss(id: string): void {
     if (!this.refused.delete(id)) return;
     this.delivered.add(id);
-    void this.port.ackInboundMail(id);
+    this.sendAck(id);
     this.onChange();
   }
 

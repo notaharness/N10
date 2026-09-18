@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { MailRelay } from './beam-mail-relay.js';
+import { MailRelay, type RelayPort } from './beam-mail-relay.js';
 import type { InboundMailEvent } from './beam-node-mail.js';
 import type { LocalDeliveryTarget } from '@n10/core';
 
@@ -29,10 +29,60 @@ function fakePort() {
       },
       ackInboundMail: async (id: string) => {
         acked.push(id);
+        return true;
       },
     },
     push: (e: InboundMailEvent) => cb?.(e),
     acked,
+  };
+}
+
+/**
+ * Models the durable mailbox itself, not just one app run's port: an
+ * envelope stays here until `ackInboundMail` for its id actually
+ * succeeds, and `restart()` hands back a fresh port wired to the same
+ * store — the same one a real app restart would reconnect to, drained
+ * (docs/beam.md) exactly like `InboundMailSubscriber.onMail` replays
+ * whatever it still holds unacked. `failAcksFor(id, n)` makes the next
+ * `n` ack attempts for that id reject, as a worker exit/shutdown/spent
+ * restart budget would (finding 2).
+ */
+function fakeMailbox() {
+  const durable = new Map<string, InboundMailEvent>();
+  const failuresLeft = new Map<string, number>();
+  let cb: ((event: InboundMailEvent) => void) | undefined;
+  return {
+    push(e: InboundMailEvent) {
+      durable.set(e.id, e);
+      cb?.(e);
+    },
+    failAcksFor(id: string, n: number) {
+      failuresLeft.set(id, n);
+    },
+    isDurable(id: string) {
+      return durable.has(id);
+    },
+    restart(): RelayPort {
+      cb = undefined;
+      return {
+        onInboundMail: (fn) => {
+          cb = fn;
+          for (const event of durable.values()) fn(event);
+          return () => {
+            cb = undefined;
+          };
+        },
+        ackInboundMail: async (id: string) => {
+          const remaining = failuresLeft.get(id) ?? 0;
+          if (remaining > 0) {
+            failuresLeft.set(id, remaining - 1);
+            throw new Error('beam node exited unexpectedly (1)');
+          }
+          durable.delete(id);
+          return true;
+        },
+      };
+    },
   };
 }
 
@@ -156,5 +206,67 @@ describe('MailRelay', () => {
     push(event({ payload: 'no header here' }));
     expect(acked).toEqual([]);
     expect(relay.snapshotFor('peer-1').inboundRefused).toHaveLength(1);
+  });
+
+  // ── Finding 2 (HIGH): a lost ack must not become a second delivery ──
+
+  it('retries an ack that rejects (worker exit/shutdown/spent restart budget) instead of leaving it unhandled', async () => {
+    const mailbox = fakeMailbox();
+    mailbox.failAcksFor('env-1', 1);
+    const resolveTarget = vi.fn(
+      (): LocalDeliveryTarget => ({ kind: 'agent', key: 'key-1' })
+    );
+    const deliver = vi.fn(() => true);
+    const relay = new MailRelay({
+      port: mailbox.restart(),
+      resolveTarget,
+      deliver,
+      retryIntervalMs: 1000,
+    });
+    mailbox.push(event());
+    // The delivery itself succeeded; only the ack rejected.
+    expect(deliver).toHaveBeenCalledTimes(1);
+    // Rejected, not yet confirmed — the envelope is still on disk.
+    expect(mailbox.isDurable('env-1')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // The next retry sweep resent the ack and it landed this time.
+    expect(mailbox.isDurable('env-1')).toBe(false);
+    relay.dispose();
+  });
+
+  it('does not redeliver into the agent a second time across a simulated app restart, even after a failed ack', async () => {
+    const mailbox = fakeMailbox();
+    // Simulates the concrete scenario: report delivered, worker exits
+    // before processing ackMail, budget allows a restart, then this
+    // app instance (not just the worker) restarts.
+    mailbox.failAcksFor('env-1', 1);
+    const resolveTarget = vi.fn(
+      (): LocalDeliveryTarget => ({ kind: 'agent', key: 'key-1' })
+    );
+    const deliver = vi.fn(() => true);
+    const first = new MailRelay({
+      port: mailbox.restart(),
+      resolveTarget,
+      deliver,
+      retryIntervalMs: 1000,
+    });
+    mailbox.push(event());
+    expect(deliver).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000); // ack retried and confirmed
+    expect(mailbox.isDurable('env-1')).toBe(false);
+    first.dispose();
+
+    // "Next app start": a fresh MailRelay with empty in-memory state,
+    // reconnected to the same durable mailbox — which now drains
+    // nothing for env-1, since it was actually acked before restart.
+    new MailRelay({
+      port: mailbox.restart(),
+      resolveTarget,
+      deliver,
+      retryIntervalMs: 1000,
+    });
+    expect(deliver).toHaveBeenCalledTimes(1);
   });
 });
