@@ -1,19 +1,22 @@
 import {
+  createRemoteTmuxBackend,
   createTmuxBackend,
   type TmuxSessionIncarnation,
   type TmuxLaunchPlan,
 } from '@n10/terminal-tmux';
-import type { SessionSpec } from '@n10/terminal';
+import type { SessionBackend, SessionSpec } from '@n10/terminal';
 import {
   sessionNames,
   spawnSession,
   type NamedPtyEntry,
 } from '../pty-registry.js';
 import {
+  LOCAL_MACHINE,
   sessionIdentity,
   terminalSessionKey,
   worktreeSessionKey,
 } from '../session-key.js';
+import { pollerFor, requireMachine } from '../machine-registry.js';
 import {
   ORCHESTRA_TAG,
   sessionTags,
@@ -46,6 +49,12 @@ export interface OpenSessionParams {
 }
 
 function findSession(request: SessionRequest): TaggedSession | null {
+  // Remote session discovery is not built this phase (D3's poller
+  // starts once a backend exists; nothing resolves an *existing*
+  // remote session by identity yet). A remote request therefore always
+  // creates fresh — see `launchPlan`'s `!existing` branch — rather than
+  // querying local tmux for a session that could never live there.
+  if ((request.machine ?? LOCAL_MACHINE) !== LOCAL_MACHINE) return null;
   return request.type === 'worktree'
     ? resolveWorktreeSession(request.repo, request.branch)
     : request.target
@@ -69,11 +78,12 @@ const opening = new Map<
 
 export function openSession(params: OpenSessionParams): Promise<NamedPtyEntry> {
   const request = params.session;
+  const machineId = request.machine ?? LOCAL_MACHINE;
   const key =
     request.type === 'worktree'
-      ? worktreeSessionKey(request.branch, request.repo)
+      ? worktreeSessionKey(request.branch, request.repo, machineId)
       : request.target
-      ? terminalSessionKey(request.target)
+      ? terminalSessionKey(request.target, machineId)
       : undefined;
   if (!key) return performOpen(params);
   const fresh = !!params.fresh || params.intent === 'fresh';
@@ -118,15 +128,30 @@ async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
           : {}),
       }
     : launchPlan(session, existing, launch.agent, fresh, params.expected);
-  const backend = await createTmuxBackend(
-    sessionSpec(params, launch.spec, !!fresh),
-    plan
-  );
+  const machineId = session.machine ?? LOCAL_MACHINE;
+  const spec = sessionSpec(params, launch.spec, !!fresh);
+  const backend: SessionBackend =
+    machineId === LOCAL_MACHINE
+      ? await createTmuxBackend(spec, plan)
+      : await createRemoteBackend(spec, plan, machineId);
   const key =
     session.type === 'worktree'
-      ? worktreeSessionKey(session.branch, session.repo)
-      : terminalSessionKey(backend.name!);
+      ? worktreeSessionKey(session.branch, session.repo, machineId)
+      : terminalSessionKey(backend.name!, machineId);
   return spawnSession(key, backend, cols, rows, launch.agent);
+}
+
+/** The remote twin of `createTmuxBackend`: the same plan, executed on
+ *  `machineId` (decisions.md D5). `requireMachine` throws loudly
+ *  (rather than falling back to a local launch) when the machine is
+ *  not available — "the one thing that must not happen". */
+function createRemoteBackend(
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan,
+  machineId: string
+): Promise<SessionBackend> {
+  const machine = requireMachine(machineId);
+  return createRemoteTmuxBackend(spec, plan, machine, pollerFor(machine));
 }
 
 function resolveOpenTarget(params: OpenSessionParams): TaggedSession | null {

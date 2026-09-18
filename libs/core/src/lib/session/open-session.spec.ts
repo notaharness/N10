@@ -5,11 +5,27 @@ const state = vi.hoisted(() => ({
   create: vi.fn<(spec: unknown, plan: unknown) => { name: string }>(() => ({
     name: 'allocated',
   })),
+  createRemote: vi.fn<
+    (
+      spec: unknown,
+      plan: unknown,
+      machine: unknown,
+      poller: unknown
+    ) => {
+      name: string;
+    }
+  >(() => ({ name: 'remote-allocated' })),
   register: vi.fn(),
   head: vi.fn(),
   held: vi.fn(() => false),
+  machine: { id: 'peer-abc', executor: {} } as unknown,
+  requireMachine: vi.fn(() => state.machine),
+  pollerFor: vi.fn(() => 'the-poller'),
 }));
-vi.mock('@n10/terminal-tmux', () => ({ createTmuxBackend: state.create }));
+vi.mock('@n10/terminal-tmux', () => ({
+  createTmuxBackend: state.create,
+  createRemoteTmuxBackend: state.createRemote,
+}));
 vi.mock('../pty-registry.js', () => ({
   spawnSession: state.register,
   sessionNames: () => [],
@@ -20,6 +36,10 @@ vi.mock('../session-resolver.js', () => ({
 }));
 vi.mock('../discovery/worktree-origin.js', () => ({
   readWorktreeHead: state.head,
+}));
+vi.mock('../machine-registry.js', () => ({
+  requireMachine: state.requireMachine,
+  pollerFor: state.pollerFor,
 }));
 import { openSession, type OpenSessionParams } from './open-session.js';
 const build = vi.fn(() => ({
@@ -160,6 +180,97 @@ describe('session launch boundary', () => {
   it('rejects the wrong checkout before touching an existing connection', async () => {
     state.head.mockReturnValue({ branch: 'other' });
     await expect(openSession(base)).rejects.toThrow('other');
+    expect(state.create).not.toHaveBeenCalled();
+    expect(state.register).not.toHaveBeenCalled();
+  });
+});
+
+describe('remote sessions (D2/D4/D5): the machine in the request reaches the plan', () => {
+  it('routes a remote request through createRemoteTmuxBackend, never the local backend', async () => {
+    await openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    expect(state.create).not.toHaveBeenCalled();
+    expect(state.createRemote).toHaveBeenCalledOnce();
+    expect(state.requireMachine).toHaveBeenCalledWith('peer-abc');
+    expect(state.pollerFor).toHaveBeenCalledWith(state.machine);
+  });
+
+  it('always creates fresh for a remote request rather than resolving an existing session locally', async () => {
+    // Even with a "found" local session for this repo/branch, a remote
+    // request must not attach to it — the two live on different
+    // machines and a local tmux name means nothing on the remote one.
+    state.existing = found;
+    await openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    expect(state.createRemote.mock.calls[0][1]).toMatchObject({
+      mode: 'create',
+    });
+  });
+
+  it('registers the spawned remote session under a key carrying the machine (D2)', async () => {
+    await openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    expect(state.register).toHaveBeenCalledWith(
+      '["worktree","/repo","feature/x","peer-abc"]',
+      expect.anything(),
+      80,
+      24,
+      'codex'
+    );
+  });
+
+  it('does not coalesce a local and a remote request for the same repo/branch', async () => {
+    const local = openSession(base);
+    const remote = openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    await Promise.all([local, remote]);
+    expect(state.create).toHaveBeenCalledOnce();
+    expect(state.createRemote).toHaveBeenCalledOnce();
+  });
+
+  it('a machine that cannot be resolved fails loudly rather than launching locally', async () => {
+    state.requireMachine.mockImplementationOnce(() => {
+      throw new Error('Machine "peer-abc" is not available');
+    });
+    await expect(
+      openSession({
+        ...base,
+        session: {
+          type: 'worktree',
+          repo: '/repo',
+          branch: 'feature/x',
+          machine: 'peer-abc',
+        },
+      })
+    ).rejects.toThrow('is not available');
     expect(state.create).not.toHaveBeenCalled();
     expect(state.register).not.toHaveBeenCalled();
   });

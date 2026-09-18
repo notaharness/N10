@@ -125,8 +125,17 @@ export {
   terminalSessionKey,
   sessionIdentity,
   sessionLabel,
+  LOCAL_MACHINE,
 } from './lib/session-key.js';
 export type { SessionIdentity } from './lib/session-key.js';
+
+export {
+  setMachineResolver,
+  resolveMachine,
+  requireMachine,
+  pollerFor,
+  type MachineResolver,
+} from './lib/machine-registry.js';
 
 export { stopSession } from './lib/session/stop-session.js';
 export { removeWorktreeSession } from './lib/session/remove-worktree.js';
