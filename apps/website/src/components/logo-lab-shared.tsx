@@ -1,4 +1,5 @@
 import type { LogoColors } from '@/components/logo';
+export { multiplyColors as multiply } from '@/components/logo';
 
 /**
  * Candidate pane pairs. Multiply blending only gives a clean third colour
@@ -142,19 +143,6 @@ export const PALETTES: { name: string; note: string; colors: LogoColors }[] = [
     colors: { n: '#008080', ten: '#ff7f50' },
   },
 ];
-
-function channel(hex: string, i: number): number {
-  return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
-}
-
-/** The multiply product of two hex colours, as the browser will paint it. */
-export function multiply(a: string, b: string): string {
-  const hex = [0, 1, 2]
-    .map((i) => Math.round((channel(a, i) * channel(b, i)) / 255))
-    .map((v) => v.toString(16).padStart(2, '0'))
-    .join('');
-  return `#${hex}`;
-}
 
 export function Swatch({ color, label }: { color: string; label: string }) {
   return (
