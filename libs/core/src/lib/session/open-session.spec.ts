@@ -41,6 +41,7 @@ const found: TaggedSession = {
   type: 'worktree',
   spawner: 'orchestra',
   agent: 'claude',
+  machine: 'local',
   created: 1,
   paneDead: false,
 };

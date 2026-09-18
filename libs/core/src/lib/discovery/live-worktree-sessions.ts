@@ -36,6 +36,9 @@ export interface LiveWorktreeSession {
   /** The registry name the session runs under in its repository
    *  (`worktreeSessionKey`), the key its tab's auto-open history uses. */
   sessionName: string;
+  /** The machine the session lives on — `'local'` or a beam peerId,
+   *  stamped by whoever listed it. */
+  machine: string;
   /** Orchestra's tags, when the session carries them. The harness
    *  running in the pane. */
   agent?: string;
@@ -100,7 +103,8 @@ function describeSession(
     repoRoot: session.repo,
     branch: head.branch,
     detached: head.detached,
-    sessionName: worktreeSessionKey(head.branch, session.repo),
+    sessionName: worktreeSessionKey(head.branch, session.repo, session.machine),
+    machine: session.machine,
     ...orchestraFields(session),
   };
 }

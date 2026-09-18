@@ -14,9 +14,15 @@ The reasoning behind each rule is in `docs/decisions.md`.
   create/attach/restart. Build agent argv only for create or restart. The tmux
   package receives opaque launch plans; it must not infer n10 identities.
 - **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
-  branch; terminal keys encode the allocated tmux target. Labels never address
-  entries. The registry owns connections, rendering and activity, not launch
-  policy. `dispose()` detaches; `kill()` terminates; shutdown must dispose.
+  branch; terminal keys encode the allocated tmux target. Both gain an
+  _optional trailing_ machine segment (a beam `peerId`), omitted entirely when
+  local, so every existing call site keeps producing byte-identical keys.
+  `sessionIdentity` switches on kind (`value[0]`) first, then reads
+  positionally with the optional machine — never on tuple length and kind
+  together, since a remote terminal key and a local worktree key are both
+  length-3 tuples. Labels never address entries. The registry owns
+  connections, rendering and activity, not launch policy. `dispose()`
+  detaches; `kill()` terminates; shutdown must dispose.
 - **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
   labels, `@orchestra-*` tags are identity. Attach and continuation preserve
   creator/reporting tags. Fresh conversations preserve creator/repo/branch but

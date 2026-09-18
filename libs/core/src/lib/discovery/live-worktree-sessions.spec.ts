@@ -56,6 +56,7 @@ function session(
     repo,
     type: 'worktree',
     branch,
+    machine: 'local',
     ...extra,
   };
 }
@@ -90,6 +91,7 @@ describe('listLiveWorktreeSessions', () => {
         branch: 'feat/a',
         detached: false,
         sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
+        machine: 'local',
       },
       {
         tmuxName: 'beta-feat-b',
@@ -98,7 +100,18 @@ describe('listLiveWorktreeSessions', () => {
         branch: 'feat-b',
         detached: false,
         sessionName: worktreeSessionKey('feat-b', '/repos/beta'),
+        machine: 'local',
       },
+    ]);
+  });
+
+  it('stamps the sessionName and machine from the session that was listed, for a remote poller', () => {
+    state.sessions = [{ ...ALPHA, machine: 'peer-123' }];
+    expect(list()).toEqual([
+      expect.objectContaining({
+        machine: 'peer-123',
+        sessionName: worktreeSessionKey('feat/a', '/repos/alpha', 'peer-123'),
+      }),
     ]);
   });
 
