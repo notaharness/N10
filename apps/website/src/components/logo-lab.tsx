@@ -37,9 +37,9 @@ const PALETTES: { name: string; note: string; colors: LogoColors }[] = [
     colors: { n: '#0078d4', ten: '#ffb830' },
   },
   {
-    name: 'Red / Blue',
-    note: 'Anaglyph glasses. Complements share no channel, so the overlap goes near-black — a dark plum here, which is what real filters do too.',
-    colors: { n: '#3b6bff', ten: '#ff3b3b' },
+    name: 'Red / Cyan',
+    note: 'Anaglyph glasses. True complements, so the overlap goes to black — exactly what stacked 3D filters do.',
+    colors: { n: '#ff2222', ten: '#18e0e0' },
   },
 ];
 
