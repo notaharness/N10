@@ -253,11 +253,13 @@ export class RemoteTmuxBackend implements SessionBackend {
 
   /** Detach the local stream client. The remote tmux session is left
    *  running — a remote session survives closing n10 exactly as a
-   *  local one does. */
+   *  local one does. A deliberate detach is not a connection failure
+   *  (finding 10): `connectionState` is left as it was rather than
+   *  forced to `'failed'`, which means "reconnection was attempted and
+   *  gave up", not "this was closed on purpose". */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.connection = 'failed';
     clearTimeout(this.reconnectTimer);
     this.unsubscribePoll();
     this.data.clear();

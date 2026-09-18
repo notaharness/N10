@@ -415,6 +415,16 @@ describe('hosted process lifecycle', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(mock.spawn).toHaveBeenCalledOnce();
   });
+  // Finding 10: closing n10 (or switching a tab away) is a deliberate
+  // detach, not a connection failure. Disposing a healthy connection
+  // must not leave connectionState reading 'failed' — that specifically
+  // means "reconnection was attempted and gave up".
+  it('does not report connectionState as failed after a deliberate dispose while healthy', async () => {
+    const backend = await launch();
+    expect(backend.connectionState).toBe('connected');
+    backend.dispose();
+    expect(backend.connectionState).not.toBe('failed');
+  });
   it('stops polling and emitting after disposal without killing the process', async () => {
     const backend = await launch();
     const exit = vi.fn();

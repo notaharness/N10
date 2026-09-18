@@ -272,11 +272,14 @@ class TmuxBackend implements SessionBackend {
     this.disconnects.delete(cb);
   }
 
-  /** Detach the local client without terminating the hosted process. */
+  /** Detach the local client without terminating the hosted process. A
+   *  deliberate detach is not a connection failure (finding 10):
+   *  `connectionState` is left as it was rather than forced to
+   *  `'failed'`, which means "reconnection was attempted and gave up",
+   *  not "this was closed on purpose". */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.connection = 'failed';
     clearInterval(this.timer);
     clearTimeout(this.reconnectTimer);
     clearTimeout(this.stableTimer);

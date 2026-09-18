@@ -185,6 +185,27 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(run).toHaveBeenCalledWith(['tmux', 'kill-session', '-t', '=wt2:']);
   });
 
+  // Finding 10: closing n10 (or switching a tab away) is a deliberate
+  // detach, not a connection failure. Disposing a healthy connection
+  // must not leave connectionState reading 'failed'.
+  it('does not report connectionState as failed after a deliberate dispose while healthy', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    expect(backend.connectionState).toBe('connected');
+    backend.dispose();
+    expect(backend.connectionState).not.toBe('failed');
+  });
+
   it('replays the screen with capture-pane on re-attach after a drop', async () => {
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))

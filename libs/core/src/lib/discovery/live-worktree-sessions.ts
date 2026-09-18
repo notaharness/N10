@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '../session-key.js';
+import { LOCAL_MACHINE, worktreeSessionKey } from '../session-key.js';
 import { existsSync } from 'node:fs';
 
 import type { TaggedSession } from '../session-identity.js';
@@ -94,6 +94,18 @@ function describeSession(
 ): LiveWorktreeSession | null {
   if (session.paneDead || session.type !== 'worktree' || !session.path)
     return null;
+  // `exists`/`readHead` are this machine's filesystem, synchronously —
+  // fine while `deps.sessions` only ever lists local tmux (the default
+  // above), but `session.path` is meaningless read locally for a
+  // session whose own tag says it lives elsewhere (finding 11): a
+  // remote `listOurSessionsWith` feeding this would otherwise have
+  // every one of its sessions rejected as "directory gone", read
+  // against the wrong filesystem. Excluding it is the honest answer
+  // until this can honour the machine (an async stat/HEAD read through
+  // its executor) — refusing loudly beats reading the wrong
+  // filesystem, and this function's own contract already excludes for
+  // ordinary reasons (paneDead, wrong type, no path) the same way.
+  if (session.machine !== LOCAL_MACHINE) return null;
   if (!deps.exists(session.path)) return null;
   const head = deps.readHead(session.path);
   if (!head || head.branch !== session.branch) return null;
