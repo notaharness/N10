@@ -120,10 +120,10 @@ export class RemoteTmuxBackend implements SessionBackend {
       return;
     this.connection = 'reconnecting';
     for (const cb of [...this.disconnects]) cb();
-    this.reconnect();
+    this.scheduleReconnect();
   }
 
-  private reconnect(): void {
+  private scheduleReconnect(): void {
     if (this.disposed || !this.state.running) return;
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       this.connection = 'failed';
@@ -132,6 +132,20 @@ export class RemoteTmuxBackend implements SessionBackend {
     const delay = 500 * 2 ** this.reconnectAttempts++;
     this.reconnectTimer = setTimeout(() => void this.attemptReconnect(), delay);
     this.reconnectTimer.unref?.();
+  }
+
+  /** Manual retry after `scheduleReconnect` gave up and `connectionState`
+   *  read `failed` — the pane's "Reconnect" action (ux-machines.md §6).
+   *  Resets the bounded attempt counter and tries immediately, rather
+   *  than composing with the backoff it just exhausted. A no-op outside
+   *  `failed`: nothing to retry while connected, and a reconnect already
+   *  in flight owns its own retries. */
+  reconnect(): void {
+    if (this.disposed || !this.state.running || this.connection !== 'failed')
+      return;
+    this.connection = 'reconnecting';
+    this.reconnectAttempts = 0;
+    void this.attemptReconnect();
   }
 
   private async attemptReconnect(): Promise<void> {
@@ -151,7 +165,7 @@ export class RemoteTmuxBackend implements SessionBackend {
       this.reconnectAttempts = 0;
       await this.replayFinalFrame();
     } catch {
-      this.reconnect();
+      this.scheduleReconnect();
     }
   }
 

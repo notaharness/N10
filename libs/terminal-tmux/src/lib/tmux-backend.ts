@@ -113,13 +113,13 @@ class TmuxBackend implements SessionBackend {
             return;
           this.connection = 'reconnecting';
           for (const cb of [...this.disconnects]) cb();
-          this.reconnect();
+          this.scheduleReconnect();
         });
     });
     return client;
   }
 
-  private reconnect(): void {
+  private scheduleReconnect(): void {
     if (this.disposed || !this.state.running) return;
     if (this.reconnectAttempts >= 3) {
       this.connection = 'failed';
@@ -138,10 +138,32 @@ class TmuxBackend implements SessionBackend {
         }, 2000);
         this.stableTimer.unref();
       } catch {
-        this.reconnect();
+        this.scheduleReconnect();
       }
     }, delay);
     this.reconnectTimer.unref();
+  }
+
+  /** Manual retry after `scheduleReconnect` gave up and `connectionState`
+   *  read `failed` — the pane's "Reconnect" action (ux-machines.md §6).
+   *  Mirrors `RemoteTmuxBackend.reconnect`: resets the bounded attempt
+   *  counter and tries right away. */
+  reconnect(): void {
+    if (this.disposed || !this.state.running || this.connection !== 'failed')
+      return;
+    this.connection = 'reconnecting';
+    this.reconnectAttempts = 0;
+    try {
+      this.inner.dispose();
+      this.inner = this.attach();
+      this.connection = 'connected';
+      this.stableTimer = setTimeout(() => {
+        this.reconnectAttempts = 0;
+      }, 2000);
+      this.stableTimer.unref?.();
+    } catch {
+      this.scheduleReconnect();
+    }
   }
 
   /** Fire-and-forget entry point for the timer and the initial

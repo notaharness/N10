@@ -41,6 +41,11 @@ export interface SessionBackend {
   /** The local connection ended while the hosted process remained alive. */
   onDisconnect?(cb: () => void): void;
   offDisconnect?(cb: () => void): void;
+  /** Manual retry after automatic reconnection has given up
+   *  (`connectionState === 'failed'`) — the affordance behind a pane's
+   *  "Reconnect" action. A no-op when there is nothing to retry (a
+   *  backend with no transport to lose, or one not currently failed). */
+  reconnect?(): void;
   readonly pid: number;
   readonly cols: number;
   readonly rows: number;

@@ -211,6 +211,71 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(chunks.some((c) => c.includes('replayed screen'))).toBe(true);
   });
 
+  it('reconnect() retries immediately after automatic reconnection has given up', async () => {
+    let opensAttempted = 0;
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    machine.ptyOpener.open = vi.fn(async () => {
+      opensAttempted += 1;
+      // The initial attach (1) succeeds; every automatic retry (2-4,
+      // exhausting the bounded 3 attempts) fails; the manual retry (5)
+      // succeeds again.
+      if (opensAttempted >= 2 && opensAttempted <= 4) {
+        throw new Error('still unreachable');
+      }
+      const opened = fakeHandle();
+      opens.push(opened);
+      return opened.handle;
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    opens[0]!.close();
+    expect(backend.connectionState).toBe('reconnecting');
+    // Exhaust the bounded automatic backoff (500ms, 1000ms, 2000ms).
+    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(2000);
+    await flushMicrotasks();
+    expect(backend.connectionState).toBe('failed');
+    expect(opensAttempted).toBe(4);
+
+    // The manual retry: no more backoff, tries right away.
+    backend.reconnect?.();
+    expect(backend.connectionState).toBe('reconnecting');
+    await flushMicrotasks();
+    expect(backend.connectionState).toBe('connected');
+    expect(opensAttempted).toBe(5);
+  });
+
+  it('reconnect() is a no-op while already connected', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    expect(backend.connectionState).toBe('connected');
+    backend.reconnect?.();
+    expect(backend.connectionState).toBe('connected');
+    expect(machine.ptyOpener.open).toHaveBeenCalledTimes(1);
+  });
+
   it('a machine going unreachable marks its backend reconnecting rather than exited', async () => {
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))
