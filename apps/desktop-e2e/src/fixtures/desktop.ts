@@ -30,6 +30,7 @@ import {
   startSurvivingTerminal,
   type TerminalSeed,
 } from '../setup/terminals.js';
+import { seedPeerTable, type PeerSeed } from '../setup/beam-peer.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -142,6 +143,16 @@ export interface DesktopOptions {
    * fixture tuple, so a two-entry list arrives as its first entry.
    */
   liveTerminals?: Record<string, TerminalSeed>;
+  /**
+   * Paired-machine rows already in the peer table when the app starts —
+   * written straight to the isolated HOME's `$BEAM_DIR/peers.json`
+   * before launch, exactly as a real pairing would have left it (see
+   * `setup/beam-peer.ts`). Covers the D6 states a live second machine
+   * cannot honestly produce in this fixture (`unreachable`,
+   * `no-endpoint`, `revoked`); pairing with a real `startPeerHost()` for
+   * `reachable` happens live, inside the test.
+   */
+  beamPeers?: PeerSeed[];
 }
 
 export interface DesktopApp {
@@ -168,13 +179,15 @@ export interface DesktopApp {
 function seedHome(
   homeDir: string,
   repoPath: string,
-  opts: {
-    n10Config?: Record<string, unknown>;
-    projectConfig?: Record<string, unknown>;
-    desktopPrefs?: Record<string, unknown>;
-    drafts?: Record<number, unknown[]>;
-    fakeGitHub?: FakeGitHub;
-  }
+  opts: Pick<
+    DesktopOptions,
+    | 'n10Config'
+    | 'projectConfig'
+    | 'desktopPrefs'
+    | 'drafts'
+    | 'fakeGitHub'
+    | 'beamPeers'
+  >
 ): Record<string, string> {
   const n10 = join(homeDir, '.n10');
   mkdirSync(n10, { recursive: true });
@@ -225,6 +238,8 @@ function seedHome(
       'utf8'
     );
   }
+
+  if (opts.beamPeers) seedPeerTable(homeDir, opts.beamPeers);
 
   if (opts.desktopPrefs) {
     writeFileSync(
@@ -285,6 +300,7 @@ export const test = base.extend<
   liveSessions: [undefined, { option: true }],
   env: [undefined, { option: true }],
   liveTerminals: [undefined, { option: true }],
+  beamPeers: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -300,6 +316,7 @@ export const test = base.extend<
       liveSessions,
       env,
       liveTerminals,
+      beamPeers,
       fixtureHome,
     },
     // Playwright's fixture callback. Named `provide` rather than the
@@ -317,6 +334,7 @@ export const test = base.extend<
       desktopPrefs,
       drafts,
       fakeGitHub,
+      beamPeers,
     });
 
     // On a Wayland session Electron talks to the compositor through
