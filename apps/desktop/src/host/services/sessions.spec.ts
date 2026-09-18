@@ -211,6 +211,7 @@ vi.mock('@n10/core', async (importOriginal) => {
     },
     isSessionAlive: (name: string) => state.alive.has(name),
     hasSessionConnection: (name: string) => state.alive.has(name),
+    hasLiveTmuxSession: (name: string) => state.persisted.has(name),
     getSpawnedAt: () => 1000,
     noteInput: () => undefined,
     noteResize: () => undefined,
@@ -275,6 +276,43 @@ beforeEach(async () => {
 /** Emit PTY output for a session, as the relay would. */
 function emit(name: string, data: string) {
   state.onData.get(name)?.(data);
+}
+
+// Shared by `launchAgent` and `checkoutPlan`'s cross-machine
+// duplicate-agent tests (findings 1 and 4 reuse the same guard).
+function connectedMachine(peerId: string, label: string): MachineView {
+  return {
+    peerId,
+    label,
+    isLocal: false,
+    state: 'connected',
+    transport: 'WebSocket',
+    endpoints: ['http://peer'],
+    lastSeenAt: 1000,
+    queueDepth: 0,
+    pairedAt: 1000,
+    revokedAt: null,
+    inboundWaiting: [],
+    inboundRefused: [],
+  };
+}
+
+function remoteWorktreeSession(
+  repo: string,
+  branch: string,
+  machine: string
+): TaggedSession {
+  return {
+    name: `n10-${branch.replace(/\//g, '-')}`,
+    created: 1,
+    paneDead: false,
+    path: '/wherever',
+    spawner: 'kirby',
+    repo,
+    type: 'worktree',
+    branch,
+    machine,
+  };
 }
 
 describe('launchAgent', () => {
@@ -423,6 +461,57 @@ describe('launchAgent', () => {
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     expect(state.spawns).toHaveLength(1);
+  });
+
+  // ── Finding 4 (MEDIUM): the duplicate-agent hole on the main launch ──
+  //
+  // getSessionLaunchContext only ever reads local state, so the dialog
+  // offers "Start new session" with the local default for a branch whose
+  // agent already runs on a paired machine, and this — unlike checkoutPlan
+  // — never asked findRemoteBranchOwner at all. Same guard, reused.
+  it('refuses a local launch, naming the machine, when the branch already runs there', async () => {
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(
+      launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' })
+    ).rejects.toThrow(/workbox/);
+    expect(state.createWorktreeCalls).toEqual([]);
+    expect(state.spawns).toEqual([]);
+  });
+
+  it('does not refuse an explicit remote launch on a different machine than the owner', async () => {
+    state.knownMachines.add('peer-1');
+    state.knownMachines.add('peer-2');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(
+      launchAgent({
+        branch: 'feature/x',
+        intent: 'continue-or-blank',
+        machine: 'peer-2',
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it('does not refuse a local launch when the local agent is already running (finding 1 reused here)', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    state.spawns = [];
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(
+      launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' })
+    ).resolves.toBeDefined();
   });
 });
 
@@ -896,41 +985,6 @@ describe('checkoutPlan', () => {
   // duplicate-agent shape a whole review round closed on the launch
   // path (open-session.ts's findSession), just left open on this one.
 
-  function connectedMachine(peerId: string, label: string): MachineView {
-    return {
-      peerId,
-      label,
-      isLocal: false,
-      state: 'connected',
-      transport: 'WebSocket',
-      endpoints: ['http://peer'],
-      lastSeenAt: 1000,
-      queueDepth: 0,
-      pairedAt: 1000,
-      revokedAt: null,
-      inboundWaiting: [],
-      inboundRefused: [],
-    };
-  }
-
-  function remoteWorktreeSession(
-    repo: string,
-    branch: string,
-    machine: string
-  ): TaggedSession {
-    return {
-      name: `n10-${branch.replace(/\//g, '-')}`,
-      created: 1,
-      paneDead: false,
-      path: '/wherever',
-      spawner: 'kirby',
-      repo,
-      type: 'worktree',
-      branch,
-      machine,
-    };
-  }
-
   it('refuses, naming the machine, when the branch already has an agent running elsewhere', async () => {
     state.knownMachines.add('peer-1');
     state.machines = [connectedMachine('peer-1', 'workbox')];
@@ -970,6 +1024,32 @@ describe('checkoutPlan', () => {
     state.remoteSessions.set('peer-1', []);
 
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  // ── Finding 1 (HIGH): a live local agent must always be injectable ──
+  //
+  // The cross-machine check above used to run before core's own State A
+  // (a live local agent) was ever considered, so a peer merely *also*
+  // having a session tagged with this repo path and branch — the normal
+  // case once the same branch is launched on a second machine — made
+  // "Send plan to agent" refuse forever, even though the agent it should
+  // inject into was sitting right there in the pane.
+  it('injects into a live local agent even when a peer also has a session for this branch', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    state.spawns = [];
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(checkoutPlan(req('inject'))).resolves.toBe('injected');
+    expect(state.injected).toEqual([
+      {
+        name: worktreeSessionKey('feature/x', '/repo-a'),
+        prompt: req().prompt,
+      },
+    ]);
   });
 });
 

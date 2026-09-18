@@ -20,7 +20,7 @@ import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
 import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
 import { machineFor } from './remote-machines.js';
-import { findRemoteBranchOwner } from './plan-remote-owner.js';
+import { refuseIfRemoteOwns } from './plan-remote-owner.js';
 import {
   adoptSession,
   foreignSessionError,
@@ -132,17 +132,32 @@ function noteLaunchStep(
   }
 }
 
-async function doLaunchAgent(
+/** Reuse a live connection, or refuse a local launch a paired machine
+ *  already owns — split out to keep `doLaunchAgent` under budget. */
+async function guardLaunch(
   req: SessionLaunchRequest,
-  name: string,
-  knownWorktreePath?: string
-): Promise<{ name: string }> {
-  const repoCwd = requireRepo();
+  name: string
+): Promise<{ name: string } | null> {
   if (canReuseConnection(req, name)) {
     // A stale UI request must not read another repository's relay.
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
   }
+  // An explicit machine is the user's own choice of where to launch —
+  // findSession already resolves or creates on exactly that machine.
+  // Only a local launch risks a second, local agent (finding 4).
+  if (!req.machine) await refuseIfRemoteOwns(requireRepo(), req.branch, name);
+  return null;
+}
+
+async function doLaunchAgent(
+  req: SessionLaunchRequest,
+  name: string,
+  knownWorktreePath?: string
+): Promise<{ name: string }> {
+  const reused = await guardLaunch(req, name);
+  if (reused) return reused;
+  const repoCwd = requireRepo();
   // Use the actual checkout path reported by discovery, or resolve this
   // exact branch. machineFor() throws for a machine it cannot build, so
   // createWorktree runs on the right machine or not at all.
@@ -253,12 +268,7 @@ async function doCheckoutPlan(
   name: string,
   repoCwd: string
 ): Promise<PlanCheckoutResult> {
-  const remoteOwner = await findRemoteBranchOwner(repoCwd, req.pr.sourceBranch);
-  if (remoteOwner) {
-    throw new Error(
-      `An agent for ${req.pr.sourceBranch} is already running on ${remoteOwner}. Open it there instead of starting a second one here.`
-    );
-  }
+  await refuseIfRemoteOwns(repoCwd, req.pr.sourceBranch, name);
   const config = readConfig(repoCwd);
   // core reports failures by flashing a status line, which the TUI has
   // and the host does not. Capture the message and reject with it: the
