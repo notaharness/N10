@@ -263,6 +263,69 @@ describe('RemoteTmuxBackend (D4)', () => {
   // must still mean the session is gone — matched here against the
   // 127/non-zero case above so a fix cannot solve one by breaking the
   // other (e.g. treating every non-zero-or-empty result as a failure).
+  // Finding 4: both `kill()` and `handlePollState`'s replay wrap a
+  // promise that rejects on any transport failure in a bare `void`,
+  // which does not catch anything — on a flaky machine that is a
+  // process-level unhandled rejection in Electron main over an
+  // entirely routine failure.
+  it('kill() does not produce an unhandled rejection when the remote kill-session call fails', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      if (argv.includes('kill-session')) throw new Error('connection reset');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      backend.kill();
+      await flushMicrotasks();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('replaying the final frame on exit does not produce an unhandled rejection when capture-pane fails', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions'))
+        // Still found, but its pane is dead — handlePollState takes the
+        // "info.found" branch and tries to replay the final frame.
+        return {
+          stdout: 'wt\t1\t1\t0\t\t/tmp',
+          stderr: '',
+          code: 0,
+        };
+      if (argv.includes('capture-pane')) throw new Error('connection reset');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      backend.onExit(() => undefined);
+      await flushMicrotasks();
+      expect(backend.processState?.running).toBe(false);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
   it('a genuinely empty listing (exit 0, session not present) still means the session exited', async () => {
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))

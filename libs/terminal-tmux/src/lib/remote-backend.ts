@@ -170,7 +170,13 @@ export class RemoteTmuxBackend implements SessionBackend {
     };
     this.unsubscribePoll();
     clearTimeout(this.reconnectTimer);
-    if (info.found) void this.replayFinalFrame();
+    // Best-effort: the exit itself is already reported below either
+    // way. A `void` alone here is not error handling (root AGENTS.md)
+    // — the capture-pane call this awaits can reject on any transport
+    // failure, and an uncaught rejection in Electron main is a
+    // process-level crash over what is otherwise a routine "the machine
+    // went away right as the session ended" (finding 4).
+    if (info.found) void this.replayFinalFrame().catch(() => undefined);
     for (const cb of [...this.exits])
       cb(this.state.exitCode ?? 0, this.state.signal);
   }
@@ -252,7 +258,14 @@ export class RemoteTmuxBackend implements SessionBackend {
   kill(): void {
     if (this.killed) return;
     this.killed = true;
-    void tmuxKillSessionWith(this.machine.executor, this.name);
+    // Fire-and-forget: `dispose()` below tears this backend down
+    // regardless of whether the remote kill-session call lands, so
+    // there is nothing to await. But `void` alone does not catch a
+    // rejection (finding 4) — on a flaky machine this is a routine
+    // failure, not a process-level unhandled rejection.
+    void tmuxKillSessionWith(this.machine.executor, this.name).catch(
+      () => undefined
+    );
     this.dispose();
   }
 }
