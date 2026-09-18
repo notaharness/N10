@@ -24,4 +24,5 @@ export type BeamWorkerMessage =
       name: 'pty-data';
       payload: { streamId: string; data: string };
     }
-  | { kind: 'event'; name: 'pty-closed'; payload: { streamId: string } };
+  | { kind: 'event'; name: 'pty-closed'; payload: { streamId: string } }
+  | { kind: 'event'; name: 'startup-failed'; payload: { message: string } };

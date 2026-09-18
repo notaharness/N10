@@ -21,10 +21,25 @@ import type {
   StreamEventPayload,
 } from '../host/services/remote-machines.js';
 import { setRemoteMachinePort } from '../host/services/remote-machines.js';
+import { parseStreamId, wrapStreamId } from './beam-stream-id.js';
 
 interface Pending {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+}
+
+/** Bounded restart policy for a worker that keeps exiting after it
+ *  successfully started (finding 2) — a startup failure never reaches
+ *  this path at all, since `beam-node-worker.ts` now catches its own
+ *  construction throw and stays up to report it. Exponential, capped,
+ *  and finite: an unbounded fork loop is worse than giving up and
+ *  leaving the last synthetic "unreachable" push on screen. */
+const RESTART_BASE_DELAY_MS = 500;
+const RESTART_MAX_DELAY_MS = 30_000;
+const MAX_RESTART_ATTEMPTS = 5;
+
+function restartDelayFor(attempt: number): number {
+  return Math.min(RESTART_BASE_DELAY_MS * 2 ** attempt, RESTART_MAX_DELAY_MS);
 }
 
 /**
@@ -45,10 +60,29 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     (event: StreamEventPayload) => void
   >();
   private shuttingDown = false;
+  /** Bumped once per forked worker. Every pty stream id handed to a
+   *  caller is wrapped with the generation that opened it
+   *  (`beam-stream-id.ts`), so a handle from a worker that has since
+   *  died can never be mistaken for a same-numbered stream on its
+   *  replacement (finding 1) — `RemoteOps.nextStreamId` restarts at 1
+   *  in every fresh worker process. */
+  private generation = 0;
+  /** Wrapped ids for streams the current worker has open. Walked on
+   *  exit to synthesize the closes that worker will never send. */
+  private readonly openStreams = new Set<string>();
+  private restartAttempts = 0;
+  private restartTimer?: ReturnType<typeof setTimeout>;
 
   private ensureChild(): Promise<UtilityProcess> {
     if (this.child) return Promise.resolve(this.child);
     if (this.starting) return this.starting;
+    // Finding 8: without this, a call that lands after `shutdown()`
+    // has already killed the child — `dispose()` → `ptyClose` →
+    // `request()` is the brief's example — re-forks a fresh worker
+    // instead of failing, undoing the very shutdown in progress.
+    if (this.shuttingDown)
+      return Promise.reject(new Error('beam node is shutting down'));
+    this.generation += 1;
     this.starting = new Promise((resolve) => {
       const child = utilityProcess.fork(
         join(import.meta.dirname, 'beam-node-worker.js'),
@@ -68,18 +102,29 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
   }
 
   private onMessage(message: BeamWorkerMessage): void {
+    // Any message at all is proof the worker started successfully —
+    // reset the backoff counter so a later, unrelated crash gets the
+    // same bounded retries a fresh install would.
+    this.restartAttempts = 0;
     if (message.kind === 'event') {
       if (message.name === 'changed') {
         receiveMachinesUpdate(message.payload as MachineView[]);
       } else if (message.name === 'pty-data') {
         const { streamId, data } = message.payload;
+        const wrapped = wrapStreamId(this.generation, streamId);
         for (const cb of this.ptyEventListeners)
-          cb({ kind: 'data', streamId, data });
+          cb({ kind: 'data', streamId: wrapped, data });
       } else if (message.name === 'pty-closed') {
-        const { streamId } = message.payload;
+        const wrapped = wrapStreamId(this.generation, message.payload.streamId);
+        this.openStreams.delete(wrapped);
         for (const cb of this.ptyEventListeners)
-          cb({ kind: 'closed', streamId });
+          cb({ kind: 'closed', streamId: wrapped });
       }
+      // 'startup-failed' needs no bridge-side reaction beyond the
+      // failure message every pending call already gets: the worker
+      // that posted it stays alive and answers every op with that
+      // same reason (beam-node-worker.ts), so there is nothing here
+      // to restart or synthesize.
       return;
     }
     const pending = this.pending.get(message.id);
@@ -87,6 +132,30 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     this.pending.delete(message.id);
     if (message.ok) pending.resolve(message.result);
     else pending.reject(new Error(message.error));
+  }
+
+  /** Emits the `pty-closed` a dead worker will never send, for every
+   *  stream that was open on it — without this, `RemoteTmuxBackend`
+   *  (via `remote-machines.ts`'s `openPty`) never learns its transport
+   *  died and keeps reporting `connectionState: 'connected'` over a
+   *  worker that no longer exists (finding 1). */
+  private closeOpenStreams(): void {
+    for (const streamId of this.openStreams) {
+      for (const cb of this.ptyEventListeners) cb({ kind: 'closed', streamId });
+    }
+    this.openStreams.clear();
+  }
+
+  /** `streamId` belongs to the worker generation running right now —
+   *  `false` for a handle whose worker has since exited. A stale
+   *  handle must fail (or, for the fire-and-forget pty ops, silently
+   *  no-op) rather than land on whatever the new worker happens to
+   *  call the same raw id (finding 1). */
+  private currentGenerationRawId(streamId: string): string | null {
+    const parsed = parseStreamId(streamId);
+    return parsed && parsed.generation === this.generation
+      ? parsed.rawId
+      : null;
   }
 
   /**
@@ -100,6 +169,7 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
    */
   private onExit(code: number | null): void {
     this.child = null;
+    this.closeOpenStreams();
     for (const pending of this.pending.values()) {
       pending.reject(new Error(`beam node exited unexpectedly (${code})`));
     }
@@ -112,7 +182,21 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
           : { ...m, state: 'unreachable', transport: null }
     );
     if (synthetic.length > 0) receiveMachinesUpdate(synthetic);
-    void this.ensureChild();
+    this.scheduleRestart();
+  }
+
+  /** Bounded, backed-off retry (finding 2): a worker that keeps dying
+   *  after it started (not a caught startup failure — that one never
+   *  exits at all) gets a handful of increasingly spaced-out chances
+   *  before this gives up. Giving up leaves the last synthetic
+   *  "unreachable" push from `onExit` on screen rather than looping
+   *  forever with nothing to show for it. */
+  private scheduleRestart(): void {
+    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) return;
+    const delay = restartDelayFor(this.restartAttempts);
+    this.restartAttempts += 1;
+    this.restartTimer = setTimeout(() => void this.ensureChild(), delay);
+    this.restartTimer.unref?.();
   }
 
   private request<T>(op: string, payload?: unknown): Promise<T> {
@@ -174,7 +258,7 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
     return this.request('execOn', { peerId, argv, ...opts });
   }
 
-  ptyOpen(
+  async ptyOpen(
     peerId: string,
     params: {
       argv?: string[];
@@ -184,22 +268,40 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
       rows?: number;
     }
   ): Promise<{ streamId: string }> {
-    return this.request('ptyOpen', { peerId, ...params });
+    const { streamId } = await this.request<{ streamId: string }>('ptyOpen', {
+      peerId,
+      ...params,
+    });
+    const wrapped = wrapStreamId(this.generation, streamId);
+    this.openStreams.add(wrapped);
+    return { streamId: wrapped };
   }
 
   ptyWrite(streamId: string, data: string): void {
     // Fire-and-forget, like the local PtySession.write() this mirrors:
     // a write racing the stream's own close is not an error the caller
-    // needs to hear about, only one to not crash on.
-    this.request('ptyWrite', { streamId, data }).catch(() => undefined);
+    // needs to hear about, only one to not crash on. A stale handle
+    // (its worker generation is already gone) is dropped outright
+    // rather than sent — forwarding it risks landing on whatever the
+    // new worker happens to call the same raw id (finding 1).
+    const rawId = this.currentGenerationRawId(streamId);
+    if (rawId === null) return;
+    this.request('ptyWrite', { streamId: rawId, data }).catch(() => undefined);
   }
 
   ptyResize(streamId: string, cols: number, rows: number): void {
-    this.request('ptyResize', { streamId, cols, rows }).catch(() => undefined);
+    const rawId = this.currentGenerationRawId(streamId);
+    if (rawId === null) return;
+    this.request('ptyResize', { streamId: rawId, cols, rows }).catch(
+      () => undefined
+    );
   }
 
   ptyClose(streamId: string): void {
-    this.request('ptyClose', { streamId }).catch(() => undefined);
+    this.openStreams.delete(streamId);
+    const rawId = this.currentGenerationRawId(streamId);
+    if (rawId === null) return;
+    this.request('ptyClose', { streamId: rawId }).catch(() => undefined);
   }
 
   onPtyEvent(cb: (event: StreamEventPayload) => void): () => void {
@@ -214,6 +316,7 @@ export class BeamNodeBridge implements MachinesPort, RemoteMachinePort {
    */
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    clearTimeout(this.restartTimer);
     if (!this.child) return;
     try {
       await Promise.race([

@@ -13,102 +13,150 @@ import type {
   BeamWorkerMessage,
 } from './beam-node-protocol.js';
 
-const node = new BeamNode();
-
 function post(message: BeamWorkerMessage): void {
   process.parentPort.postMessage(message);
 }
 
-node.onChange((machines) => {
-  post({ kind: 'event', name: 'changed', payload: machines });
-});
-node.remote.onStreamEvent((event) => {
-  if (event.kind === 'data')
-    post({
-      kind: 'event',
-      name: 'pty-data',
-      payload: { streamId: event.streamId, data: event.data },
-    });
-  else
-    post({
-      kind: 'event',
-      name: 'pty-closed',
-      payload: { streamId: event.streamId },
-    });
-});
+function startupErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-const OPS: Record<string, (payload: unknown) => Promise<unknown> | unknown> = {
-  listMachines: () => node.listMachines(),
-  getAcceptingStatus: () => node.getAcceptingStatus(),
-  setAccepting: (payload) =>
-    (payload as { enabled: boolean }).enabled
-      ? node.startAccepting()
-      : node.stopAccepting(),
-  regeneratePairingUrl: () => node.regeneratePairingUrl(),
-  previewPairing: (payload) =>
-    node.previewPairing((payload as { url: string }).url),
-  confirmPairing: (payload) => {
-    const p = payload as { url: string; force: boolean };
-    return node.confirmPairing(p.url, p.force);
-  },
-  renameMachine: (payload) => {
-    const p = payload as { peerId: string; label: string };
-    return node.renameMachine(p.peerId, p.label);
-  },
-  revokeMachine: (payload) =>
-    node.revokeMachine((payload as { peerId: string }).peerId),
-  forgetMachine: (payload) =>
-    node.forgetMachine((payload as { peerId: string }).peerId),
-  execOn: (payload) => {
-    const p = payload as {
-      peerId: string;
-      argv: string[];
-      cwd?: string;
-      env?: Record<string, string>;
-      stdin?: string;
-    };
-    return node.remote.execOn(p.peerId, p.argv, {
-      cwd: p.cwd,
-      env: p.env,
-      stdin: p.stdin,
-    });
-  },
-  ptyOpen: (payload) => {
-    const p = payload as {
-      peerId: string;
-      argv?: string[];
-      cwd?: string;
-      env?: Record<string, string>;
-      cols?: number;
-      rows?: number;
-    };
-    return node.remote.ptyOpen(p.peerId, {
-      argv: p.argv,
-      cwd: p.cwd,
-      env: p.env,
-      cols: p.cols,
-      rows: p.rows,
-    });
-  },
-  ptyWrite: (payload) => {
-    const p = payload as { streamId: string; data: string };
-    node.remote.ptyWrite(p.streamId, p.data);
-  },
-  ptyResize: (payload) => {
-    const p = payload as { streamId: string; cols: number; rows: number };
-    node.remote.ptyResize(p.streamId, p.cols, p.rows);
-  },
-  ptyClose: (payload) => {
-    node.remote.ptyClose((payload as { streamId: string }).streamId);
-  },
-  shutdown: () => node.dispose(),
-};
+/**
+ * `BeamNode`'s constructor does synchronous disk I/O
+ * (`loadOrCreateIdentity`, `PeerTable`, `Mailbox` — see `beam-node.ts`),
+ * so an unreadable or corrupt `$BEAM_DIR` throws here, at module load.
+ * Left uncaught, that crashes the whole utility process before it can
+ * say why, and `beam-node-bridge.ts`'s restart-on-exit would just fork
+ * a fresh worker into the exact same throw — a tight loop with nothing
+ * to break it (finding 2). Catching it here instead keeps the process
+ * alive: every request gets an honest, specific failure instead of a
+ * bare exit code, and there is no exit for the bridge to react to at
+ * all, so this failure mode needs no restart policy of its own.
+ */
+function createNode(): { node: BeamNode } | { error: string } {
+  try {
+    return { node: new BeamNode() };
+  } catch (error) {
+    return { error: startupErrorMessage(error) };
+  }
+}
+
+const started = createNode();
+
+if ('node' in started) {
+  const { node } = started;
+  node.onChange((machines) => {
+    post({ kind: 'event', name: 'changed', payload: machines });
+  });
+  node.remote.onStreamEvent((event) => {
+    if (event.kind === 'data')
+      post({
+        kind: 'event',
+        name: 'pty-data',
+        payload: { streamId: event.streamId, data: event.data },
+      });
+    else
+      post({
+        kind: 'event',
+        name: 'pty-closed',
+        payload: { streamId: event.streamId },
+      });
+  });
+} else {
+  post({
+    kind: 'event',
+    name: 'startup-failed',
+    payload: { message: started.error },
+  });
+}
+
+function buildOps(
+  node: BeamNode
+): Record<string, (payload: unknown) => Promise<unknown> | unknown> {
+  return {
+    listMachines: () => node.listMachines(),
+    getAcceptingStatus: () => node.getAcceptingStatus(),
+    setAccepting: (payload) =>
+      (payload as { enabled: boolean }).enabled
+        ? node.startAccepting()
+        : node.stopAccepting(),
+    regeneratePairingUrl: () => node.regeneratePairingUrl(),
+    previewPairing: (payload) =>
+      node.previewPairing((payload as { url: string }).url),
+    confirmPairing: (payload) => {
+      const p = payload as { url: string; force: boolean };
+      return node.confirmPairing(p.url, p.force);
+    },
+    renameMachine: (payload) => {
+      const p = payload as { peerId: string; label: string };
+      return node.renameMachine(p.peerId, p.label);
+    },
+    revokeMachine: (payload) =>
+      node.revokeMachine((payload as { peerId: string }).peerId),
+    forgetMachine: (payload) =>
+      node.forgetMachine((payload as { peerId: string }).peerId),
+    execOn: (payload) => {
+      const p = payload as {
+        peerId: string;
+        argv: string[];
+        cwd?: string;
+        env?: Record<string, string>;
+        stdin?: string;
+      };
+      return node.remote.execOn(p.peerId, p.argv, {
+        cwd: p.cwd,
+        env: p.env,
+        stdin: p.stdin,
+      });
+    },
+    ptyOpen: (payload) => {
+      const p = payload as {
+        peerId: string;
+        argv?: string[];
+        cwd?: string;
+        env?: Record<string, string>;
+        cols?: number;
+        rows?: number;
+      };
+      return node.remote.ptyOpen(p.peerId, {
+        argv: p.argv,
+        cwd: p.cwd,
+        env: p.env,
+        cols: p.cols,
+        rows: p.rows,
+      });
+    },
+    ptyWrite: (payload) => {
+      const p = payload as { streamId: string; data: string };
+      node.remote.ptyWrite(p.streamId, p.data);
+    },
+    ptyResize: (payload) => {
+      const p = payload as { streamId: string; cols: number; rows: number };
+      node.remote.ptyResize(p.streamId, p.cols, p.rows);
+    },
+    ptyClose: (payload) => {
+      node.remote.ptyClose((payload as { streamId: string }).streamId);
+    },
+    shutdown: () => node.dispose(),
+  };
+}
+
+const OPS = 'node' in started ? buildOps(started.node) : {};
 
 process.parentPort.on('message', ({ data }: { data: BeamNodeRequest }) => {
   void handle(data);
 });
 
 async function handle(request: BeamNodeRequest): Promise<void> {
+  if (!('node' in started)) {
+    post({
+      kind: 'response',
+      id: request.id,
+      ok: false,
+      error: `beam node failed to start: ${started.error}`,
+    });
+    return;
+  }
   const op = OPS[request.op];
   if (!op) {
     post({
