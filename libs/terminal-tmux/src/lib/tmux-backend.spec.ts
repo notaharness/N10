@@ -154,6 +154,26 @@ describe('explicit tmux launch plans', () => {
     expect(mock.calls[1]).toContain('-- /bin/sh -c agent');
     expect(mock.calls[2]).toBe('attach');
   });
+  // Regression guard for every current (local) user: adding the D5
+  // machine-executor seam must not change one byte of what a local
+  // launch asks tmux for. Pinned as a literal so a change to argv
+  // construction — local or the new remote path sharing its builders —
+  // fails loudly here first.
+  it('produces byte-for-byte identical argv to today for a local launch', async () => {
+    await launch({
+      mode: 'create',
+      label: 'test',
+      tags: {},
+      retainOnExit: false,
+    });
+    expect(mock.calls[0]).toBe('create test -- /bin/sh -c exec sleep 86400');
+    // `-e` flags mirror the runner's own PATH/HOME, so only their
+    // presence (not the runner's actual values) is pinned here.
+    expect(mock.calls[1]).toMatch(
+      /^set-option -t =test: remain-on-exit off ; set-option -t =test: status off ; respawn-pane -k -t =test: -c \/tmp( -e \S+=\S+)* -- \/bin\/sh -c agent$/
+    );
+    expect(mock.calls[2]).toBe('attach');
+  });
   it('awaits isolated preparation and attaches to its returned name without rewriting metadata', async () => {
     let prepared!: (name: string) => void;
     setTmuxSessionPreparer(

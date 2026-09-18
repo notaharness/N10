@@ -25,6 +25,22 @@ export {
 } from './lib/tmux-cli.js';
 export { isTmuxAvailable, type TmuxStatus } from './lib/is-tmux-available.js';
 
+export type { MachineExecutor } from './lib/tmux-cli.js';
+export { prepareRemoteTmuxSession } from './lib/tmux-launch-remote.js';
+export {
+  createRemoteTmuxBackend,
+  RemoteTmuxBackend,
+  type RemoteMachine,
+  type RemotePtyHandle,
+  type RemotePtyOpener,
+  type RemotePtyOpenParams,
+} from './lib/remote-backend.js';
+export {
+  RemoteSessionPoller,
+  type PollState,
+  type PollSubscriber,
+} from './lib/remote-poller.js';
+
 export {
   tmuxSessionSnapshot,
   sameTmuxIncarnation,

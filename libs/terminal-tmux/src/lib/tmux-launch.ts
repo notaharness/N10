@@ -7,6 +7,7 @@ import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
 import {
   isDuplicateSession,
   sessionNameCandidates,
+  setOptionArgv,
   tmuxHasSession,
   tmuxKillSession,
   tmuxNewSessionDetached,
@@ -54,8 +55,11 @@ function checked(result: TmuxRunResult, operation: string): void {
     throw new Error(`tmux ${operation} failed: ${result.stderr.trim()}`);
 }
 
-/** The server retains its original environment, so pin launch-specific additions. */
-function sessionEnvFlags(spec: SessionSpec): string[] {
+/** The server retains its original environment, so pin launch-specific
+ *  additions. Exported so the remote executor path builds identical
+ *  `-e` flags for a `new-session`/`respawn-pane` (decisions.md D5: the
+ *  same plan, the same argv, wherever it runs). */
+export function sessionEnvFlags(spec: SessionSpec): string[] {
   const vars = new Map<string, string>();
   for (const key of ['PATH', 'HOME']) {
     const value = spec.env?.[key] ?? process.env[key];
@@ -67,16 +71,29 @@ function sessionEnvFlags(spec: SessionSpec): string[] {
   return [...vars].flatMap(([key, value]) => ['-e', `${key}=${value}`]);
 }
 
-function commandArgs(
+/**
+ * Exported for the remote executor path — see {@link sessionEnvFlags}.
+ * `defaultShell` is resolved by the caller (locally via the sync
+ * `tmuxShowOption` when omitted, remotely via an already-awaited
+ * `show-options` read) so this stays a pure argv builder — the same
+ * plan produces the same argv wherever it runs.
+ */
+export function commandArgs(
   name: string,
   spec: SessionSpec,
-  replacePlaceholder: boolean
+  replacePlaceholder: boolean,
+  defaultShell?: string
 ): string[] {
   // No command to respawn-pane repeats the placeholder. Explicitly select
-  // the configured login shell for an ordinary terminal instead.
+  // the configured login shell for an ordinary terminal instead. Lazy:
+  // a spec with a command must never pay for a `show-options` fork it
+  // does not need, locally or remotely.
   const command = spec.cmd
     ? [spec.cmd, ...spec.args]
-    : [tmuxShowOption(name, 'default-shell') || '/bin/sh', '-l'];
+    : [
+        (defaultShell ?? tmuxShowOption(name, 'default-shell')) || '/bin/sh',
+        '-l',
+      ];
   return [
     'respawn-pane',
     ...(replacePlaceholder ? ['-k'] : []),
@@ -90,7 +107,8 @@ function commandArgs(
   ];
 }
 
-function optionCommands(
+/** Exported for the remote executor path — see {@link sessionEnvFlags}. */
+export function optionCommands(
   name: string,
   tags: Record<string, string | null> = {},
   retain = false
@@ -100,14 +118,9 @@ function optionCommands(
     'remain-on-exit': retain ? 'on' : 'off',
     status: 'off',
   };
-  return Object.entries(options).map(([key, value]) => [
-    'set-option',
-    ...(value === null ? ['-u'] : []),
-    '-t',
-    `=${name}:`,
-    key,
-    ...(value === null ? [] : [value]),
-  ]);
+  return Object.entries(options).map(([key, value]) =>
+    setOptionArgv(name, key, value)
+  );
 }
 
 function runCommands(commands: string[][]): void {

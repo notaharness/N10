@@ -151,16 +151,17 @@ export function sessionColumns(options: readonly string[]): string[] {
  *  option value is the caller's to keep tab-free, and the path may
  *  contain anything — so the first columns are split off one tab at a
  *  time and whatever remains, tabs included, is the path. */
+/** Pure argv builder, shared with the remote executor path (D3's
+ *  per-machine poller): a machine change must not change what is
+ *  asked of tmux. */
+export function listSessionsArgv(options: readonly string[] = []): string[] {
+  return [UTF8, 'list-sessions', '-F', sessionColumns(options).join('\t')];
+}
+
 export function tmuxListSessionsDetailed(
   options: readonly string[] = []
 ): TmuxSessionInfo[] {
-  const columns = sessionColumns(options);
-  const { stdout, exitCode } = runTmux([
-    UTF8,
-    'list-sessions',
-    '-F',
-    columns.join('\t'),
-  ]);
+  const { stdout, exitCode } = runTmux(listSessionsArgv(options));
   if (exitCode !== 0) return [];
   return stdout
     .split('\n')

@@ -1,5 +1,20 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { tmuxListSessionsDetailed } from './tmux-state.js';
+
+/**
+ * The seam a remote machine is executed through (decisions.md D5): the
+ * same argv this library would run locally, handed to something that
+ * runs it somewhere else. Structurally identical to `@n10/core`'s
+ * `MachineExecutor` — declared locally, not imported, because core
+ * depends on this package and not the other way around; a concrete
+ * executor built anywhere satisfies both by shape.
+ */
+export interface MachineExecutor {
+  run(
+    argv: string[],
+    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string }
+  ): Promise<{ stdout: string; stderr: string; code: number }>;
+}
 export {
   tmuxListSessionsDetailed,
   tmuxPaneState,
@@ -19,7 +34,11 @@ export interface TmuxRunResult {
 /** tmux interprets a trailing semicolon as a command boundary even when
  *  invoked without a shell. Escape literal data before inserting the
  *  boundaries between chained commands, shared by the sync and async runners. */
-function buildTmuxArgv(args: string[], following: string[][]): string[] {
+/** Exported so the remote executor path (`remote-backend.ts`) chains
+ *  commands into exactly the same one-argv-per-atomic-operation form a
+ *  local invocation uses — a machine change must not change what is
+ *  asked of tmux, only where it runs. */
+export function buildTmuxArgv(args: string[], following: string[][]): string[] {
   const commands = [args, ...following].map((command) =>
     command.map((argument) => argument.replace(/;$/, '\\;'))
   );
@@ -98,17 +117,28 @@ export function tmuxVersion(): string {
   return execFileSync('tmux', ['-V'], { encoding: 'utf8' }).trim();
 }
 
+/** Pure argv builder, shared with the remote executor path so a
+ *  machine change can never change what is asked of tmux. */
+export function killSessionArgv(name: string): string[] {
+  return ['kill-session', '-t', exactSession(name)];
+}
+
 /** Hard teardown — kills exactly the named tmux session and all its
  *  panes. Exact, because a prefix match would take out `name-2` once
  *  `name` itself is gone. */
 export function tmuxKillSession(name: string): TmuxRunResult {
-  return runTmux(['kill-session', '-t', exactSession(name)]);
+  return runTmux(killSessionArgv(name));
+}
+
+/** Pure argv builder, shared with the remote executor path. */
+export function hasSessionArgv(name: string): string[] {
+  return ['has-session', '-t', exactSession(name)];
 }
 
 /** Returns true if a session with this name exists. Exact: a bare
  *  `-t name` would also answer for `name-2` while `name` is gone. */
 export function tmuxHasSession(name: string): boolean {
-  return runTmux(['has-session', '-t', exactSession(name)]).exitCode === 0;
+  return runTmux(hasSessionArgv(name)).exitCode === 0;
 }
 
 /** What `new-session -d` needs besides the name. */
@@ -130,11 +160,12 @@ export interface TmuxNewSessionOptions {
  *  will drive it attaches afterwards with {@link tmuxAttachArgs}. A
  *  non-zero exit is returned, not thrown — a caller racing another
  *  creator inspects {@link isDuplicateSession} and tries another name. */
-export function tmuxNewSessionDetached(
+/** Pure argv builder, shared with the remote executor path. */
+export function newSessionDetachedArgv(
   name: string,
   opts: TmuxNewSessionOptions
-): TmuxRunResult {
-  return runTmux([
+): string[] {
+  return [
     'new-session',
     '-d',
     '-s',
@@ -147,7 +178,14 @@ export function tmuxNewSessionDetached(
     String(opts.rows),
     ...(opts.flags ?? []),
     ...(opts.command ?? []),
-  ]);
+  ];
+}
+
+export function tmuxNewSessionDetached(
+  name: string,
+  opts: TmuxNewSessionOptions
+): TmuxRunResult {
+  return runTmux(newSessionDetachedArgv(name, opts));
 }
 
 /** Whether `new-session` failed because the name was taken in the
@@ -199,19 +237,37 @@ export function tmuxFreeSessionName(
  *  and `feature-2` both live, `-t feature` after `feature` is gone
  *  quietly lands on the other one; `=name:` refuses anything but an
  *  exact match. The `=` form is supported by all tmux versions this backend accepts. */
-function exactSession(name: string): string {
+export function exactSession(name: string): string {
   return `=${name}:`;
 }
 
 /** Set a session option — a built-in one (`status off`) or a user
  *  option (`@key value`), which is how a caller attaches metadata to
  *  the session for other clients of the server to read. */
+/** Pure argv builder, shared with the remote executor path. `value ===
+ *  null` unsets the option (`-u`), matching `tmux-launch.ts`'s own
+ *  option commands. */
+export function setOptionArgv(
+  name: string,
+  option: string,
+  value: string | null
+): string[] {
+  return [
+    'set-option',
+    ...(value === null ? ['-u'] : []),
+    '-t',
+    exactSession(name),
+    option,
+    ...(value === null ? [] : [value]),
+  ];
+}
+
 export function tmuxSetOption(
   name: string,
   option: string,
   value: string
 ): TmuxRunResult {
-  return runTmux(['set-option', '-t', exactSession(name), option, value]);
+  return runTmux(setOptionArgv(name, option, value));
 }
 
 /** tmux decides from `LANG`/`LC_CTYPE`/`LC_ALL` whether its client is
@@ -225,15 +281,13 @@ const UTF8 = '-u';
  *  makes that a silent, zero exit), the session is not there, or
  *  there is no server. Only the line terminator is dropped: the value
  *  is the caller's, spaces and all. */
+/** Pure argv builder, shared with the remote executor path. */
+export function showOptionArgv(name: string, option: string): string[] {
+  return [UTF8, 'show-options', '-qv', '-t', exactSession(name), option];
+}
+
 export function tmuxShowOption(name: string, option: string): string {
-  const { stdout, exitCode } = runTmux([
-    UTF8,
-    'show-options',
-    '-qv',
-    '-t',
-    exactSession(name),
-    option,
-  ]);
+  const { stdout, exitCode } = runTmux(showOptionArgv(name, option));
   return exitCode === 0 ? stdout.replace(/\r?\n$/, '') : '';
 }
 
@@ -245,15 +299,12 @@ export function tmuxListSessions(): string[] {
 }
 
 /** Capture the retained screen and scrollback when no client saw the process exit. */
+/** Pure argv builder, shared with the remote executor path. */
+export function capturePaneArgv(name: string): string[] {
+  return ['capture-pane', '-p', '-e', '-S', '-', '-t', exactSession(name)];
+}
+
 export function tmuxCapturePane(name: string): string | null {
-  const result = runTmux([
-    'capture-pane',
-    '-p',
-    '-e',
-    '-S',
-    '-',
-    '-t',
-    exactSession(name),
-  ]);
+  const result = runTmux(capturePaneArgv(name));
   return result.exitCode === 0 ? result.stdout : null;
 }
