@@ -34,4 +34,19 @@ describe('run() dispatch', () => {
     expect(io.stderrText()).toContain('usage: beam peer rename');
     expect(io.stderrText()).not.toContain('at ');
   });
+
+  it('a leading --help on a subcommand prints usage and exits 0, not a usage error', async () => {
+    const io = makeFakeIo();
+    const code = await run(['serve', '--help'], io);
+    expect(code).toBe(0);
+    expect(io.stdoutText()).toContain('Usage: beam <command>');
+    expect(io.stderrText()).toBe('');
+  });
+
+  it('-h works the same as --help on a subcommand', async () => {
+    const io = makeFakeIo();
+    const code = await run(['msg', 'send', '-h'], io);
+    expect(code).toBe(0);
+    expect(io.stdoutText()).toContain('Usage: beam <command>');
+  });
 });

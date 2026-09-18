@@ -7,8 +7,6 @@
  * node's socket answers. See docs/beam.md.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import {
   ConnectionRegistry,
   Host,
@@ -19,16 +17,12 @@ import {
   createExecStreamHandler,
   createPtyStreamHandler,
   loadOrCreateIdentity,
+  renameIdentity,
   type Identity,
   type MailboxOptions,
   type NodeEnvContext,
 } from '@n10/beam';
-import {
-  beamDirFor,
-  hostInfoPath,
-  inboxSocketPath,
-  type HostInfo,
-} from './context.js';
+import { beamDirFor, inboxSocketPath } from './context.js';
 import type { Io } from './io.js';
 
 export interface EphemeralContext {
@@ -110,9 +104,7 @@ export async function startNode(
   options: StartNodeOptions = {}
 ): Promise<NodeHandle> {
   const beamDir = beamDirFor(io);
-  const identity = options.label
-    ? loadOrCreateIdentity(beamDir, { hostname: () => options.label as string })
-    : loadOrCreateIdentity(beamDir);
+  const identity = resolveIdentity(beamDir, options.label);
   const peers = new PeerTable(beamDir);
   const registry = new StreamRegistry();
   const connections = new ConnectionRegistry();
@@ -145,18 +137,18 @@ export async function startNode(
 
   await host.listen();
 
+  // Host.listen() has already resolved the real bind address (an
+  // ephemeral `port: 0` included) by this point, so the local IPC `status`
+  // op can report it directly — no CLI-private sidecar file needed.
   const ipcSocket = new IpcSocket({
     path: inboxSocketPath(beamDir),
     mailbox,
+    peers,
+    connections,
+    bindAddress: `${host.hostname}:${host.port}`,
     log,
   });
   await ipcSocket.listen();
-
-  writeHostInfo(beamDir, {
-    hostname: host.hostname,
-    port: host.port,
-    pid: process.pid,
-  });
 
   let closed = false;
   const close = async (): Promise<void> => {
@@ -165,7 +157,6 @@ export async function startNode(
     mailbox.dispose();
     await ipcSocket.close();
     await host.close();
-    removeHostInfo(beamDir);
   };
 
   return {
@@ -181,24 +172,15 @@ export async function startNode(
   };
 }
 
-function writeHostInfo(beamDir: string, info: HostInfo): void {
-  const path = hostInfoPath(beamDir);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(path, JSON.stringify(info), { mode: 0o600 });
-}
-
-function removeHostInfo(beamDir: string): void {
-  try {
-    rmSync(hostInfoPath(beamDir));
-  } catch {
-    // Already gone — fine.
-  }
-}
-
-export function readHostInfo(beamDir: string): HostInfo | null {
-  try {
-    return JSON.parse(readFileSync(hostInfoPath(beamDir), 'utf8')) as HostInfo;
-  } catch {
-    return null;
-  }
+/** `loadOrCreateIdentity`'s own `hostname` option only ever names the
+ * identity the first time it is created (deliberately: docs/beam.md/
+ * identity.ts). A `--label` given on a later `serve` is therefore an
+ * explicit rename request, applied through `renameIdentity` so it actually
+ * takes effect rather than only producing a note that nothing happened. */
+function resolveIdentity(beamDir: string, label: string | undefined): Identity {
+  const identity = label
+    ? loadOrCreateIdentity(beamDir, { hostname: () => label })
+    : loadOrCreateIdentity(beamDir);
+  if (label && identity.label !== label) return renameIdentity(beamDir, label);
+  return identity;
 }

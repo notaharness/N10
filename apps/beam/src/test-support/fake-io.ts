@@ -20,6 +20,10 @@ export class FakeStdin implements ReadableLike {
   private readonly emitter = new EventEmitter();
   private queued: (string | Buffer)[] = [];
   private ended = false;
+  /** Settable per test — real `process.stdin.isTTY` is `true` only when
+   * stdin is a real terminal; a fake defaults to `undefined` (piped),
+   * matching how tests already push/`end()` stdin explicitly. */
+  isTTY?: boolean;
 
   on: ReadableLike['on'] = (
     event: string,
@@ -55,21 +59,49 @@ export interface FakeIo extends Io {
   stdoutLines(): string[];
 }
 
+/** Buffer raw chunks and decode once, on read — not per chunk. A command
+ * that correctly forwards raw `Uint8Array` output can still split a
+ * multibyte UTF-8 character across two `write()` calls (that is the whole
+ * point of the exec.ts fix this exists to let a test observe); decoding
+ * each chunk with its own `.toString()` would reintroduce exactly that
+ * corruption in the test harness itself, even once the command under test
+ * is correct. */
+function byteBuffer(): {
+  write: (chunk: string | Uint8Array) => void;
+  text: () => string;
+} {
+  const chunks: Buffer[] = [];
+  return {
+    write: (chunk) => {
+      chunks.push(
+        typeof chunk === 'string'
+          ? Buffer.from(chunk, 'utf8')
+          : Buffer.from(chunk)
+      );
+    },
+    text: () => Buffer.concat(chunks).toString('utf8'),
+  };
+}
+
 export function makeFakeIo(
   env: Record<string, string | undefined> = {}
 ): FakeIo {
-  let stdout = '';
-  let stderr = '';
+  const stdout = byteBuffer();
+  const stderr = byteBuffer();
   const stdin = new FakeStdin();
   return {
-    stdout: { write: (chunk) => (stdout += chunk.toString()) },
-    stderr: { write: (chunk) => (stderr += chunk.toString()) },
+    stdout: { write: stdout.write },
+    stderr: { write: stderr.write },
     stdin,
     env,
     exit: () => undefined,
-    stdoutText: () => stdout,
-    stderrText: () => stderr,
-    stdoutLines: () => stdout.split('\n').filter((line) => line.length > 0),
+    stdoutText: stdout.text,
+    stderrText: stderr.text,
+    stdoutLines: () =>
+      stdout
+        .text()
+        .split('\n')
+        .filter((line) => line.length > 0),
   };
 }
 

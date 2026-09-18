@@ -2,6 +2,7 @@ import { rmSync } from 'node:fs';
 import { PeerTable } from '@n10/beam';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runMsgSend } from './msg-send.js';
+import { run } from '../run.js';
 import { makeFakeIoWithBeamDir, type FakeIo } from '../test-support/fake-io.js';
 
 let io: FakeIo;
@@ -80,14 +81,64 @@ describe('beam msg send', () => {
     expect(typeof parsed['reason']).toBe('string');
   });
 
-  it('--json on an unknown peer still prints exactly one parseable rejected object', async () => {
+  it('--json on an unknown peer still prints exactly one parseable rejected object, echoing the requested name', async () => {
     const code = await runMsgSend(['nobody', '--message', 'hi', '--json'], io);
     expect(code).toBe(1);
     const parsed = JSON.parse(io.stdoutText().trimEnd()) as Record<
       string,
       unknown
     >;
-    expect(parsed).toEqual({ status: 'rejected', reason: 'unknown-peer' });
+    // D11/D9: a rejection must still say who it was for. `label` cannot be
+    // resolved for an unknown peer, so only `to` (echoing what was asked
+    // for) is guaranteed here.
+    expect(parsed).toEqual({
+      status: 'rejected',
+      reason: 'unknown-peer',
+      to: 'nobody',
+    });
+  });
+
+  it('--json on a revoked peer resolves both to and label', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+    peers.revoke('aaaaaaaaaaaaaaaa');
+
+    const code = await runMsgSend(['workbox', '--message', 'hi', '--json'], io);
+    expect(code).toBe(1);
+    const parsed = JSON.parse(io.stdoutText().trimEnd()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed).toEqual({
+      status: 'rejected',
+      reason: 'revoked-peer',
+      to: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+    });
+  });
+
+  it('with no --message and a TTY attached is a usage error, not a hang', async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+    io.stdin.isTTY = true;
+
+    // Through run(), not runMsgSend() directly: a UsageError is a thrown
+    // exception at this layer, and run() is what converts it to exit 2 —
+    // the same reason exit-2 behaviour is tested through run() elsewhere
+    // (run.spec.ts).
+    const code = await run(['msg', 'send', 'workbox'], io);
+    expect(code).toBe(2);
+    expect(io.stderrText()).toContain('usage:');
   });
 
   it('reads the payload from stdin when --message is "-"', async () => {

@@ -35,17 +35,26 @@ interface RawStatus {
 
 export async function collectPeerRows(
   io: Io
-): Promise<{ rows: PeerRow[]; nodeRunning: boolean }> {
+): Promise<{
+  rows: PeerRow[];
+  nodeRunning: boolean;
+  bindAddress: string | null;
+}> {
   const beamDir = beamDirFor(io);
   const peers = new PeerTable(beamDir);
   const socket = await connectToRunningNode(inboxSocketPath(beamDir));
 
   let statuses: RawStatus[];
+  let bindAddress: string | null = null;
   const nodeRunning = socket !== null;
   if (socket) {
     const response = await requestOnce(socket, { op: 'status' });
     socket.end();
     statuses = (response['peers'] as RawStatus[] | undefined) ?? [];
+    bindAddress =
+      typeof response['bindAddress'] === 'string'
+        ? response['bindAddress']
+        : null;
   } else {
     const queue = new OutboundQueue(beamDir);
     statuses = peers.list().map((peer) => ({
@@ -61,7 +70,7 @@ export async function collectPeerRows(
     ...status,
     endpoint: peers.get(status.peerId)?.endpoints[0] ?? '',
   }));
-  return { rows, nodeRunning };
+  return { rows, nodeRunning, bindAddress };
 }
 
 /** D6's states, worded for a human. `no-endpoint` is a normal condition

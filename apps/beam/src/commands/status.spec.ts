@@ -3,6 +3,7 @@ import { PeerTable } from '@n10/beam';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runStatus } from './status.js';
 import { makeFakeIoWithBeamDir, type FakeIo } from '../test-support/fake-io.js';
+import { startNode, type NodeHandle } from '../node.js';
 
 let io: FakeIo;
 let beamDir: string;
@@ -38,5 +39,21 @@ describe('beam status', () => {
     const code = await runStatus([], io);
     expect(code).toBe(0);
     expect(io.stdoutText()).toContain('not running');
+  });
+
+  it("reports the running node's bind address from the local IPC status op, not a sidecar file", async () => {
+    const a: NodeHandle = await startNode(io, {
+      hostname: '127.0.0.1',
+      port: 0,
+    });
+    try {
+      const jsonCode = await runStatus(['--json'], io);
+      expect(jsonCode).toBe(0);
+      const parsed = JSON.parse(io.stdoutText()) as Record<string, unknown>;
+      expect(parsed['running']).toBe(true);
+      expect(parsed['bindAddress']).toBe(`${a.host.hostname}:${a.host.port}`);
+    } finally {
+      await a.close();
+    }
   });
 });

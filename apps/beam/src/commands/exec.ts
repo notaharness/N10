@@ -19,6 +19,19 @@ import { buildEphemeral } from '../node.js';
 import { resolvePeer } from '../peer-resolve.js';
 import { UsageError } from '../usage.js';
 
+/** Route one demuxed exec-stream chunk to the right output, as raw bytes —
+ * pulled out of `runExec` so the multibyte-boundary fix can be exercised
+ * directly, without depending on a real child process happening to split
+ * its output at the byte offset a test wants. */
+export function writeChannelOutput(
+  io: Io,
+  channel: number,
+  payload: Uint8Array
+): void {
+  if (channel === EXEC_CHANNEL_STDOUT) io.stdout.write(payload);
+  else if (channel === EXEC_CHANNEL_STDERR) io.stderr.write(payload);
+}
+
 function parseEnvEntries(entries: string[]): Record<string, string> {
   const env: Record<string, string> = {};
   for (const entry of entries) {
@@ -59,13 +72,16 @@ export async function runExec(args: string[], io: Io): Promise<number> {
   io.stdin.on('data', onStdinData);
   io.stdin.on('end', onStdinEnd);
 
+  // Write the raw bytes, not a per-chunk `.toString('utf8')`: the remote's
+  // stdout/stderr is read in raw pipe-sized chunks (commonly 64 KiB), and a
+  // multibyte UTF-8 character can straddle a chunk boundary. Decoding each
+  // chunk independently turns the half that lands in each chunk into a
+  // replacement character; `Io.Writable` takes a `Uint8Array` exactly so a
+  // command can hand the bytes on unmodified, the same as connect.ts's pty
+  // stream already does.
   stream.onData((data) => {
     const { channel, payload } = demuxExecData(data);
-    const buffer = Buffer.from(payload);
-    if (channel === EXEC_CHANNEL_STDOUT)
-      io.stdout.write(buffer.toString('utf8'));
-    else if (channel === EXEC_CHANNEL_STDERR)
-      io.stderr.write(buffer.toString('utf8'));
+    writeChannelOutput(io, channel, payload);
   });
 
   const exitCode = await new Promise<number>((resolve) => {

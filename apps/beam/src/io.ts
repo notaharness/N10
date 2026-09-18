@@ -20,6 +20,11 @@ export interface ReadableLike {
     event: string,
     listener: (...args: unknown[]) => void
   ): unknown;
+  /** True for a real interactive terminal, as `process.stdin.isTTY` reports
+   * it — used to refuse blocking forever on an EOF that will never come
+   * (e.g. `msg send` with no `--message` and nothing piped in) rather than
+   * hanging. */
+  isTTY?: boolean;
 }
 
 export interface Io {

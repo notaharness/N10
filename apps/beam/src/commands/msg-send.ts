@@ -114,6 +114,15 @@ export async function runMsgSend(args: string[], io: Io): Promise<number> {
   }
   const topic = parsed.values.get('topic') ?? '';
   const messageFlag = parsed.values.get('message');
+  if (messageFlag === undefined && io.stdin.isTTY) {
+    // No --message and an interactive terminal attached: reading stdin
+    // would block forever waiting for an EOF that will never come. Refuse
+    // up front rather than hanging — a usage mistake, not a runtime one.
+    throw new UsageError(
+      'usage: beam msg send <peer> [--topic T] [--message TEXT | -] [--json]\n' +
+        'refusing to wait on an interactive stdin with no --message — pass one, or pipe input.'
+    );
+  }
   const payload =
     messageFlag !== undefined && messageFlag !== '-'
       ? messageFlag

@@ -2,10 +2,9 @@
  * `beam status [--json]` — D9: "This machine's peerId and label, whether a
  * node is running, bind address, peer summary."
  *
- * The local IPC `status` op (docs/beam.md) returns only `{ peers }`, not a
- * bind address, so a running node's address comes from the small
- * `run/host.json` sidecar `serve` writes (see context.ts) — best-effort;
- * its absence just means the address is not shown, never a hard failure.
+ * The bind address comes from the local IPC `status` op's `bindAddress`
+ * field (docs/beam.md) — set by `serve` from the already-listening `Host`,
+ * so there is no CLI-private sidecar file to go stale or be missed.
  */
 
 import { loadOrCreateIdentity, type PeerState } from '@n10/beam';
@@ -13,7 +12,6 @@ import { parseArgs } from '../args.js';
 import { beamDirFor } from '../context.js';
 import { printJson } from '../fmt/json.js';
 import type { Io } from '../io.js';
-import { readHostInfo } from '../node.js';
 import { collectPeerRows } from './peer-status.js';
 
 function summarize(rows: { state: PeerState; queueDepth: number }[]) {
@@ -26,9 +24,7 @@ export async function runStatus(args: string[], io: Io): Promise<number> {
   const parsed = parseArgs(args, { booleanFlags: ['json'] });
   const beamDir = beamDirFor(io);
   const identity = loadOrCreateIdentity(beamDir);
-  const { rows, nodeRunning } = await collectPeerRows(io);
-  const hostInfo = nodeRunning ? readHostInfo(beamDir) : null;
-  const bindAddress = hostInfo ? `${hostInfo.hostname}:${hostInfo.port}` : null;
+  const { rows, nodeRunning, bindAddress } = await collectPeerRows(io);
   const peers = summarize(rows);
 
   if (parsed.booleans.has('json')) {

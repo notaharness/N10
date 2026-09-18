@@ -8,11 +8,13 @@
  * local queue to hold anything in, so `--require-ack` refuses rather than
  * silently doing nothing: an ephemeral listen always acks on receipt.
  *
- * The socket's `subscribe` op filters by topic only, never by peer
- * (docs/beam.md's local-IPC protocol has no peer filter). An envelope from
- * a peer outside `[<peer>...]` is acked immediately without being printed
- * — "acked but not ours" rather than left to jam the socket's single
- * outstanding-envelope pump for every other subscriber.
+ * The peer filter, `from`, is sent as part of `subscribe` and applied
+ * server-side by `IpcSocket.pump` — an envelope from a peer outside
+ * `[<peer>...]` is never handed to this subscriber in the first place, so
+ * there is nothing to ack-and-discard here (a client-side filter that did
+ * that used to be this command's whole implementation, and was a special
+ * case of the same durability hole D15 fixes: acking a message this
+ * process never actually delivered anywhere).
  */
 
 import type { Socket } from 'node:net';
@@ -71,12 +73,23 @@ function listenViaSocket(
     let stopped = false;
     let pendingAckId: string | null = null;
 
+    // Ack only the line that *is* the pending envelope's id — a relay's
+    // diagnostic output, a stray blank line, or simply the wrong line must
+    // never ack a message this process never actually delivered (D13's
+    // whole point, and the exact regression the old "any non-empty line"
+    // check let through).
     const onStdinData = (chunk: Buffer | string): void => {
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       for (const line of text.split('\n')) {
-        if (line.trim() && pendingAckId) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed === pendingAckId) {
           client.send({ op: 'ack', id: pendingAckId });
           pendingAckId = null;
+        } else if (pendingAckId) {
+          io.stderr.write(
+            `beam: ignoring stdin line that does not match the pending ack id (${pendingAckId}): ${trimmed}\n`
+          );
         }
       }
     };
@@ -96,12 +109,7 @@ function listenViaSocket(
 
     const handleLine = (line: Record<string, unknown>): void => {
       const id = line['id'];
-      const from = line['from'];
-      if (typeof id !== 'string' || typeof from !== 'string') return;
-      if (opts.wantedPeerIds && !opts.wantedPeerIds.has(from)) {
-        client.send({ op: 'ack', id });
-        return;
-      }
+      if (typeof id !== 'string') return;
       printJson(io.stdout, line);
       if (opts.requireAck) pendingAckId = id;
       else client.send({ op: 'ack', id });
@@ -116,6 +124,7 @@ function listenViaSocket(
     client.send({
       op: 'subscribe',
       ...(opts.topic ? { topic: opts.topic } : {}),
+      ...(opts.wantedPeerIds ? { from: [...opts.wantedPeerIds] } : {}),
     });
   });
 }

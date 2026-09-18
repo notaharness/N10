@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ConnectionRegistry,
+  EXEC_CHANNEL_STDOUT,
   Host,
   PeerTable,
   StreamRegistry,
@@ -11,8 +12,12 @@ import {
   pair,
 } from '@n10/beam';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runExec } from './exec.js';
-import { makeFakeIoWithBeamDir, type FakeIo } from '../test-support/fake-io.js';
+import { runExec, writeChannelOutput } from './exec.js';
+import {
+  makeFakeIo,
+  makeFakeIoWithBeamDir,
+  type FakeIo,
+} from '../test-support/fake-io.js';
 
 let io: FakeIo;
 let beamDir: string;
@@ -74,13 +79,32 @@ describe('beam exec', () => {
     expect(io.stderrText()).not.toContain('out-line');
   });
 
-  it('forwards stdin, including more than 64 KiB of it', async () => {
-    const payload = 'x'.repeat(70_000);
+  it('forwards stdin, including more than 64 KiB of it across multiple chunks', async () => {
+    // Real stdin arrives as many chunks, not one — push it that way rather
+    // than in a single 70 KB call, which would never exercise multi-chunk
+    // forwarding even if that path were broken.
+    const chunk = 'x'.repeat(10_000);
+    const chunkCount = 7; // 70,000 bytes total, seven separate pushes.
     const promise = runExec(['remote', '--', 'wc', '-c'], io);
-    io.stdin.push(payload);
+    for (let i = 0; i < chunkCount; i += 1) io.stdin.push(chunk);
     io.stdin.end();
     const code = await promise;
     expect(code).toBe(0);
-    expect(io.stdoutText().trim()).toBe(String(payload.length));
+    expect(io.stdoutText().trim()).toBe(String(chunk.length * chunkCount));
+  });
+});
+
+describe('writeChannelOutput', () => {
+  it('writes raw bytes rather than decoding each chunk, so a multibyte character split across a chunk boundary survives', () => {
+    const io = makeFakeIo();
+    // '€' (U+20AC) is the 3-byte UTF-8 sequence E2 82 AC. Split it after the
+    // first byte, the way a real 64 KiB pipe read could split any
+    // multibyte character that happens to land on its boundary.
+    const euroSign = Buffer.from('€', 'utf8');
+    const first = euroSign.subarray(0, 1);
+    const second = euroSign.subarray(1);
+    writeChannelOutput(io, EXEC_CHANNEL_STDOUT, first);
+    writeChannelOutput(io, EXEC_CHANNEL_STDOUT, second);
+    expect(io.stdoutText()).toBe('€');
   });
 });

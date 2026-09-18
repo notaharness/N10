@@ -42,6 +42,18 @@ export async function run(argv: string[], io: Io): Promise<number> {
     );
     return 2;
   }
+  // `--help`/`-h` on a subcommand (including a two-word one like `msg
+  // send`) should work like the top-level one, not fall through into that
+  // command's own flag parsing — which either rejects it as an
+  // unrecognized option, or, worse, treats a short `-h` it does not
+  // recognize as a positional (a peer name) and blocks on stdin. Scanned
+  // only up to the first literal `--`, so a "--help" a command legitimately
+  // passes on to the far side (e.g. `beam exec peer -- ls --help`) is never
+  // mistaken for beam's own.
+  if (wantsHelp(rest)) {
+    io.stdout.write(USAGE);
+    return 0;
+  }
 
   try {
     return await dispatch(command, rest, io);
@@ -58,6 +70,14 @@ export async function run(argv: string[], io: Io): Promise<number> {
     io.stderr.write(`beam: ${(error as Error).message}\n`);
     return 1;
   }
+}
+
+function wantsHelp(rest: string[]): boolean {
+  for (const token of rest) {
+    if (token === '--') return false;
+    if (token === '--help' || token === '-h') return true;
+  }
+  return false;
 }
 
 function dispatch(command: Command, rest: string[], io: Io): Promise<number> {

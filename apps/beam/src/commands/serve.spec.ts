@@ -1,4 +1,5 @@
 import { rmSync } from 'node:fs';
+import { loadOrCreateIdentity } from '@n10/beam';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runServe } from './serve.js';
 import { makeFakeIoWithBeamDir, type FakeIo } from '../test-support/fake-io.js';
@@ -48,5 +49,17 @@ describe('beam serve', () => {
     const code = await runServe(['--port', '0', '--no-pair'], io);
     expect(code).toBe(0);
     expect(io.stdoutText()).not.toContain('/pair#token=');
+  });
+
+  it('--label on an already-existing identity actually renames it, not just a note', async () => {
+    // Seed an identity under a different label first, as if a node had
+    // run here before with the default hostname-derived name.
+    loadOrCreateIdentity(beamDir, { hostname: () => 'first-name' });
+
+    const code = await runServe(['--port', '0', '--label', 'renamed'], io);
+    expect(code).toBe(0);
+    expect(io.stdoutText()).toContain('renamed (');
+    expect(io.stderrText()).not.toMatch(/note:/);
+    expect(loadOrCreateIdentity(beamDir).label).toBe('renamed');
   });
 });

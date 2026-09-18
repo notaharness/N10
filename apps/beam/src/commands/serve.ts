@@ -59,13 +59,6 @@ export async function runServe(args: string[], io: Io): Promise<number> {
     log: (message) => io.stderr.write(`[beam] ${message}\n`),
   });
 
-  if (label && handle.identity.label !== label) {
-    io.stderr.write(
-      `note: this machine is already known as "${handle.identity.label}" — ` +
-        `--label only sets the name the first time a node runs here.\n`
-    );
-  }
-
   io.stdout.write(
     `${handle.identity.label} (${handle.identity.peerId}) bound to http://${handle.host.hostname}:${handle.host.port}\n`
   );
