@@ -2,6 +2,8 @@ import type * as CoreModule from '@n10/core';
 import { worktreeSessionKey } from '@n10/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SessionsModule from './sessions.js';
+import type { MachineView } from '../contract-machines.js';
+import type { TaggedSession } from '@n10/core';
 
 /** Sessions from multiple repositories coexist under qualified keys. */
 
@@ -45,6 +47,12 @@ const state = vi.hoisted(() => ({
   /** Per-name `pty.connectionState`, read live (not just at entry
    *  creation) — finding 10's tests flip this after a session exists. */
   connectionStateByName: new Map<string, string>(),
+  /** Paired machines `listMachines()` answers with, for the plan
+   *  checkout's cross-machine duplicate-agent check. */
+  machines: [] as MachineView[],
+  /** Tagged sessions a remote machine's `list-sessions` would report,
+   *  keyed by peerId. */
+  remoteSessions: new Map<string, TaggedSession[]>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -86,6 +94,10 @@ vi.mock('./remote-machines.js', () => ({
   },
 }));
 
+vi.mock('./machines.js', () => ({
+  listMachines: () => Promise.resolve(state.machines),
+}));
+
 vi.mock('@n10/core', async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
@@ -94,6 +106,9 @@ vi.mock('@n10/core', async (importOriginal) => {
     sessionIdentity: actual.sessionIdentity,
     LOCAL_MACHINE: actual.LOCAL_MACHINE,
     resolveAgent: actual.resolveAgent,
+    resolveWorktreeSession: actual.resolveWorktreeSession,
+    listOurSessionsWith: (_executor: unknown, machine: string) =>
+      Promise.resolve(state.remoteSessions.get(machine) ?? []),
     getSessionLaunchContext: () => ({
       exists: false,
       running: false,
@@ -239,6 +254,8 @@ beforeEach(async () => {
   state.knownMachines = new Set();
   state.reconnectCalls = [];
   state.connectionStateByName = new Map();
+  state.machines = [];
+  state.remoteSessions = new Map();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -869,6 +886,90 @@ describe('checkoutPlan', () => {
     ]);
     expect([a, b]).toEqual(['spawned', 'spawned']);
     expect(state.spawns).toHaveLength(1);
+  });
+
+  // ── Cross-machine duplicate agent (Phase 8's closed hole) ─────────
+  //
+  // checkoutPlan used to resolve a branch's session by *local* state
+  // only, so a branch whose agent runs on another paired machine found
+  // nothing here and spawned a second, local agent for it — the exact
+  // duplicate-agent shape a whole review round closed on the launch
+  // path (open-session.ts's findSession), just left open on this one.
+
+  function connectedMachine(peerId: string, label: string): MachineView {
+    return {
+      peerId,
+      label,
+      isLocal: false,
+      state: 'connected',
+      transport: 'WebSocket',
+      endpoints: ['http://peer'],
+      lastSeenAt: 1000,
+      queueDepth: 0,
+      pairedAt: 1000,
+      revokedAt: null,
+      inboundWaiting: [],
+      inboundRefused: [],
+    };
+  }
+
+  function remoteWorktreeSession(
+    repo: string,
+    branch: string,
+    machine: string
+  ): TaggedSession {
+    return {
+      name: `n10-${branch.replace(/\//g, '-')}`,
+      created: 1,
+      paneDead: false,
+      path: '/wherever',
+      spawner: 'kirby',
+      repo,
+      type: 'worktree',
+      branch,
+      machine,
+    };
+  }
+
+  it('refuses, naming the machine, when the branch already has an agent running elsewhere', async () => {
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(checkoutPlan(req())).rejects.toThrow(/workbox/);
+    expect(state.spawns).toEqual([]);
+    expect(state.createWorktreeCalls).toEqual([]);
+  });
+
+  it('does not refuse for a same-named branch in a different repository on that machine', async () => {
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/some-other-repo', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  it('ignores a machine that is paired but not connected — nothing to ask', async () => {
+    state.machines = [
+      { ...connectedMachine('peer-1', 'workbox'), state: 'unreachable' },
+    ];
+    state.remoteSessions.set('peer-1', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    ]);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  it('proceeds locally when no paired machine is running that branch', async () => {
+    state.knownMachines.add('peer-1');
+    state.machines = [connectedMachine('peer-1', 'workbox')];
+    state.remoteSessions.set('peer-1', []);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
   });
 });
 

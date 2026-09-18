@@ -20,6 +20,7 @@ import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
 import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
 import { machineFor } from './remote-machines.js';
+import { findRemoteBranchOwner } from './plan-remote-owner.js';
 import {
   adoptSession,
   foreignSessionError,
@@ -252,6 +253,12 @@ async function doCheckoutPlan(
   name: string,
   repoCwd: string
 ): Promise<PlanCheckoutResult> {
+  const remoteOwner = await findRemoteBranchOwner(repoCwd, req.pr.sourceBranch);
+  if (remoteOwner) {
+    throw new Error(
+      `An agent for ${req.pr.sourceBranch} is already running on ${remoteOwner}. Open it there instead of starting a second one here.`
+    );
+  }
   const config = readConfig(repoCwd);
   // core reports failures by flashing a status line, which the TUI has
   // and the host does not. Capture the message and reject with it: the
