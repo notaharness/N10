@@ -90,6 +90,57 @@ export const PALETTES: { name: string; note: string; colors: LogoColors }[] = [
     note: 'Espresso and steamed milk; the mix is a warm latte brown.',
     colors: { n: '#6f4e37', ten: '#f3e5ab' },
   },
+
+  // More editor themes.
+  {
+    name: 'Gruvbox',
+    note: "Gruvbox's orange and aqua; mixes to a warm olive-brown.",
+    colors: { n: '#fe8019', ten: '#8ec07c' },
+  },
+  {
+    name: 'Nord',
+    note: "Nord's frost blue and aurora orange; mixes to a quiet taupe.",
+    colors: { n: '#88c0d0', ten: '#d08770' },
+  },
+  {
+    name: 'Dracula',
+    note: "Dracula's pink and green; mixes to a muted forest.",
+    colors: { n: '#ff79c6', ten: '#50fa7b' },
+  },
+  {
+    name: 'Tokyo Night',
+    note: 'Blue and orange from the Tokyo Night theme; mixes to a warm mauve.',
+    colors: { n: '#7aa2f7', ten: '#ff9e64' },
+  },
+
+  // Pop culture.
+  {
+    name: 'Game Boy',
+    note: "Two shades of the original DMG's four-tone green LCD — a single-hue mark by construction, not by choice.",
+    colors: { n: '#306230', ten: '#9bbc0f' },
+  },
+  {
+    name: 'Cyberpunk',
+    note: 'A loud yellow and hot red-pink; mixes to a saturated red — night-city-billboard colours.',
+    colors: { n: '#fcee0a', ten: '#ff003c' },
+  },
+  {
+    name: 'Miami Nights',
+    note: 'Synthwave pink and cyan; mixes to a deep indigo, like the two panes are lit by the same neon grid.',
+    colors: { n: '#ff2079', ten: '#00f0ff' },
+  },
+
+  // Elegant.
+  {
+    name: 'Royal',
+    note: 'Burgundy and gold; the overlap reads as a deep garnet.',
+    colors: { n: '#800020', ten: '#ffd700' },
+  },
+  {
+    name: 'Tropical',
+    note: 'Teal and coral; mixes to a dark ocean green.',
+    colors: { n: '#008080', ten: '#ff7f50' },
+  },
 ];
 
 function channel(hex: string, i: number): number {
