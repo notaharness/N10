@@ -44,8 +44,13 @@ export const LOGO_OVERLAP = 0.5;
 const STROKE = 28;
 const N_RIGHT_STAVE = 64;
 const TEN_WIDTH = 142;
-/** Gap between N and 1 when split, matching the gap between 1 and 0. */
-const SPLIT_GAP = 18;
+/**
+ * Gap between N and 1 when split, matching the fixed gap between 1 and
+ * 0 — the mark's one unit of "whitespace", useful anywhere something
+ * needs to visually match the mark's own spacing (e.g. tiling it).
+ */
+export const LOGO_GAP = 18;
+const SPLIT_GAP = LOGO_GAP;
 
 /**
  * A flag for the 1: a 45° slab from the top of the stem, one stroke

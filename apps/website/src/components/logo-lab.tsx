@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import { Logo, type LogoColors } from '@/components/logo';
 import { buttonVariants } from '@/components/ui/button';
 import { LogoLabInteractive } from '@/components/logo-lab-interactive';
+import { LogoLabTiled } from '@/components/logo-lab-tiled';
 import { PALETTES, Swatch, multiply } from '@/components/logo-lab-shared';
 
 /** Timing variants, applied through the logo's CSS custom properties. */
@@ -72,6 +73,15 @@ export function LogoLab() {
         colors={colors}
         setColors={setColors}
       />
+
+      <section className="flex flex-col gap-6">
+        <h2 className="text-lg font-medium">Tiled</h2>
+        <p className="text-fd-muted-foreground -mt-4 text-sm">
+          The mark repeated as a 45° wallpaper, driven by the Interactive panel
+          above.
+        </p>
+        <LogoLabTiled colors={colors} overlap={overlap} />
+      </section>
 
       <section className="flex flex-col gap-6">
         <h2 className="text-lg font-medium">Motion</h2>
