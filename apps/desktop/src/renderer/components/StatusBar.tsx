@@ -3,13 +3,18 @@ import {
   CloudOffIcon,
   GitBranchIcon,
   Loader2Icon,
+  MonitorIcon,
   RefreshCwIcon,
   TerminalIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { SidebarItem, SyncState } from '../../host/contract.js';
+import type {
+  MachineView,
+  SidebarItem,
+  SyncState,
+} from '../../host/contract.js';
 import { useRepo } from '../lib/repo-context.js';
-import { useSyncState, useVersion } from '../lib/data/queries.js';
+import { useMachines, useSyncState, useVersion } from '../lib/data/queries.js';
 import { useRefreshRemote } from '../lib/data/mutations.js';
 import { itemRunning } from '../lib/sidebar/sidebar-model.js';
 import { basename, cn, relativeTime } from '../lib/utils.js';
@@ -30,6 +35,7 @@ export function StatusBar({
   const sync = useSyncState(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
   const version = useVersion();
+  const machines = useMachines();
   const running = items.filter(itemRunning).length;
 
   // Re-render every 15s so "synced Xm ago" stays honest.
@@ -58,6 +64,11 @@ export function StatusBar({
       )}
 
       <div className="flex-1" />
+
+      <MachinesSegment
+        machines={machines.data}
+        onOpenSettings={onOpenSettings}
+      />
 
       {running > 0 && (
         <Segment label={`${running} agent${running === 1 ? '' : 's'} running`}>
@@ -144,6 +155,44 @@ function ProviderSegment({
           ? `synced ${relativeTime(s.lastRemoteSyncAt)}`
           : 'not synced'}
       </span>
+    </Segment>
+  );
+}
+
+/**
+ * `3 machines`, or `3 machines · 1 unreachable` / `3 machines · 2 queued`
+ * when something needs attention (unreachable takes priority — a fault
+ * is more urgent than mail waiting). Hidden entirely with only the
+ * local machine registered (D8): a user who never pairs anything sees
+ * today's app.
+ */
+function MachinesSegment({
+  machines,
+  onOpenSettings,
+}: {
+  machines: MachineView[] | undefined;
+  onOpenSettings: () => void;
+}) {
+  const others = (machines ?? []).filter((m) => !m.isLocal);
+  if (others.length === 0) return null;
+
+  const unreachable = others.filter((m) => m.state === 'unreachable').length;
+  const queued = others.reduce((sum, m) => sum + m.queueDepth, 0);
+  const count = others.length + 1; // + this machine
+
+  let suffix = '';
+  if (unreachable > 0) suffix = ` · ${unreachable} unreachable`;
+  else if (queued > 0) suffix = ` · ${queued} queued`;
+
+  return (
+    <Segment
+      label="Open Settings → Machines"
+      onClick={onOpenSettings}
+      className={unreachable > 0 ? 'text-warning' : undefined}
+    >
+      <MonitorIcon className="size-3" />
+      {count} machine{count === 1 ? '' : 's'}
+      {suffix}
     </Segment>
   );
 }

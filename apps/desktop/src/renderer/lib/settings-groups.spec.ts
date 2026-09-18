@@ -10,18 +10,25 @@ function field(
 }
 
 describe('visibleSettingsGroups', () => {
-  it('shows Appearance even when the host sends nothing at all', () => {
-    // The theme and window-frame rows are this shell's own; a host that
-    // is unreachable or still loading must not empty the page.
+  it('shows Appearance and Machines even when the host sends nothing at all', () => {
+    // The theme/window-frame rows and the machines list are this
+    // shell's own; a host that is unreachable or still loading must
+    // not empty the page, and machines is repo-independent so it has
+    // nothing to wait on in the first place.
     expect(visibleSettingsGroups(undefined).map((g) => g.key)).toEqual([
       'appearance',
+      'machines',
     ]);
     expect(visibleSettingsGroups([])[0]?.fields).toEqual([]);
   });
 
   it('drops sections the host sent no fields for', () => {
     const groups = visibleSettingsGroups([field('agentCommand', 'agent')]);
-    expect(groups.map((g) => g.key)).toEqual(['appearance', 'agent']);
+    expect(groups.map((g) => g.key)).toEqual([
+      'appearance',
+      'agent',
+      'machines',
+    ]);
   });
 
   it('orders sections by the page order, not the order fields arrive', () => {
@@ -38,6 +45,7 @@ describe('visibleSettingsGroups', () => {
       'general',
       'terminal',
       'provider',
+      'machines',
     ]);
   });
 
@@ -58,6 +66,10 @@ describe('visibleSettingsGroups', () => {
   it('ignores a field naming a section this build does not know', () => {
     const rogue = field('mystery', 'quantum' as SettingsFieldView['group']);
     const groups = visibleSettingsGroups([rogue, field('editor', 'general')]);
-    expect(groups.map((g) => g.key)).toEqual(['appearance', 'general']);
+    expect(groups.map((g) => g.key)).toEqual([
+      'appearance',
+      'general',
+      'machines',
+    ]);
   });
 });

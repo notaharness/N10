@@ -303,6 +303,36 @@ export function useForeignSessions() {
   });
 }
 
+/**
+ * Every machine: the local one first, then paired peers. Not repo-
+ * scoped — survives a repo switch (CROSS_REPO_KEYS). Pushed on every
+ * change (`onMachinesChanged` in use-host-events.ts writes straight
+ * into this cache), so the poll here is only the fallback for the
+ * first load and for a missed push.
+ */
+export function useMachines() {
+  return useQuery({
+    queryKey: keys.machines,
+    queryFn: () => window.n10.listMachines(),
+    refetchInterval: 10_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** This machine's accept-connections state — bound address, the
+ *  pairing URL and its expiry, who is connected. Polled only while
+ *  `live` (the accept-connections panel is open): the countdown and
+ *  connection count are the whole point of that surface, but nothing
+ *  elsewhere needs them warm. */
+export function useAcceptingStatus(live: boolean) {
+  return useQuery({
+    queryKey: keys.acceptingStatus,
+    queryFn: () => window.n10.getAcceptingStatus(),
+    refetchInterval: live ? 1_000 : false,
+    enabled: live,
+  });
+}
+
 /** Debounced per-session agent activity (spinner/blink source). The
  *  snapshot is an in-memory read host-side, so a 1s poll is cheap. */
 export function useSessionActivity(cwd: string) {

@@ -1,0 +1,141 @@
+import { CopyIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { formatCountdown } from '../../lib/machines/machine-model.js';
+import {
+  useRegeneratePairingUrl,
+  useSetAccepting,
+} from '../../lib/data/mutations-machines.js';
+import { useAcceptingStatus } from '../../lib/data/queries.js';
+import type { AcceptingStatus } from '../../../host/contract.js';
+import { errorMessage } from '../../lib/utils.js';
+import { Button } from '../ui/button.js';
+import { Switch } from '../ui/switch.js';
+import { RowShell } from '../settings/RowShell.js';
+import { QrCode } from './QrCode.js';
+
+/** Toast copy for turning accepting off: it does not drop existing
+ *  connections, so the count is worth saying either way. */
+function offToast(connectedCount: number): string {
+  if (connectedCount === 0) return 'Accepting off';
+  const noun = connectedCount === 1 ? 'machine' : 'machines';
+  return `Accepting off — ${connectedCount} ${noun} still connected`;
+}
+
+/**
+ * "This desktop is dialled" — the switch, the bound address, and once
+ * on: the QR code, the URL as selectable text, a live countdown to the
+ * token's expiry, and what pairing grants. Off by default; the panel
+ * only polls (`useAcceptingStatus`) while expanded, since the
+ * countdown and connection count are the whole point of having it open.
+ */
+export function AcceptConnectionsPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const status = useAcceptingStatus(expanded);
+  const setAccepting = useSetAccepting();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!expanded) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [expanded]);
+
+  const accepting = status.data?.accepting ?? false;
+
+  const toggle = (checked: boolean) => {
+    setExpanded(checked);
+    setAccepting.mutate(checked, {
+      onSuccess: (result) => {
+        toast.success(
+          checked ? 'Accepting connections' : offToast(result.connectedCount)
+        );
+      },
+      onError: (err: unknown) => toast.error(errorMessage(err)),
+    });
+  };
+
+  return (
+    <div className="px-4 py-3">
+      <RowShell
+        htmlFor="accept-connections"
+        label="Accept connections"
+        description={
+          status.data?.boundAddress
+            ? `Bound to ${status.data.boundAddress}`
+            : 'Off — this machine cannot be dialled from elsewhere'
+        }
+        control={
+          <Switch
+            id="accept-connections"
+            checked={accepting}
+            disabled={setAccepting.isPending}
+            onCheckedChange={toggle}
+          />
+        }
+      />
+      {accepting && status.data && (
+        <ExpandedPanel status={status.data} now={now} />
+      )}
+    </div>
+  );
+}
+
+/** The QR code, URL and countdown — or, once expired, the "generate a
+ *  new code" affordance instead of a silently dead code. */
+function ExpandedPanel({
+  status,
+  now,
+}: {
+  status: AcceptingStatus;
+  now: number;
+}) {
+  const regenerate = useRegeneratePairingUrl();
+  const expiresAt = status.pairingExpiresAt;
+  const expired = expiresAt != null && expiresAt - now <= 0;
+
+  const copyUrl = () => {
+    if (!status.pairingUrl) return;
+    void navigator.clipboard.writeText(status.pairingUrl);
+    toast.success('Pairing URL copied');
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-3 rounded-md border border-border bg-card p-3 sm:flex-row">
+      {expired ? (
+        <div className="flex size-[204px] shrink-0 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
+          Expired
+        </div>
+      ) : (
+        <QrCode value={status.pairingUrl ?? ''} />
+      )}
+
+      <div className="min-w-0 flex-1 space-y-2">
+        {expired ? (
+          <Button size="sm" onClick={() => regenerate.mutate()}>
+            Generate a new code
+          </Button>
+        ) : (
+          <>
+            <p className="select-all break-all font-mono text-xs text-foreground">
+              {status.pairingUrl}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={copyUrl}>
+                <CopyIcon className="size-3.5" />
+                Copy
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                expires in {formatCountdown((expiresAt ?? now) - now)}
+              </span>
+            </div>
+          </>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Pairing grants a shell on this machine as this user, revocable at any
+          time.
+        </p>
+      </div>
+    </div>
+  );
+}

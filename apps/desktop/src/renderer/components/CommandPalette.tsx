@@ -3,8 +3,10 @@ import {
   GitBranchIcon,
   GitBranchPlusIcon,
   GitPullRequestIcon,
+  MonitorIcon,
   MoonIcon,
   PanelLeftIcon,
+  PlugIcon,
   RefreshCwIcon,
   SettingsIcon,
   SunIcon,
@@ -25,6 +27,7 @@ import { requestLaunchMenu } from '../lib/sidebar/launch-menu-request.js';
 import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
+import { PairMachineDialog } from './machines/PairMachineDialog.js';
 import {
   CommandDialog,
   CommandEmpty,
@@ -64,6 +67,7 @@ export function CommandPalette({
   const create = useCreateWorktree(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
   const [query, setQuery] = useState('');
+  const [pairOpen, setPairOpen] = useState(false);
 
   const worktreeBranches = useMemo(
     () =>
@@ -131,7 +135,7 @@ export function CommandPalette({
     });
   };
 
-  return (
+  const dialogContent = (
     <CommandDialog
       open={open}
       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
@@ -222,6 +226,26 @@ export function CommandPalette({
             <FolderOpenIcon />
             Open another repository…
           </CommandItem>
+          <CommandItem
+            value="command pair a machine beam"
+            onSelect={() => {
+              close();
+              setPairOpen(true);
+            }}
+          >
+            <MonitorIcon />
+            Pair a machine…
+          </CommandItem>
+          <CommandItem
+            value="command accept connections beam machines"
+            onSelect={() => {
+              close();
+              tabs.openSettings();
+            }}
+          >
+            <PlugIcon />
+            Accept connections
+          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
@@ -262,6 +286,13 @@ export function CommandPalette({
         </CommandGroup>
       </CommandList>
     </CommandDialog>
+  );
+
+  return (
+    <>
+      {dialogContent}
+      {pairOpen && <PairMachineDialog onClose={() => setPairOpen(false)} />}
+    </>
   );
 }
 

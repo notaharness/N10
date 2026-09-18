@@ -30,6 +30,10 @@ export const keys = {
   /** Not repo-scoped either: agents alive in *other* repositories, the
    *  same answer whichever repository is open. */
   foreignSessions: ['foreign-sessions'] as const,
+  /** Not repo-scoped: machines belong to this app instance, not to a
+   *  repository — must survive a repo switch (CROSS_REPO_KEYS below). */
+  machines: ['machines'] as const,
+  acceptingStatus: ['accepting-status'] as const,
   agentOptions: (cwd: string) => ['agent-options', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
@@ -61,6 +65,8 @@ const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
   keys.repo[0],
   keys.terminals[0],
   keys.foreignSessions[0],
+  keys.machines[0],
+  keys.acceptingStatus[0],
 ]);
 
 /**
