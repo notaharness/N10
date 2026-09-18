@@ -33,7 +33,16 @@ The reasoning behind each rule is in `docs/decisions.md`.
 - **Agent restart** (`session/launch-session.ts`): continuation selects the
   recorded agent and its explicit resume adapter. Fresh launch selects the
   user's choice or configured default. Missing metadata must not silently
-  redirect a continuation to a different agent.
+  redirect a continuation to a different agent. `deliverToRunningSession`
+  refuses (returns `false`, does not throw) an exited session or one whose
+  `connectionState` is set and not `connected`.
+- **Relay targeting** (`session/relay-target.ts`, decisions.md D14): a mailbox
+  envelope's target is data a peer sent and is never trusted directly.
+  `resolveLocalRelayTarget` resolves it only against this machine's own PTY
+  registry, matched by the tmux name the registry itself allocated — never a
+  foreign tmux session, a shell terminal, or a session on another machine.
+  Extending what a relay can deliver into means extending this allowlist, not
+  trusting more of the envelope.
 - **Discovery** (`discovery/`): poll and use pure `diffScans`; attach through the
   shared launcher, rechecking connection state between awaits. Retired names
   are suppressed. Observe worktree processes, orphaned sessions and standalone
