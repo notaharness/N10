@@ -22,6 +22,7 @@ export function SessionTerminal({
   name,
   epoch,
   active,
+  disabled,
 }: {
   name: string;
   /** When the PTY behind `name` was spawned. Restarting an agent keeps
@@ -29,6 +30,11 @@ export function SessionTerminal({
    *  on the other end of this terminal is a new one. */
   epoch: number;
   active: boolean;
+  /** True while `connectionState === 'reconnecting'` (ux-machines.md
+   *  §6): keystrokes stop reaching the host, and the pane refuses focus
+   *  so they cannot land unseen either — a blocked prompt is better
+   *  than one that silently drops what the user typed. */
+  disabled?: boolean;
 }) {
   const termRef = useRef<TerminalHandle>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -46,9 +52,11 @@ export function SessionTerminal({
   );
   const write = useCallback(
     (data: string) => {
+      // Reconnecting: swallow keystrokes rather than send them nowhere.
+      if (disabled) return;
       void window.n10.writeSession(name, data).catch(reportError);
     },
-    [name, reportError]
+    [name, reportError, disabled]
   );
   const resize = useCallback(
     (cols: number, rows: number) => {
@@ -176,12 +184,12 @@ export function SessionTerminal({
   // Grab keyboard focus whenever this pane becomes the active tab, and
   // mark the session seen (clears the tab's attention blink).
   useEffect(() => {
-    if (active && ready) {
+    if (active && ready && !disabled) {
       termRef.current?.focus();
       lastSeenMarkRef.current = 0; // force an immediate mark
       markSeen();
     }
-  }, [active, ready, markSeen]);
+  }, [active, ready, disabled, markSeen]);
 
   // Fit the terminal grid to its pane. autoResize stays ON (with it off
   // the react wrapper pins an inline height of rows*17px and keeps
@@ -240,6 +248,16 @@ export function SessionTerminal({
 
   return (
     <div ref={wrapRef} className="absolute inset-0">
+      {disabled && (
+        // Blocks a click from refocusing the terminal while
+        // reconnecting — content stays visible underneath (ux-machines.md
+        // §6), only interaction is refused.
+        <div
+          aria-hidden
+          data-testid="terminal-input-block"
+          className="absolute inset-0 z-10 cursor-not-allowed"
+        />
+      )}
       <Terminal
         ref={termRef}
         wasmUrl={wasmUrl}
@@ -249,7 +267,7 @@ export function SessionTerminal({
         cursorBlink
         onReady={(wt) => {
           setReady(true);
-          if (active) wt.focus();
+          if (active && !disabled) wt.focus();
         }}
         onData={write}
         onResize={resize}
