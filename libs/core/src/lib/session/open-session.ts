@@ -66,7 +66,10 @@ async function findSession(
   const sessions =
     machineId === LOCAL_MACHINE
       ? undefined
-      : await listOurSessionsWith(requireMachine(machineId).executor);
+      : await listOurSessionsWith(
+          requireMachine(machineId).executor,
+          machineId
+        );
   return request.type === 'worktree'
     ? resolveWorktreeSession(request.repo, request.branch, sessions)
     : request.target

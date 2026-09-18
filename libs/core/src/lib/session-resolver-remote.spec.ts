@@ -1,11 +1,14 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { MachineExecutor } from '@n10/terminal-tmux';
 import {
+  LIST_SESSIONS_TIMEOUT_MS,
   listOurSessionsWith,
   resolveWorktreeSession,
 } from './session-resolver.js';
+
+const MACHINE = 'workbox';
 
 /**
  * `listOurSessionsWith` against a real tmux server through a real
@@ -113,25 +116,64 @@ describe.skipIf(SKIP)(
 
     it('finds a tagged session through an async executor, one round trip', async () => {
       startSession(name('a'), tags(REPO, 'feat/remote'));
-      const sessions = await listOurSessionsWith(executor);
+      const sessions = await listOurSessionsWith(executor, MACHINE);
       expect(
         resolveWorktreeSession(REPO, 'feat/remote', sessions)
       ).toMatchObject({ name: name('a'), repo: REPO, branch: 'feat/remote' });
+      // Second-pass finding 2: the machine it was actually listed on,
+      // never the local resolver's default — `live-worktree-sessions.ts`
+      // relies on this to keep a remote session's path off the local
+      // filesystem.
+      expect(sessions.every((s) => s.machine === MACHINE)).toBe(true);
     });
 
     it('does not find an untagged session sharing the name n10 would allocate', async () => {
       startSession(`remote-${RUN}-untagged`, {});
-      const sessions = await listOurSessionsWith(executor);
+      const sessions = await listOurSessionsWith(executor, MACHINE);
       expect(sessions.map((s) => s.name)).not.toContain(
         `remote-${RUN}-untagged`
       );
     });
 
-    it('answers an empty list rather than throwing when the executor call itself fails', async () => {
+    // Second-pass finding 1: a discovery failure must never read the
+    // same as "no session on that machine" — that is exactly what let
+    // `findSession` take the `create` branch on a transient
+    // control-plane fault and spawn a second agent in the same
+    // checkout. The old version of this test (`resolves.toEqual([])`)
+    // blessed the swallow; a launch that fails loudly is the point.
+    it('propagates rather than swallowing a failure of the executor call itself', async () => {
       const failing: MachineExecutor = {
         run: () => Promise.reject(new Error('connection reset')),
       };
-      await expect(listOurSessionsWith(failing)).resolves.toEqual([]);
+      await expect(listOurSessionsWith(failing, MACHINE)).rejects.toThrow(
+        'connection reset'
+      );
     });
   }
 );
+
+describe('listOurSessionsWith bounds the round trip (second-pass finding 1)', () => {
+  it('rejects instead of hanging forever when the executor never resolves, and clears its timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const hanging: MachineExecutor = {
+        run: () =>
+          new Promise<{ stdout: string; stderr: string; code: number }>(
+            () => undefined
+          ),
+      };
+      const pending = listOurSessionsWith(hanging, MACHINE).then(
+        () => {
+          throw new Error('expected a rejection');
+        },
+        (error: unknown) => error
+      );
+      await vi.advanceTimersByTimeAsync(LIST_SESSIONS_TIMEOUT_MS);
+      const error = await pending;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain(MACHINE);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
