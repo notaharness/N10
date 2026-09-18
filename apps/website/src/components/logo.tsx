@@ -28,7 +28,9 @@ import { cn } from '@/lib/cn';
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
  * into the N); `hover` slides the 10 back out on hover to reveal its own
- * colour. Both are pure CSS — see the `.n10-logo` rules in global.css.
+ * colour. Both are pure CSS — see the `.n10-logo` rules in global.css;
+ * the `--n10-logo-*` custom properties there can be overridden per
+ * instance through `style` to tune timing.
  */
 export const LOGO_BLUE = '#2ba3ff';
 export const LOGO_YELLOW = '#ffd93d';
@@ -40,15 +42,25 @@ export const LOGO_MIX = '#2b8b3d';
  */
 export const LOGO_SPLIT_OFFSET = 32;
 
+export interface LogoColors {
+  n: string;
+  ten: string;
+}
+
 export function Logo({
   intro = false,
   hover = false,
+  colors,
   className,
   ...props
 }: {
   intro?: boolean;
   hover?: boolean;
+  /** Pane colours; defaults to the brand pair. */
+  colors?: LogoColors;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
+  const n = colors?.n ?? LOGO_BLUE;
+  const ten = colors?.ten ?? LOGO_YELLOW;
   return (
     <svg
       viewBox="0 0 220 100"
@@ -66,7 +78,7 @@ export function Logo({
     >
       <title>n10</title>
       {/* N pane: two staves and a diagonal, all 28 wide. */}
-      <g fill={LOGO_BLUE} style={{ mixBlendMode: 'multiply' }}>
+      <g fill={n} style={{ mixBlendMode: 'multiply' }}>
         <rect x="0" y="0" width="28" height="100" />
         <polygon points="0,0 34,0 92,100 58,100" />
         <rect x="64" y="0" width="28" height="100" />
@@ -77,7 +89,7 @@ export function Logo({
       <g transform="translate(78 0)">
         <g
           className="n10-logo-ten"
-          fill={LOGO_YELLOW}
+          fill={ten}
           style={{ mixBlendMode: 'multiply' }}
         >
           <rect x="0" y="0" width="28" height="100" />
@@ -87,7 +99,7 @@ export function Logo({
             rx="34"
             ry="36"
             fill="none"
-            stroke={LOGO_YELLOW}
+            stroke={ten}
             strokeWidth="28"
           />
         </g>

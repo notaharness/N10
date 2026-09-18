@@ -24,35 +24,41 @@
 }
 
 /* The n10 mark (src/components/logo.tsx). Only the 10 pane moves; 32
- * units is the distance that fully clears the N (LOGO_SPLIT_OFFSET).
- * Inside an SVG, CSS transform px are user units, so this scales with
- * however large the mark is rendered.
+ * units clears the N (LOGO_SPLIT_OFFSET). Inside an SVG, CSS transform
+ * px are user units, so this scales with however large the mark is.
  *
- * The motion is a single critically-damped ease — a fast start and a
- * long, smooth deceleration into rest, with no overshoot and no wind-up.
- * That curve is the shape of Apple's default system motion, and it's
- * what reads as calm: the pane arrives, it doesn't bounce.
+ * Two different motions, on purpose:
  *
- * Hover uses a symmetric ease-in-out instead: the intro starts from a
- * held pose the eye is already waiting on, so a fast launch reads as
- * release, but a hover starts from rest under the cursor at nav size
- * (~8px of travel), and the decel curve dumps most of that into the
- * first 200ms — it reads as a jump. Easing in makes the departure
- * visible, and the same curve plays back on mouse-leave.
+ * Hover is a response to the user. Responsiveness is judged by how fast
+ * something starts moving after the cursor lands, so it uses a strong
+ * ease-out — near-full speed immediately, then a long settle — and stays
+ * inside the ~300ms window under which UI motion reads as instant
+ * feedback rather than a wait. Mouse-leave plays the same curve, which
+ * is right: a return is also a response.
  *
- * The intro holds the split state first so the eye reads "N 10" before
- * the mix happens, and uses `backwards` fill on purpose: it shows the
- * split state through the delay, then hands control back to the normal
- * rules once done — `both`/`forwards` would pin the final keyframe and
- * swallow the hover rule. */
+ * The intro is choreography, not feedback: the site is presenting the
+ * mark. It waits before starting so the eye has landed on the hero
+ * (~800ms, past the point where the page is still settling), then moves
+ * with an ease-in-out — the pane visibly gathers itself and commits,
+ * which is what a deliberate motion looks like as opposed to a
+ * reactive one — over ~900ms so the overlap colour has time to be seen
+ * arriving. It uses `backwards` fill so the split pose shows through the
+ * delay and control returns to the hover rules afterwards; `forwards`
+ * would pin the final keyframe and swallow hover.
+ *
+ * Every knob is a custom property so an instance can retune itself
+ * through inline style (the logo lab does this to compare variants). */
 :root {
-  --n10-logo-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --n10-logo-hover-ease: cubic-bezier(0.65, 0, 0.35, 1);
-  --n10-logo-duration: 1100ms;
+  --n10-logo-hover-duration: 320ms;
+  --n10-logo-hover-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --n10-logo-intro-duration: 900ms;
+  --n10-logo-intro-ease: cubic-bezier(0.77, 0, 0.175, 1);
+  --n10-logo-intro-delay: 800ms;
 }
 
 .n10-logo-ten {
-  transition: transform 800ms var(--n10-logo-hover-ease);
+  transition: transform var(--n10-logo-hover-duration)
+    var(--n10-logo-hover-ease);
 }
 
 .n10-logo--hover:hover .n10-logo-ten {
@@ -60,8 +66,8 @@
 }
 
 .n10-logo--intro .n10-logo-ten {
-  animation: n10-logo-mix var(--n10-logo-duration) var(--n10-logo-ease) 700ms
-    backwards;
+  animation: n10-logo-mix var(--n10-logo-intro-duration)
+    var(--n10-logo-intro-ease) var(--n10-logo-intro-delay) backwards;
 }
 
 @keyframes n10-logo-mix {
