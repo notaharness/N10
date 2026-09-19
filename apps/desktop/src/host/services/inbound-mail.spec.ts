@@ -31,13 +31,15 @@ beforeEach(() => {
 
 describe('withMailOverlay', () => {
   it('leaves machines untouched when no port is installed', () => {
-    expect(withMailOverlay([machine('peer-1')])).toEqual([machine('peer-1')]);
+    expect(withMailOverlay([machine('bbbbbbbbbbbbbbbb')])).toEqual([
+      machine('bbbbbbbbbbbbbbbb'),
+    ]);
   });
 
   it('overlays each machine with its own snapshot, by peerId', () => {
     setInboundMailPort({
       snapshotFor: (peerId: string) =>
-        peerId === 'peer-1'
+        peerId === 'bbbbbbbbbbbbbbbb'
           ? {
               inboundWaiting: [{ id: 'e1', target: 'tmux:x', receivedAt: 1 }],
               inboundRefused: [],
@@ -45,7 +47,10 @@ describe('withMailOverlay', () => {
           : { inboundWaiting: [], inboundRefused: [] },
       dismiss: () => undefined,
     });
-    const [a, b] = withMailOverlay([machine('peer-1'), machine('peer-2')]);
+    const [a, b] = withMailOverlay([
+      machine('bbbbbbbbbbbbbbbb'),
+      machine('cccccccccccccccc'),
+    ]);
     expect(a.inboundWaiting).toHaveLength(1);
     expect(b.inboundWaiting).toEqual([]);
   });

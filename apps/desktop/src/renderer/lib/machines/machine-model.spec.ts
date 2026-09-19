@@ -180,7 +180,7 @@ describe('inbound mail (Phase 8: the desktop as a mailbox subscriber)', () => {
 });
 
 const local = machine({
-  peerId: 'me',
+  peerId: 'aaaaaaaaaaaaaaaa',
   label: 'You',
   isLocal: true,
   state: 'connected',
@@ -223,18 +223,18 @@ describe('isMachineSelectable', () => {
 });
 
 describe('machineChoice', () => {
-  const reachable = machine({ peerId: 'peer-1', state: 'reachable' });
+  const reachable = machine({ peerId: 'bbbbbbbbbbbbbbbb', state: 'reachable' });
 
   it('defaults to the local machine, which a launch names as no machine at all', () => {
     const { value, remote } = machineChoice([local, reachable], null);
-    expect(value).toBe('me');
+    expect(value).toBe('aaaaaaaaaaaaaaaa');
     expect(remote).toBeUndefined();
   });
 
   it('carries a selectable peer through to the request', () => {
-    expect(machineChoice([local, reachable], 'peer-1')).toEqual({
-      value: 'peer-1',
-      remote: 'peer-1',
+    expect(machineChoice([local, reachable], 'bbbbbbbbbbbbbbbb')).toEqual({
+      value: 'bbbbbbbbbbbbbbbb',
+      remote: 'bbbbbbbbbbbbbbbb',
     });
   });
 
@@ -244,17 +244,17 @@ describe('machineChoice', () => {
     // unusable and fails a round trip later. Local is both what is
     // sent and what the control shows — they never disagree.
     for (const state of ['unreachable', 'revoked', 'no-endpoint'] as const) {
-      const gone = machine({ peerId: 'peer-1', state });
-      expect(machineChoice([local, gone], 'peer-1')).toEqual({
-        value: 'me',
+      const gone = machine({ peerId: 'bbbbbbbbbbbbbbbb', state });
+      expect(machineChoice([local, gone], 'bbbbbbbbbbbbbbbb')).toEqual({
+        value: 'aaaaaaaaaaaaaaaa',
         remote: undefined,
       });
     }
   });
 
   it('drops a pick for a machine that has left the list entirely', () => {
-    expect(machineChoice([local], 'peer-1')).toEqual({
-      value: 'me',
+    expect(machineChoice([local], 'bbbbbbbbbbbbbbbb')).toEqual({
+      value: 'aaaaaaaaaaaaaaaa',
       remote: undefined,
     });
   });
@@ -295,7 +295,10 @@ describe('machineSelectOptions', () => {
 });
 
 describe('resolveMachineLabel', () => {
-  const machines = [local, machine({ peerId: 'peer-1', label: 'workbox' })];
+  const machines = [
+    local,
+    machine({ peerId: 'bbbbbbbbbbbbbbbb', label: 'workbox' }),
+  ];
 
   it('is null for local — the caller shows no prefix at all', () => {
     expect(resolveMachineLabel('local', machines)).toBeNull();
@@ -303,15 +306,19 @@ describe('resolveMachineLabel', () => {
   });
 
   it('resolves a registered peer to its label, never the bare id', () => {
-    expect(resolveMachineLabel('peer-1', machines)).toBe('workbox');
+    expect(resolveMachineLabel('bbbbbbbbbbbbbbbb', machines)).toBe('workbox');
   });
 
   it('names a machine no longer in the registered list rather than vanishing', () => {
-    expect(resolveMachineLabel('gone-peer', machines)).toBe('Unknown machine');
+    expect(resolveMachineLabel('0123456789abcdef', machines)).toBe(
+      'Unknown machine'
+    );
   });
 
   it('is honest even before the machines list has loaded', () => {
-    expect(resolveMachineLabel('peer-1', undefined)).toBe('Unknown machine');
+    expect(resolveMachineLabel('bbbbbbbbbbbbbbbb', undefined)).toBe(
+      'Unknown machine'
+    );
   });
 });
 

@@ -116,11 +116,11 @@ describe('beam-node-worker: the happy path is unchanged', () => {
       };
     });
     await import('./beam-node-worker.js');
-    push?.({ id: 'env-1', from: 'peer-1' });
+    push?.({ id: 'env-1', from: 'bbbbbbbbbbbbbbbb' });
     expect(parentPort.postMessage).toHaveBeenCalledWith({
       kind: 'event',
       name: 'mail-inbound',
-      payload: { id: 'env-1', from: 'peer-1' },
+      payload: { id: 'env-1', from: 'bbbbbbbbbbbbbbbb' },
     });
   });
 

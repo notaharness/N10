@@ -244,9 +244,9 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
     ['http://host/pair#token=x', true],
     'machines.confirmPairing',
   ],
-  ['renameMachine', ['peer-1', 'workbox'], 'machines.renameMachine'],
-  ['revokeMachine', ['peer-1'], 'machines.revokeMachine'],
-  ['forgetMachine', ['peer-1'], 'machines.forgetMachine'],
+  ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox'], 'machines.renameMachine'],
+  ['revokeMachine', ['bbbbbbbbbbbbbbbb'], 'machines.revokeMachine'],
+  ['forgetMachine', ['bbbbbbbbbbbbbbbb'], 'machines.forgetMachine'],
   ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 

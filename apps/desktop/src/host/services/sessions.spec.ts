@@ -331,19 +331,19 @@ describe('launchAgent', () => {
   });
 
   it('creates the worktree on the named machine and keys the session with it (D2, D5)', async () => {
-    state.knownMachines.add('peer-abc');
+    state.knownMachines.add('dddddddddddddddd');
     await launchAgent({
       branch: 'feature/x',
       intent: 'continue-or-blank',
-      machine: 'peer-abc',
+      machine: 'dddddddddddddddd',
     });
     expect(state.createWorktreeCalls[0]).toMatchObject({
       branch: 'feature/x',
       cwd: '/repo-a',
-      machine: { id: 'peer-abc' },
+      machine: { id: 'dddddddddddddddd' },
     });
     expect(state.spawns[0].name).toBe(
-      worktreeSessionKey('feature/x', '/repo-a', 'peer-abc')
+      worktreeSessionKey('feature/x', '/repo-a', 'dddddddddddddddd')
     );
   });
 
@@ -353,7 +353,7 @@ describe('launchAgent', () => {
       launchAgent({
         branch: 'feature/x',
         intent: 'continue-or-blank',
-        machine: 'peer-abc',
+        machine: 'dddddddddddddddd',
       })
     ).rejects.toThrow(/not available/);
     expect(state.createWorktreeCalls).toHaveLength(0);
@@ -361,7 +361,7 @@ describe('launchAgent', () => {
   });
 
   it('emits worktree then start steps for a remote launch, keyed to launchId', async () => {
-    state.knownMachines.add('peer-abc');
+    state.knownMachines.add('dddddddddddddddd');
     const broadcasts: unknown[] = [];
     sessions.setSessionBroadcaster((channel, payload) => {
       if (channel === 'n10/launch/step') broadcasts.push(payload);
@@ -369,7 +369,7 @@ describe('launchAgent', () => {
     await launchAgent({
       branch: 'feature/x',
       intent: 'continue-or-blank',
-      machine: 'peer-abc',
+      machine: 'dddddddddddddddd',
       launchId: 'launch-1',
     });
     expect(broadcasts).toEqual([
@@ -470,10 +470,10 @@ describe('launchAgent', () => {
   // agent already runs on a paired machine, and this — unlike checkoutPlan
   // — never asked findRemoteBranchOwner at all. Same guard, reused.
   it('refuses a local launch, naming the machine, when the branch already runs there', async () => {
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(
@@ -484,18 +484,18 @@ describe('launchAgent', () => {
   });
 
   it('does not refuse an explicit remote launch on a different machine than the owner', async () => {
-    state.knownMachines.add('peer-1');
-    state.knownMachines.add('peer-2');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.knownMachines.add('cccccccccccccccc');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(
       launchAgent({
         branch: 'feature/x',
         intent: 'continue-or-blank',
-        machine: 'peer-2',
+        machine: 'cccccccccccccccc',
       })
     ).resolves.toBeDefined();
   });
@@ -503,10 +503,10 @@ describe('launchAgent', () => {
   it('does not refuse a local launch when the local agent is already running (finding 1 reused here)', async () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
     state.spawns = [];
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(
@@ -594,12 +594,16 @@ describe('reusing an already-attached connection', () => {
   // asks local tmux at all for a remote session, not merely that this
   // particular snapshot happens to disagree.
   it('does not reuse a remote session by asking local tmux for its incarnation', async () => {
-    state.knownMachines.add('peer-1');
-    const remoteName = worktreeSessionKey('reuse-remote', '/repo-a', 'peer-1');
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    const remoteName = worktreeSessionKey(
+      'reuse-remote',
+      '/repo-a',
+      'bbbbbbbbbbbbbbbb'
+    );
     await launchAgent({
       branch: 'reuse-remote',
       intent: 'continue-or-blank',
-      machine: 'peer-1',
+      machine: 'bbbbbbbbbbbbbbbb',
     });
     expect(state.spawns).toHaveLength(1);
     state.tmuxSnapshots.set(remoteName, {
@@ -609,7 +613,7 @@ describe('reusing an already-attached connection', () => {
     await launchAgent({
       branch: 'reuse-remote',
       intent: 'continue-or-blank',
-      machine: 'peer-1',
+      machine: 'bbbbbbbbbbbbbbbb',
       expected: incarnationFor(remoteName),
     });
     expect(state.spawns).toHaveLength(2);
@@ -629,12 +633,16 @@ describe('listSessions: a local session never carries a connectionState (finding
   });
 
   it('still reports connectionState for a remote session', async () => {
-    state.knownMachines.add('peer-1');
-    const name = worktreeSessionKey('remote-conn', '/repo-a', 'peer-1');
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    const name = worktreeSessionKey(
+      'remote-conn',
+      '/repo-a',
+      'bbbbbbbbbbbbbbbb'
+    );
     await launchAgent({
       branch: 'remote-conn',
       intent: 'continue-or-blank',
-      machine: 'peer-1',
+      machine: 'bbbbbbbbbbbbbbbb',
     });
     state.connectionStateByName.set(name, 'reconnecting');
     const summary = listSessions().find((s) => s.name === name);
@@ -986,10 +994,10 @@ describe('checkoutPlan', () => {
   // path (open-session.ts's findSession), just left open on this one.
 
   it('refuses, naming the machine, when the branch already has an agent running elsewhere', async () => {
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(checkoutPlan(req())).rejects.toThrow(/workbox/);
@@ -998,10 +1006,14 @@ describe('checkoutPlan', () => {
   });
 
   it('does not refuse for a same-named branch in a different repository on that machine', async () => {
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/some-other-repo', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession(
+        '/some-other-repo',
+        'feature/x',
+        'bbbbbbbbbbbbbbbb'
+      ),
     ]);
 
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
@@ -1009,19 +1021,22 @@ describe('checkoutPlan', () => {
 
   it('ignores a machine that is paired but not connected — nothing to ask', async () => {
     state.machines = [
-      { ...connectedMachine('peer-1', 'workbox'), state: 'unreachable' },
+      {
+        ...connectedMachine('bbbbbbbbbbbbbbbb', 'workbox'),
+        state: 'unreachable',
+      },
     ];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
   });
 
   it('proceeds locally when no paired machine is running that branch', async () => {
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', []);
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', []);
 
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
   });
@@ -1037,10 +1052,10 @@ describe('checkoutPlan', () => {
   it('injects into a live local agent even when a peer also has a session for this branch', async () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
     state.spawns = [];
-    state.knownMachines.add('peer-1');
-    state.machines = [connectedMachine('peer-1', 'workbox')];
-    state.remoteSessions.set('peer-1', [
-      remoteWorktreeSession('/repo-a', 'feature/x', 'peer-1'),
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
     ]);
 
     await expect(checkoutPlan(req('inject'))).resolves.toBe('injected');

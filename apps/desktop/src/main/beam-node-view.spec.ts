@@ -12,7 +12,7 @@ import { localMachineView, peerMachineView } from './beam-node-view.js';
 
 function record(overrides: Partial<PeerRecord> = {}): PeerRecord {
   return {
-    peerId: 'peer-1',
+    peerId: 'bbbbbbbbbbbbbbbb',
     label: 'workbox',
     publicKeyPem: 'pem',
     endpoints: ['http://10.0.0.2:4000'],
@@ -31,7 +31,7 @@ function status(
   }> = {}
 ) {
   return {
-    peerId: 'peer-1',
+    peerId: 'bbbbbbbbbbbbbbbb',
     label: 'workbox',
     revoked: false,
     queueDepth: 0,
@@ -41,9 +41,9 @@ function status(
 
 describe('localMachineView', () => {
   it('is always connected, never paired, and carries its own endpoints', () => {
-    const local = localMachineView('local-id', 'my-mac', ['http://a']);
+    const local = localMachineView('aaaaaaaaaaaaaaaa', 'my-mac', ['http://a']);
     expect(local).toEqual({
-      peerId: 'local-id',
+      peerId: 'aaaaaaaaaaaaaaaa',
       label: 'my-mac',
       isLocal: true,
       state: 'connected',

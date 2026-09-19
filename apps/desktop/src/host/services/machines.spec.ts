@@ -26,7 +26,7 @@ import {
 
 function localMachine(): MachineView {
   return {
-    peerId: 'local-id',
+    peerId: 'aaaaaaaaaaaaaaaa',
     label: 'my-mac',
     isLocal: true,
     state: 'connected',
@@ -84,13 +84,21 @@ function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
     previewPairing: record('previewPairing', (url: string) =>
       Promise.resolve({
         ok: true as const,
-        preview: { label: 'workbox', peerId: 'peer-1', endpoint: url },
+        preview: {
+          label: 'workbox',
+          peerId: 'bbbbbbbbbbbbbbbb',
+          endpoint: url,
+        },
       })
     ),
     confirmPairing: record('confirmPairing', () =>
       Promise.resolve({
         ok: true as const,
-        machine: { ...localMachine(), isLocal: false, peerId: 'peer-1' },
+        machine: {
+          ...localMachine(),
+          isLocal: false,
+          peerId: 'bbbbbbbbbbbbbbbb',
+        },
       })
     ),
     renameMachine: record('renameMachine', (peerId: string, label: string) =>
@@ -126,9 +134,9 @@ describe('with a port installed', () => {
     await regeneratePairingUrl();
     await previewPairing('http://x/pair#token=y');
     await confirmPairing('http://x/pair#token=y', true);
-    await renameMachine('peer-1', 'workbox-2');
-    await revokeMachine('peer-1');
-    await forgetMachine('peer-1');
+    await renameMachine('bbbbbbbbbbbbbbbb', 'workbox-2');
+    await revokeMachine('bbbbbbbbbbbbbbbb');
+    await forgetMachine('bbbbbbbbbbbbbbbb');
 
     expect(port.calls).toEqual([
       ['listMachines', []],
@@ -137,9 +145,9 @@ describe('with a port installed', () => {
       ['regeneratePairingUrl', []],
       ['previewPairing', ['http://x/pair#token=y']],
       ['confirmPairing', ['http://x/pair#token=y', true]],
-      ['renameMachine', ['peer-1', 'workbox-2']],
-      ['revokeMachine', ['peer-1']],
-      ['forgetMachine', ['peer-1']],
+      ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox-2']],
+      ['revokeMachine', ['bbbbbbbbbbbbbbbb']],
+      ['forgetMachine', ['bbbbbbbbbbbbbbbb']],
     ]);
   });
 });

@@ -41,17 +41,17 @@ beforeEach(() => {
 
 describe("remote-machines (the main-process face of the beam node's execOn/pty capability)", () => {
   it('machineFor throws when no port is installed, rather than returning a machine that silently fails', () => {
-    expect(() => machineFor('peer-abc')).toThrow(/not available/);
+    expect(() => machineFor('dddddddddddddddd')).toThrow(/not available/);
   });
 
   it('the executor runs argv through the port for that specific peerId', async () => {
     const port = fakePort();
     setRemoteMachinePort(port);
-    const machine = machineFor('peer-abc');
+    const machine = machineFor('dddddddddddddddd');
     const result = await machine.executor.run(['echo', 'hi']);
     expect(result).toEqual({ stdout: 'ok', stderr: '', code: 0 });
     expect(port.execOn).toHaveBeenCalledWith(
-      'peer-abc',
+      'dddddddddddddddd',
       ['echo', 'hi'],
       undefined
     );
@@ -60,7 +60,7 @@ describe("remote-machines (the main-process face of the beam node's execOn/pty c
   it('the pty opener filters events to its own streamId, not another concurrent stream', async () => {
     const port = fakePort();
     setRemoteMachinePort(port);
-    const machine = machineFor('peer-abc');
+    const machine = machineFor('dddddddddddddddd');
     const handle = await machine.ptyOpener.open({ cols: 80, rows: 24 });
     const chunks: string[] = [];
     handle.onData((d) => chunks.push(d));
@@ -77,7 +77,7 @@ describe("remote-machines (the main-process face of the beam node's execOn/pty c
   it('dispose() calls ptyClose (detach) and unsubscribes from events', async () => {
     const port = fakePort();
     setRemoteMachinePort(port);
-    const machine = machineFor('peer-abc');
+    const machine = machineFor('dddddddddddddddd');
     const handle = await machine.ptyOpener.open({ cols: 80, rows: 24 });
     handle.dispose();
     expect(port.ptyClose).toHaveBeenCalledWith('s1');
@@ -86,7 +86,7 @@ describe("remote-machines (the main-process face of the beam node's execOn/pty c
   it('a close event calls onClose handlers and stops delivering further data for that stream', async () => {
     const port = fakePort();
     setRemoteMachinePort(port);
-    const machine = machineFor('peer-abc');
+    const machine = machineFor('dddddddddddddddd');
     const handle = await machine.ptyOpener.open({ cols: 80, rows: 24 });
     const closed = vi.fn();
     handle.onClose(closed);
@@ -102,13 +102,15 @@ describe("remote-machines (the main-process face of the beam node's execOn/pty c
     installMachineResolver();
     expect(state.resolver).toBeTypeOf('function');
     // No port installed: machineFor would throw; the resolver must swallow that.
-    expect(state.resolver!('peer-abc')).toBeUndefined();
+    expect(state.resolver!('dddddddddddddddd')).toBeUndefined();
   });
 
   it('installMachineResolver resolves a real machine once a port is installed', () => {
     setRemoteMachinePort(fakePort());
     installMachineResolver();
-    const machine = state.resolver!('peer-abc') as { id: string } | undefined;
-    expect(machine?.id).toBe('peer-abc');
+    const machine = state.resolver!('dddddddddddddddd') as
+      | { id: string }
+      | undefined;
+    expect(machine?.id).toBe('dddddddddddddddd');
   });
 });

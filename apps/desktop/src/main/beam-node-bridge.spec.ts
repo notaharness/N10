@@ -54,7 +54,7 @@ beforeEach(() => {
 
 function localOnly(): MachineView {
   return {
-    peerId: 'local-id',
+    peerId: 'aaaaaaaaaaaaaaaa',
     label: 'my-mac',
     isLocal: true,
     state: 'connected',
@@ -71,7 +71,7 @@ function localOnly(): MachineView {
 
 function peer(state: MachineView['state']): MachineView {
   return {
-    peerId: 'peer-1',
+    peerId: 'bbbbbbbbbbbbbbbb',
     label: 'workbox',
     isLocal: false,
     state,
@@ -371,7 +371,7 @@ describe('BeamNodeBridge', () => {
 
   it('closes every open pty stream on an unexpected exit, so its backend learns the transport died (finding 1)', async () => {
     const bridge = new BeamNodeBridge();
-    const opening = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+    const opening = bridge.ptyOpen('bbbbbbbbbbbbbbbb', { cols: 80, rows: 24 });
     await tick();
     const openReq = child.postMessage.mock.calls.find(
       (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -399,7 +399,10 @@ describe('BeamNodeBridge', () => {
       const bridge = new BeamNodeBridge();
 
       // Generation 1: open a stream, worker calls it "pty-1".
-      const firstOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+      const firstOpen = bridge.ptyOpen('bbbbbbbbbbbbbbbb', {
+        cols: 80,
+        rows: 24,
+      });
       await settle();
       const firstReq = child.postMessage.mock.calls.find(
         (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -421,7 +424,10 @@ describe('BeamNodeBridge', () => {
       await settle(FIRST_RESTART_MS);
       child = replacement;
 
-      const secondOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+      const secondOpen = bridge.ptyOpen('bbbbbbbbbbbbbbbb', {
+        cols: 80,
+        rows: 24,
+      });
       await settle();
       const secondReq = child.postMessage.mock.calls.find(
         (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -464,7 +470,7 @@ describe('BeamNodeBridge', () => {
   it('a stale write that is itself what forks the replacement is dropped, not delivered to it', async () => {
     const bridge = new BeamNodeBridge();
 
-    const opening = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+    const opening = bridge.ptyOpen('bbbbbbbbbbbbbbbb', { cols: 80, rows: 24 });
     await tick();
     const openReq = child.postMessage.mock.calls.find(
       (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -504,7 +510,10 @@ describe('BeamNodeBridge', () => {
       const bridge = new BeamNodeBridge();
 
       // Generation 1: open a stream, worker calls it "pty-1".
-      const firstOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+      const firstOpen = bridge.ptyOpen('bbbbbbbbbbbbbbbb', {
+        cols: 80,
+        rows: 24,
+      });
       await settle();
       const firstReq = child.postMessage.mock.calls.find(
         (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -527,7 +536,10 @@ describe('BeamNodeBridge', () => {
       deadChild.emit('exit', 1);
       await settle(FIRST_RESTART_MS);
       child = replacement;
-      const secondOpen = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+      const secondOpen = bridge.ptyOpen('bbbbbbbbbbbbbbbb', {
+        cols: 80,
+        rows: 24,
+      });
       await settle();
       const secondReq = child.postMessage.mock.calls.find(
         (c) => (c[0] as { op: string }).op === 'ptyOpen'
@@ -595,10 +607,10 @@ describe('BeamNodeBridge', () => {
     child.emit('message', {
       kind: 'event',
       name: 'mail-inbound',
-      payload: { id: 'env-1', from: 'peer-1', fromLabel: 'workbox' },
+      payload: { id: 'env-1', from: 'bbbbbbbbbbbbbbbb', fromLabel: 'workbox' },
     });
     expect(events).toEqual([
-      { id: 'env-1', from: 'peer-1', fromLabel: 'workbox' },
+      { id: 'env-1', from: 'bbbbbbbbbbbbbbbb', fromLabel: 'workbox' },
     ]);
   });
 

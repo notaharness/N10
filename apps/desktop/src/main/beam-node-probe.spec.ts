@@ -20,7 +20,10 @@ vi.mock('@n10/beam', async (importOriginal) => {
       state.calls.push(baseUrl);
       if (state.fail.has(baseUrl)) return Promise.reject(new Error('refused'));
       return Promise.resolve({
-        peerId: state.descriptorFor.get(baseUrl) ?? 'wrong-id',
+        // An endpoint nobody registered answers as some other machine:
+        // a well-formed peerId that matches no peer in these tests, so
+        // the probe reads as unreachable rather than as a match.
+        peerId: state.descriptorFor.get(baseUrl) ?? 'ffffffffffffffff',
         label: 'x',
         protocol: 1,
         capabilities: [],
@@ -59,7 +62,7 @@ function addPeer(id: string, endpoint: string | null, revoked = false) {
 
 describe('ReachabilityProber', () => {
   it('probes a peer with an endpoint and no connection, and reports reachable', async () => {
-    addPeer('peer-1', 'http://a');
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a');
     const changes: number[] = [];
     const prober = new ReachabilityProber({
       peers,
@@ -70,13 +73,13 @@ describe('ReachabilityProber', () => {
     });
     prober.sync();
     await new Promise((r) => setTimeout(r, 20));
-    expect(prober.get('peer-1')).toBe('reachable');
+    expect(prober.get('bbbbbbbbbbbbbbbb')).toBe('reachable');
     expect(changes.length).toBeGreaterThan(0);
     prober.stop();
   });
 
   it('reports unreachable when the descriptor fetch fails', async () => {
-    addPeer('peer-1', 'http://a');
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a');
     state.fail.add('http://a');
     const prober = new ReachabilityProber({
       peers,
@@ -87,12 +90,12 @@ describe('ReachabilityProber', () => {
     });
     prober.sync();
     await new Promise((r) => setTimeout(r, 20));
-    expect(prober.get('peer-1')).toBe('unreachable');
+    expect(prober.get('bbbbbbbbbbbbbbbb')).toBe('unreachable');
     prober.stop();
   });
 
   it('never probes a revoked peer, even with an endpoint', async () => {
-    addPeer('peer-1', 'http://a', true);
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a', true);
     const prober = new ReachabilityProber({
       peers,
       connections,
@@ -103,12 +106,12 @@ describe('ReachabilityProber', () => {
     prober.sync();
     await new Promise((r) => setTimeout(r, 20));
     expect(state.calls).toEqual([]);
-    expect(prober.get('peer-1')).toBeUndefined();
+    expect(prober.get('bbbbbbbbbbbbbbbb')).toBeUndefined();
     prober.stop();
   });
 
   it('never probes a peer with no endpoint', async () => {
-    addPeer('peer-1', null);
+    addPeer('bbbbbbbbbbbbbbbb', null);
     const prober = new ReachabilityProber({
       peers,
       connections,
@@ -134,7 +137,7 @@ describe('ReachabilityProber', () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(state.calls).toEqual([]);
 
-    addPeer('peer-1', 'http://a');
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a');
     prober.sync();
     await new Promise((r) => setTimeout(r, 20));
     expect(state.calls).toEqual(['http://a']);

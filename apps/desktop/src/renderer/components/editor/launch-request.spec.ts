@@ -59,7 +59,7 @@ describe('sessionLaunchRequest', () => {
         { cols: 80, rows: 24 },
         undefined,
         'claude',
-        'peer-abc',
+        'dddddddddddddddd',
         'launch-1'
       )
     ).toStrictEqual({
@@ -68,7 +68,7 @@ describe('sessionLaunchRequest', () => {
       fresh: true,
       expected: undefined,
       agentId: 'claude',
-      machine: 'peer-abc',
+      machine: 'dddddddddddddddd',
       launchId: 'launch-1',
       cols: 80,
       rows: 24,
@@ -109,7 +109,7 @@ describe('reviewLaunchRequest', () => {
         { cols: 80, rows: 24 },
         undefined,
         undefined,
-        'peer-abc',
+        'dddddddddddddddd',
         'launch-2'
       )
     ).toStrictEqual({
@@ -117,7 +117,7 @@ describe('reviewLaunchRequest', () => {
       instruction: undefined,
       expected: undefined,
       agentId: undefined,
-      machine: 'peer-abc',
+      machine: 'dddddddddddddddd',
       launchId: 'launch-2',
       cols: 80,
       rows: 24,

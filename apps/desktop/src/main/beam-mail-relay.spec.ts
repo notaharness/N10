@@ -6,7 +6,7 @@ import type { LocalDeliveryTarget } from '@n10/core';
 function event(overrides: Partial<InboundMailEvent> = {}): InboundMailEvent {
   return {
     id: 'env-1',
-    from: 'peer-1',
+    from: 'bbbbbbbbbbbbbbbb',
     fromLabel: 'workbox',
     topic: 'orchestra',
     payload: 'target: tmux:n10-feature-x\n\nhello there',
@@ -100,7 +100,7 @@ describe('MailRelay', () => {
     push(event());
     expect(deliver).toHaveBeenCalledWith('key-1', 'hello there');
     expect(acked).toEqual(['env-1']);
-    expect(relay.snapshotFor('peer-1')).toEqual({
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb')).toEqual({
       inboundWaiting: [],
       inboundRefused: [],
     });
@@ -115,7 +115,7 @@ describe('MailRelay', () => {
     const relay = new MailRelay({ port, resolveTarget, deliver });
     push(event());
     expect(acked).toEqual([]);
-    const waiting = relay.snapshotFor('peer-1').inboundWaiting;
+    const waiting = relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundWaiting;
     expect(waiting).toHaveLength(1);
     expect(waiting[0]).toMatchObject({
       id: 'env-1',
@@ -141,7 +141,7 @@ describe('MailRelay', () => {
     connected = true;
     vi.advanceTimersByTime(1000);
     expect(acked).toEqual(['env-1']);
-    expect(relay.snapshotFor('peer-1').inboundWaiting).toEqual([]);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundWaiting).toEqual([]);
   });
 
   // ── Finding 3 (MEDIUM-HIGH): a retry must re-resolve, not reuse a
@@ -185,7 +185,9 @@ describe('MailRelay', () => {
       retryIntervalMs: 1000,
     });
     push(event());
-    expect(relay.snapshotFor('peer-1').inboundWaiting).toHaveLength(1);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundWaiting).toHaveLength(
+      1
+    );
 
     // The freed tmux name is now a shell terminal, not an agent.
     resolution = {
@@ -196,8 +198,8 @@ describe('MailRelay', () => {
 
     expect(deliver).toHaveBeenCalledTimes(1); // only the first attempt
     expect(acked).toEqual([]);
-    expect(relay.snapshotFor('peer-1').inboundWaiting).toEqual([]);
-    expect(relay.snapshotFor('peer-1').inboundRefused).toMatchObject([
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundWaiting).toEqual([]);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused).toMatchObject([
       { reason: 'that session is a shell terminal, not an agent' },
     ]);
   });
@@ -219,7 +221,7 @@ describe('MailRelay', () => {
       push(event());
       expect(deliver).not.toHaveBeenCalled();
       expect(acked).toEqual([]);
-      const refused = relay.snapshotFor('peer-1').inboundRefused;
+      const refused = relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused;
       expect(refused).toHaveLength(1);
       expect(refused[0]).toMatchObject({
         target: 'tmux:n10-feature-x',
@@ -251,7 +253,7 @@ describe('MailRelay', () => {
     expect(acked).toEqual([]);
     relay.dismiss('env-1');
     expect(acked).toEqual(['env-1']);
-    expect(relay.snapshotFor('peer-1').inboundRefused).toEqual([]);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused).toEqual([]);
   });
 
   // Finding 6 (LOW): the constructor discarded the unsubscribe
@@ -315,7 +317,7 @@ describe('MailRelay', () => {
     // Unacked and visible as refused — never silently truncated, and
     // never quietly dropped either.
     expect(acked).toEqual([]);
-    expect(relay.snapshotFor('peer-1').inboundRefused).toMatchObject([
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused).toMatchObject([
       { reason: expect.stringContaining('larger than') },
     ]);
   });
@@ -331,7 +333,9 @@ describe('MailRelay', () => {
     // subscribe replays it — that must not re-enter the decision.
     push(event());
     expect(resolveTarget).toHaveBeenCalledTimes(1);
-    expect(relay.snapshotFor('peer-1').inboundRefused).toHaveLength(1);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused).toHaveLength(
+      1
+    );
   });
 
   it('an envelope with no "target: " header is refused, not guessed', () => {
@@ -343,7 +347,9 @@ describe('MailRelay', () => {
     });
     push(event({ payload: 'no header here' }));
     expect(acked).toEqual([]);
-    expect(relay.snapshotFor('peer-1').inboundRefused).toHaveLength(1);
+    expect(relay.snapshotFor('bbbbbbbbbbbbbbbb').inboundRefused).toHaveLength(
+      1
+    );
   });
 
   // ── Finding 2 (HIGH): a lost ack must not become a second delivery ──

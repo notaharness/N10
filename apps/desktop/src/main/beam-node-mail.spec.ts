@@ -15,8 +15,8 @@ interface FakeEnvelope {
 function envelope(overrides: Partial<FakeEnvelope> = {}): FakeEnvelope {
   return {
     id: 'env-1',
-    from: 'peer-1',
-    to: 'me',
+    from: 'bbbbbbbbbbbbbbbb',
+    to: 'aaaaaaaaaaaaaaaa',
     seq: 1,
     topic: 'orchestra',
     payload: 'target: tmux:foo\n\nhi',
@@ -56,7 +56,7 @@ function fakePeers(records: { peerId: string; label: string }[]) {
 describe('InboundMailSubscriber', () => {
   it('pushes every accepted envelope, resolving the sender to its label', () => {
     const { mailbox, deliver } = fakeMailbox();
-    const peers = fakePeers([{ peerId: 'peer-1', label: 'workbox' }]);
+    const peers = fakePeers([{ peerId: 'bbbbbbbbbbbbbbbb', label: 'workbox' }]);
     const sub = new InboundMailSubscriber(mailbox, peers);
     const cb = vi.fn();
     sub.onMail(cb);
@@ -64,7 +64,7 @@ describe('InboundMailSubscriber', () => {
     expect(cb).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'env-1',
-        from: 'peer-1',
+        from: 'bbbbbbbbbbbbbbbb',
         fromLabel: 'workbox',
       })
     );
@@ -75,9 +75,9 @@ describe('InboundMailSubscriber', () => {
     const sub = new InboundMailSubscriber(mailbox, fakePeers([]));
     const cb = vi.fn();
     sub.onMail(cb);
-    deliver(envelope({ from: 'unknown-peer' }));
+    deliver(envelope({ from: 'eeeeeeeeeeeeeeee' }));
     expect(cb).toHaveBeenCalledWith(
-      expect.objectContaining({ fromLabel: 'unknown-peer' })
+      expect.objectContaining({ fromLabel: 'eeeeeeeeeeeeeeee' })
     );
   });
 

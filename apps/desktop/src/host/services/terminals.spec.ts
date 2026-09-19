@@ -219,7 +219,7 @@ describe('launchTerminal', () => {
       {
         kind: 'shell',
         cwd: '/remote/dir',
-        machine: 'peer-abc',
+        machine: 'dddddddddddddddd',
         launchId: 'L1',
       },
       HOME
@@ -592,10 +592,10 @@ describe('a retained agent pane', () => {
   // restart request never had.
   it('does not statSync a retained tab’s directory when its own identity says it is remote', async () => {
     const tab = await terminals.launchTerminal(
-      { kind: 'agent', cwd: '/remote/checkout', machine: 'peer-1' },
+      { kind: 'agent', cwd: '/remote/checkout', machine: 'bbbbbbbbbbbbbbbb' },
       HOME
     );
-    state.identityByName.set(tab.name, { machine: 'peer-1' });
+    state.identityByName.set(tab.name, { machine: 'bbbbbbbbbbbbbbbb' });
     state.tmuxHolds.add(tab.name);
     endProcess(tab.name);
     // A path that would fail assertLaunchableCwd if it were ever checked.
@@ -624,10 +624,10 @@ describe('a retained agent pane', () => {
 
   it('still reports connectionState for a remote terminal', async () => {
     const tab = await terminals.launchTerminal(
-      { kind: 'agent', cwd: '/remote/checkout', machine: 'peer-1' },
+      { kind: 'agent', cwd: '/remote/checkout', machine: 'bbbbbbbbbbbbbbbb' },
       HOME
     );
-    state.identityByName.set(tab.name, { machine: 'peer-1' });
+    state.identityByName.set(tab.name, { machine: 'bbbbbbbbbbbbbbbb' });
     state.connectionStateByName.set(tab.name, 'reconnecting');
     const [summary] = terminals.listTerminals(HOME);
     expect(summary?.connectionState).toBe('reconnecting');

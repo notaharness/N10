@@ -4,10 +4,10 @@ import { classifyPairError, withTimeout } from './beam-node-errors.js';
 
 describe('classifyPairError', () => {
   it('names a key mismatch, and carries the id and the label we already hold it under', () => {
-    const error = new PeerKeyMismatchError('peer-1', 'old-workbox');
+    const error = new PeerKeyMismatchError('bbbbbbbbbbbbbbbb', 'old-workbox');
     const failure = classifyPairError(error);
     expect(failure.reason).toBe('key-mismatch');
-    expect(failure.peerId).toBe('peer-1');
+    expect(failure.peerId).toBe('bbbbbbbbbbbbbbbb');
     expect(failure.existingLabel).toBe('old-workbox');
   });
 

@@ -31,13 +31,13 @@ describe('terminalLaunchRequest', () => {
         'agent',
         '/repo',
         { cols: 80, rows: 24 },
-        'peer-abc',
+        'dddddddddddddddd',
         'launch-1'
       )
     ).toStrictEqual({
       kind: 'agent',
       cwd: '/repo',
-      machine: 'peer-abc',
+      machine: 'dddddddddddddddd',
       launchId: 'launch-1',
       cols: 80,
       rows: 24,
@@ -49,7 +49,12 @@ describe('terminalLaunchRequest', () => {
   // launch to interpret — not '', which is neither absolute nor `~/`.
   it('a home-directory request produces a remote-expandable cwd, not an empty one', () => {
     expect(REMOTE_HOME_CWD).toBe('~/');
-    const req = terminalLaunchRequest('shell', REMOTE_HOME_CWD, {}, 'peer-abc');
+    const req = terminalLaunchRequest(
+      'shell',
+      REMOTE_HOME_CWD,
+      {},
+      'dddddddddddddddd'
+    );
     expect(req.cwd).toBe('~/');
     expect(req.cwd).not.toBe('');
   });
