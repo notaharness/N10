@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LOCAL_MACHINE_ID } from '@n10/worktree-manager';
 import {
   LOCAL_MACHINE,
   keyForWorktree,
@@ -94,6 +95,16 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
     expect(sessionIdentity('["terminal","x","peer","extra"]')).toBeNull();
     expect(sessionIdentity('["terminal",5]')).toBeNull();
     expect(sessionIdentity('["mystery","x"]')).toBeNull();
+  });
+
+  // The `'local'` sentinel is deliberately declared twice: core depends
+  // on worktree-manager, never the reverse, so neither package can own
+  // the other's constant. Nothing but this assertion stops a rename on
+  // one side from quietly desynchronising `isRemoteMachine()` from the
+  // key shape here — both are plain strings, so the compiler says
+  // nothing. Keep them equal or change both.
+  it('agrees with worktree-manager on the local-machine sentinel', () => {
+    expect(LOCAL_MACHINE).toBe(LOCAL_MACHINE_ID);
   });
 
   it('keyForWorktree stays local-only (no machine parameter) and unaffected by D2', () => {
