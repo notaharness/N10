@@ -97,12 +97,17 @@ test.describe('Machines — empty state', () => {
       await openMachinesSettings(app, page);
       await expect(machineRows(page)).toHaveCount(1);
 
-      await pairWithUrl(page, peerHost.pairingUrl(), async (dialog) => {
-        await expect(dialog.getByText('workbox')).toBeVisible();
-        await expect(
-          dialog.getByText(peerHostFingerprint('workbox'))
-        ).toBeVisible();
-      });
+      await pairWithUrl(
+        page,
+        peerHost.pairingUrl(),
+        'workbox',
+        async (dialog) => {
+          await expect(dialog.getByText('workbox')).toBeVisible();
+          await expect(
+            dialog.getByText(peerHostFingerprint('workbox'))
+          ).toBeVisible();
+        }
+      );
 
       // The panel now lists this machine and the one just paired, and
       // the footer's machines segment — hidden until a peer exists

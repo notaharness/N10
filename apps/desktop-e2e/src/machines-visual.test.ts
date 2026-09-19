@@ -81,7 +81,7 @@ test.describe('Machines visual @visual', () => {
 
         // The fifth state — `reachable` — only exists once something
         // real answers a probe, so it is paired live rather than seeded.
-        await pairWithUrl(page, peerHost.pairingUrl());
+        await pairWithUrl(page, peerHost.pairingUrl(), 'workbox');
 
         // The paired row's secondary text is `machine.endpoints[0]` —
         // a loopback URL on an OS-assigned port, the only part of this
@@ -167,7 +167,7 @@ test.describe('Machines visual @visual', () => {
       const peerHost = await startPeerHost('workbox');
       try {
         await openMachinesSettings(app, page);
-        await pairWithUrl(page, peerHost.pairingUrl());
+        await pairWithUrl(page, peerHost.pairingUrl(), 'workbox');
 
         const dialog = await openNewTerminalDialog(app, page);
         await dialog.getByRole('combobox', { name: 'Machine' }).click();
@@ -200,7 +200,7 @@ test.describe('Machines visual @visual', () => {
       const peerHost = await startPeerHost('workbox');
       try {
         await openMachinesSettings(app, page);
-        await pairWithUrl(page, peerHost.pairingUrl());
+        await pairWithUrl(page, peerHost.pairingUrl(), 'workbox');
 
         await createWorktree(page, 'visual-machine-launch');
         await sidebarRow(page, /visual-machine-launch/)

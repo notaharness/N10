@@ -38,6 +38,18 @@ export function machineRows(page: Page): Locator {
   return page.getByRole('button', { name: 'Machine actions' });
 }
 
+/** One machine's row, picked out by the label it renders. `MachineRow`
+ *  draws a plain div with no landmark of its own, so a row is reached
+ *  through the actions button it always renders — that button's parent
+ *  is the row, holding the label, the state and the secondary text.
+ *  State assertions belong here rather than on the page: `Reachable`
+ *  anywhere on the page is satisfied by any *other* machine. */
+export function machineRow(page: Page, label: string): Locator {
+  return machineRows(page)
+    .locator('xpath=..')
+    .filter({ has: page.getByText(label, { exact: true }) });
+}
+
 export async function openMachinesSettings(
   app: ElectronApplication,
   page: Page
@@ -69,32 +81,38 @@ export async function previewPairingUrl(
   await expect(dialog.getByText('Fingerprint', { exact: true })).toBeVisible();
 }
 
-/** Step 2: spend the token. Waits for the paired row to read `Reachable`
- *  — the live probe a real second `Host` answers — rather than a fixed
- *  delay. */
+/** Step 2: spend the token. Waits for `label`'s own row to read
+ *  `Reachable` — the live probe a real second `Host` answers — rather
+ *  than a fixed delay. `BeamNode` probes a peer the moment it is
+ *  paired, so this resolves without waiting out a probe interval. */
 export async function confirmPairing(
   page: Page,
-  dialog: Locator
+  dialog: Locator,
+  label: string
 ): Promise<void> {
   await dialog.getByRole('button', { name: 'Pair' }).click();
   await dialog.waitFor({ state: 'hidden' });
   // `exact` — `Unreachable` (machine-model.ts's STATE_LABEL for the
   // seeded stale peer) contains `Reachable`, and text matching is
   // substring and case-insensitive by default.
-  await expect(page.getByText('Reachable', { exact: true })).toBeVisible();
+  await expect(
+    machineRow(page, label).getByText('Reachable', { exact: true })
+  ).toBeVisible();
 }
 
 /** The whole "Add a machine" flow against a real pairing URL, ending with
- *  the newly paired peer visible and `Reachable`. `inspectPreview` runs
- *  on the confirm step, before the token is spent — the one moment at
- *  which nothing has been stored yet. */
+ *  `label`'s row visible and `Reachable`. `label` is the name the peer
+ *  host advertises, which is what its row is titled with.
+ *  `inspectPreview` runs on the confirm step, before the token is spent
+ *  — the one moment at which nothing has been stored yet. */
 export async function pairWithUrl(
   page: Page,
   url: string,
+  label: string,
   inspectPreview?: (dialog: Locator) => Promise<void>
 ): Promise<void> {
   const dialog = await openAddMachineDialog(page);
   await previewPairingUrl(dialog, url);
   await inspectPreview?.(dialog);
-  await confirmPairing(page, dialog);
+  await confirmPairing(page, dialog, label);
 }
