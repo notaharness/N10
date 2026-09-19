@@ -271,6 +271,69 @@ describe('MailRelay', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
+  // ── The boundary where a peer's bytes become keystrokes in a local
+  // pane: bounded and filtered here, whatever the layer below did.
+
+  it('strips the control characters a terminal would act on', () => {
+    const { port, push } = fakePort();
+    const deliver = vi.fn(() => true);
+    new MailRelay({
+      port,
+      resolveTarget: () => ({ kind: 'agent', key: 'key-1' }),
+      deliver,
+    });
+    push(
+      event({
+        payload:
+          'target: tmux:n10-feature-x\n\nbuild \x1b[31mfailed\x07\rrm -rf ~\ttab\nnext line',
+      })
+    );
+    // ESC and BEL gone, so nothing here can drive the terminal; the
+    // lone CR is a newline rather than a submit in the middle of
+    // somebody else's message; tabs and newlines survive, because a
+    // report is text.
+    expect(deliver).toHaveBeenCalledWith(
+      'key-1',
+      'build [31mfailed\nrm -rf ~\ttab\nnext line'
+    );
+  });
+
+  it('refuses a message past the size cap instead of delivering part of it', () => {
+    const { port, push, acked } = fakePort();
+    const deliver = vi.fn(() => true);
+    const relay = new MailRelay({
+      port,
+      resolveTarget: () => ({ kind: 'agent', key: 'key-1' }),
+      deliver,
+    });
+    push(
+      event({
+        payload: `target: tmux:n10-feature-x\n\n${'a'.repeat(64 * 1024)}`,
+      })
+    );
+    expect(deliver).not.toHaveBeenCalled();
+    // Unacked and visible as refused — never silently truncated, and
+    // never quietly dropped either.
+    expect(acked).toEqual([]);
+    expect(relay.snapshotFor('peer-1').inboundRefused).toMatchObject([
+      { reason: expect.stringContaining('larger than') },
+    ]);
+  });
+
+  it('does not re-rule on an id it has already refused when the mailbox replays it', () => {
+    const { port, push } = fakePort();
+    const resolveTarget = vi.fn(
+      (): LocalDeliveryTarget => ({ kind: 'refused', reason: 'nope' })
+    );
+    const relay = new MailRelay({ port, resolveTarget, deliver: vi.fn() });
+    push(event());
+    // A refusal stays on disk until someone dismisses it, so every
+    // subscribe replays it — that must not re-enter the decision.
+    push(event());
+    expect(resolveTarget).toHaveBeenCalledTimes(1);
+    expect(relay.snapshotFor('peer-1').inboundRefused).toHaveLength(1);
+  });
+
   it('an envelope with no "target: " header is refused, not guessed', () => {
     const { port, push, acked } = fakePort();
     const relay = new MailRelay({

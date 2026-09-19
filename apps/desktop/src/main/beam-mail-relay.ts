@@ -20,6 +20,12 @@
  * target will not become deliverable by waiting — but it is not
  * silently dropped either: it stays visible until a person dismisses
  * it, which is the one thing that acks a refusal.
+ *
+ * This is also the boundary at which a peer's bytes become keystrokes
+ * in a local pane, so the message is size-capped and stripped of the
+ * control characters a terminal acts on before it goes anywhere near
+ * `deliver()` — defence at the edge that owns the consequence, not on
+ * the assumption that a layer below already did it.
  */
 import {
   deliverToRunningSession,
@@ -60,6 +66,28 @@ export interface MailRelayOptions {
 }
 
 const DEFAULT_RETRY_INTERVAL_MS = 3_000;
+
+/** This is where bytes a peer chose become keystrokes in one of this
+ *  machine's panes, so they are bounded and filtered here rather than
+ *  on the assumption that the layer that carried them did it. Generous
+ *  enough for the agent reports the relay exists to carry, small
+ *  enough that a single envelope cannot paste a novel into a REPL. */
+const MAX_RELAY_MESSAGE_BYTES = 32 * 1024;
+
+/** Strips what a terminal would act on rather than display: the C0
+ *  controls other than tab and newline (ESC and everything it can
+ *  drive, BEL, backspace), DEL and the C1 range. A carriage return
+ *  becomes a newline — `deliverToRunningSession` submits with a
+ *  trailing CR of its own, so an embedded one is a submit in the
+ *  middle of somebody else's message. */
+function sanitizeRelayMessage(message: string): string {
+  return (
+    message
+      .replace(/\r\n?/g, '\n')
+      // eslint-disable-next-line no-control-regex -- matching control characters is the point
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '')
+  );
+}
 
 interface WaitingItem extends InboundMailItem {
   peerId: string;
@@ -118,7 +146,17 @@ export class MailRelay {
   }
 
   private handle(event: InboundMailEvent): void {
-    if (this.delivered.has(event.id) || this.waiting.has(event.id)) return;
+    // `refused` belongs in this guard as much as the other two: a
+    // refusal stays on disk until someone dismisses it, so the
+    // mailbox replays it at every subscribe, and without this each
+    // replay re-enters `attempt()`/`refuse()` for an id this relay
+    // has already ruled on.
+    if (
+      this.delivered.has(event.id) ||
+      this.waiting.has(event.id) ||
+      this.refused.has(event.id)
+    )
+      return;
     const parsed = parseRelayPayload(event.payload, event.encoding);
     if (!parsed) {
       this.refuse(
@@ -129,7 +167,20 @@ export class MailRelay {
       );
       return;
     }
-    this.attempt(event, parsed.target, parsed.message);
+    // Refused, not truncated: a message this size is not something
+    // this machine can decide the safe half of, and a refusal stays
+    // unacked and visible rather than quietly delivering part of what
+    // a peer sent.
+    if (Buffer.byteLength(parsed.message, 'utf8') > MAX_RELAY_MESSAGE_BYTES) {
+      this.refuse(
+        event.id,
+        event.from,
+        parsed.target,
+        `the message is larger than the ${MAX_RELAY_MESSAGE_BYTES} bytes this machine accepts`
+      );
+      return;
+    }
+    this.attempt(event, parsed.target, sanitizeRelayMessage(parsed.message));
   }
 
   private attempt(
@@ -146,7 +197,6 @@ export class MailRelay {
       this.ack(event.id);
       return;
     }
-    this.refused.delete(event.id);
     this.waiting.set(event.id, {
       id: event.id,
       peerId: event.from,
