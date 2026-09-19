@@ -37,6 +37,12 @@ interface Pending {
   reject: (error: Error) => void;
 }
 
+/** How long one op may take before the worker is treated as hung.
+ *  Generous: every op here can legitimately wait on a peer over the
+ *  network (a pairing handshake, an `execOn`), so this is the "this
+ *  worker is never answering" threshold, not a latency budget. */
+const REQUEST_TIMEOUT_MS = 60_000;
+
 /**
  * Forks the beam node's utility process on first use (lazily — the app
  * must not start a node just because it launched, decisions.md D10) and
@@ -225,14 +231,47 @@ export class BeamNodeBridge
     this.restarts.schedule(() => this.ensureChild());
   }
 
+  /** A worker that hangs without exiting — an infinite loop, or a call
+   *  inside `BeamNode` to a machine that is unreachable in a way that
+   *  never settles, which is an ordinary state for a node whose job is
+   *  talking to other people's laptops — otherwise leaves `this.pending`
+   *  undrained forever: `'exit'` is the only thing that drains it, and a
+   *  hung worker never exits. Every in-flight and every future caller
+   *  then waits for the life of the app. Killing the child on the first
+   *  timeout hands the recovery to the restart path, which already
+   *  knows how to synthesize the closes and push the machines as
+   *  unreachable. */
+  private timeOut(id: number, op: string, child: UtilityProcess): void {
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    this.pending.delete(id);
+    pending.reject(
+      new Error(
+        `beam node did not answer "${op}" within ${REQUEST_TIMEOUT_MS}ms`
+      )
+    );
+    if (this.child === child) child.kill();
+  }
+
   private request<T>(op: string, payload?: unknown): Promise<T> {
     return this.ensureChild().then(
       (child) =>
         new Promise<T>((resolve, reject) => {
           const id = this.nextId++;
+          const timer = setTimeout(
+            () => this.timeOut(id, op, child),
+            REQUEST_TIMEOUT_MS
+          );
+          timer.unref?.();
           this.pending.set(id, {
-            resolve: resolve as (value: unknown) => void,
-            reject,
+            resolve: (value) => {
+              clearTimeout(timer);
+              resolve(value as T);
+            },
+            reject: (error) => {
+              clearTimeout(timer);
+              reject(error);
+            },
           });
           const request: BeamNodeRequest = { id, op, payload };
           child.postMessage(request);

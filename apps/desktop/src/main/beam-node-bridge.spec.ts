@@ -339,6 +339,36 @@ describe('BeamNodeBridge', () => {
     }
   });
 
+  it('a worker that hangs without ever exiting fails its request and is killed', async () => {
+    vi.useFakeTimers();
+    try {
+      const bridge = new BeamNodeBridge();
+      // Collect the failure now rather than after advancing the
+      // clock: an unhandled rejection is itself the bug next door.
+      const failure = bridge.listMachines().catch((e: unknown) => e);
+      await settle();
+      expect(child.postMessage).toHaveBeenCalledTimes(1);
+
+      // No answer and no exit: the worker is stuck in a loop, or on a
+      // call to a machine that never settles. `'exit'` is the only
+      // thing that drains `pending`, so without a timeout this call —
+      // and every later one — waits for the life of the app.
+      await settle(120_000);
+      expect(String(await failure)).toContain('did not answer "listMachines"');
+      expect(child.kill).toHaveBeenCalled();
+
+      // Recovery is the ordinary restart path: the killed child
+      // reports its exit and a replacement forks after the backoff.
+      const replacement = makeChild();
+      fork.mockReturnValue(replacement);
+      child.emit('exit', null);
+      await settle(FIRST_RESTART_MS);
+      expect(fork).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('closes every open pty stream on an unexpected exit, so its backend learns the transport died (finding 1)', async () => {
     const bridge = new BeamNodeBridge();
     const opening = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
