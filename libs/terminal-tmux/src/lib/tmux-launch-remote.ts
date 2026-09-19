@@ -90,7 +90,10 @@ async function createRemote(
     );
     return name;
   } catch (error) {
-    await tmuxKillSessionWith(executor, name);
+    // Best-effort cleanup: a machine that went unreachable is often
+    // why setup failed in the first place, and letting the kill's own
+    // rejection escape would replace the real reason with it.
+    await tmuxKillSessionWith(executor, name).catch(() => undefined);
     throw error;
   }
 }

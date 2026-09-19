@@ -12,36 +12,61 @@ const spec: SessionSpec = {
   rows: 24,
 };
 
-function fakeExecutor(opts: {
+interface ExecResult { stdout: string; stderr: string; code: number }
+
+interface FakeOptions {
   hasSession?: (name: string) => boolean;
   fail?: string;
   /** `undefined` for a name means "no such pane" (null pane state);
    *  otherwise whether it reads as dead. */
   paneDead?: (name: string) => boolean | undefined;
-}): { executor: MachineExecutor; calls: string[] } {
+  /** What `show-options -qv … default-shell` reports on the remote. */
+  defaultShell?: string;
+  /** A command whose call rejects outright — an unreachable machine,
+   *  rather than a tmux that answered non-zero. */
+  unreachableFor?: string;
+}
+
+const ok = (stdout = ''): ExecResult => ({ stdout, stderr: '', code: 0 });
+
+/** `=name:` back to the bare session name. */
+const targetName = (target: string): string =>
+  target.replace(/^=/, '').replace(/:$/, '');
+
+function paneStateReply(opts: FakeOptions, tmuxArgs: string[]): ExecResult {
+  const name = targetName(tmuxArgs[tmuxArgs.indexOf('-t') + 1]!);
+  const dead = opts.paneDead?.(name);
+  return dead === undefined ? ok() : ok(`%0\t${dead ? '1' : '0'}\t\t\n`);
+}
+
+function tmuxReply(opts: FakeOptions, argv: string[]): ExecResult {
+  const [, ...tmuxArgs] = argv;
+  if (tmuxArgs[0] === 'has-session')
+    return {
+      stdout: '',
+      stderr: '',
+      code: opts.hasSession?.(targetName(tmuxArgs[2]!)) ? 0 : 1,
+    };
+  if (tmuxArgs.includes('show-options'))
+    return ok(`${opts.defaultShell ?? ''}\n`);
+  if (tmuxArgs.includes('display-message'))
+    return paneStateReply(opts, tmuxArgs);
+  if (opts.fail && argv.join(' ').includes(opts.fail))
+    return { stdout: '', stderr: 'boom', code: 1 };
+  return ok();
+}
+
+function fakeExecutor(opts: FakeOptions): {
+  executor: MachineExecutor;
+  calls: string[];
+} {
   const calls: string[] = [];
   const executor: MachineExecutor = {
     async run(argv) {
       calls.push(argv.join(' '));
-      const [, ...tmuxArgs] = argv;
-      if (tmuxArgs[0] === 'has-session') {
-        const name = tmuxArgs[2]!.replace(/^=/, '').replace(/:$/, '');
-        return {
-          stdout: '',
-          stderr: '',
-          code: opts.hasSession?.(name) ? 0 : 1,
-        };
-      }
-      if (tmuxArgs.includes('display-message')) {
-        const target = tmuxArgs[tmuxArgs.indexOf('-t') + 1]!;
-        const name = target.replace(/^=/, '').replace(/:$/, '');
-        const dead = opts.paneDead?.(name);
-        if (dead === undefined) return { stdout: '', stderr: '', code: 0 };
-        return { stdout: `%0\t${dead ? '1' : '0'}\t\t\n`, stderr: '', code: 0 };
-      }
-      if (opts.fail && argv.join(' ').includes(opts.fail))
-        return { stdout: '', stderr: 'boom', code: 1 };
-      return { stdout: '', stderr: '', code: 0 };
+      if (opts.unreachableFor && argv.includes(opts.unreachableFor))
+        throw new Error('machine unreachable');
+      return tmuxReply(opts, argv);
     },
   };
   return { executor, calls };
@@ -70,6 +95,47 @@ describe('prepareRemoteTmuxSession (D5: the same plan, executed remotely)', () =
     expect(calls[2]).toMatch(
       /^tmux set-option -t =test: @agent example ; set-option -t =test: remain-on-exit on ; set-option -t =test: status off ; respawn-pane -k -t =test: -c \/tmp( -e \S+=\S+)* -- \/bin\/sh -c agent$/
     );
+  });
+
+  // A spec with no command is the plain remote login shell that
+  // `RemotePtyOpenParams` documents as supported: the only path that
+  // reads `default-shell` off the machine, and the only one where the
+  // lazy `show-options` fork is paid at all.
+  it('respawns the remote default shell when the spec carries no command', async () => {
+    const { executor, calls } = fakeExecutor({
+      hasSession: () => false,
+      defaultShell: '/usr/bin/zsh',
+    });
+    const name = await prepareRemoteTmuxSession(
+      executor,
+      { ...spec, cmd: '', args: [] },
+      { mode: 'create', label: 'test', tags: {} }
+    );
+    expect(name).toBe('test');
+    expect(
+      calls.some((c) => c.includes('show-options -qv -t =test: default-shell'))
+    ).toBe(true);
+    expect(calls.at(-1)).toMatch(/-- \/usr\/bin\/zsh -l$/);
+  });
+
+  it('falls back to /bin/sh when the remote reports no default-shell', async () => {
+    const { executor, calls } = fakeExecutor({ hasSession: () => false });
+    await prepareRemoteTmuxSession(
+      executor,
+      { ...spec, cmd: '', args: [] },
+      { mode: 'create', label: 'test', tags: {} }
+    );
+    expect(calls.at(-1)).toMatch(/-- \/bin\/sh -l$/);
+  });
+
+  it('pays no show-options fork when the spec carries a command', async () => {
+    const { executor, calls } = fakeExecutor({ hasSession: () => false });
+    await prepareRemoteTmuxSession(executor, spec, {
+      mode: 'create',
+      label: 'test',
+      tags: {},
+    });
+    expect(calls.some((c) => c.includes('show-options'))).toBe(false);
   });
 
   it('tries the next candidate name when the preferred one is taken', async () => {
@@ -101,6 +167,24 @@ describe('prepareRemoteTmuxSession (D5: the same plan, executed remotely)', () =
     expect(calls.some((c) => c.startsWith('tmux kill-session -t =test:'))).toBe(
       true
     );
+  });
+
+  // The machine going away is a common reason setup failed at all, so
+  // the best-effort cleanup kill fails right alongside it. Its own
+  // rejection must not replace the reason the caller needs to see.
+  it('reports the setup failure, not the cleanup failure, when the machine is unreachable', async () => {
+    const { executor } = fakeExecutor({
+      hasSession: () => false,
+      fail: 'set-option',
+      unreachableFor: 'kill-session',
+    });
+    await expect(
+      prepareRemoteTmuxSession(executor, spec, {
+        mode: 'create',
+        label: 'test',
+        tags: {},
+      })
+    ).rejects.toThrow(/session setup failed/);
   });
 
   it('runs a plain attach without rewriting metadata', async () => {
