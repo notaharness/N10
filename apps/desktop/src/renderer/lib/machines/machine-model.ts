@@ -178,6 +178,33 @@ export function isMachineSelectable(machine: MachineView): boolean {
   );
 }
 
+/** What a dialog's machine picker should show, and what its launch
+ *  should name: `value` is the row the `Select` renders as chosen,
+ *  `remote` the peerId a launch request carries (`undefined` for a
+ *  local launch, which is every launch whose machine is this one).
+ *
+ *  A dialog can sit open while the machine it picked flips to
+ *  `unreachable` or `revoked`. Radix disables that option but keeps
+ *  the value, so a stale pick would still go out on the request and
+ *  fail a round trip later. Falling back to local is both what gets
+ *  sent and what the picker shows, so the two never disagree about
+ *  which machine is about to be used. */
+export function machineChoice(
+  machines: readonly MachineView[],
+  chosen: string | null
+): { value: string; remote: string | undefined } {
+  const local = machines.find((m) => m.isLocal);
+  const picked = chosen
+    ? machines.find((m) => m.peerId === chosen && isMachineSelectable(m))
+    : undefined;
+  const value = (picked ?? local)?.peerId ?? '';
+  const remote =
+    hasPeerMachines(machines) && value && value !== local?.peerId
+      ? value
+      : undefined;
+  return { value, remote };
+}
+
 export interface MachineOption {
   machine: MachineView;
   disabled: boolean;

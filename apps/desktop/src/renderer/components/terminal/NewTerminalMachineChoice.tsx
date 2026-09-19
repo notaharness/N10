@@ -5,6 +5,7 @@ import { useMachines } from '../../lib/data/queries.js';
 import {
   hasPeerMachines,
   launchStepLabel,
+  machineChoice,
 } from '../../lib/machines/machine-model.js';
 import { MachineSelect } from '../machines/MachineSelect.js';
 
@@ -18,22 +19,22 @@ import { MachineSelect } from '../machines/MachineSelect.js';
  * `selectedMachine()` is what actually goes on the launch request: the
  * local default resolves to `undefined`, never `'local'` or the local
  * machine's own peerId, so a local launch's request is unchanged from
- * before this phase.
+ * before this phase. `machineChoice` re-reads the pick against the
+ * live list on every render, so a machine that stops being selectable
+ * while the dialog is open is dropped from both the control and the
+ * request rather than submitted and failed remotely.
  */
 export function useMachineChoice() {
   const machines = useMachines();
   const list = machines.data ?? [];
-  const local = list.find((m) => m.isLocal);
   const [chosen, setChosen] = useState<string | null>(null);
-  const value = chosen ?? local?.peerId ?? '';
-  const show = hasPeerMachines(list);
+  const { value, remote } = machineChoice(list, chosen);
   return {
-    show,
+    show: hasPeerMachines(list),
     machines: list,
     value,
     setValue: setChosen,
-    selectedMachine: (): string | undefined =>
-      show && value && value !== local?.peerId ? value : undefined,
+    selectedMachine: (): string | undefined => remote,
     selectedLabel: (): string =>
       list.find((m) => m.peerId === value)?.label ?? '',
   };

@@ -9,6 +9,7 @@ import {
   inboundWaitingBadgeLabel,
   isMachineSelectable,
   launchStepLabel,
+  machineChoice,
   machinePresentation,
   machineSelectOptions,
   oldestInboundMailAge,
@@ -218,6 +219,48 @@ describe('isMachineSelectable', () => {
     ] as const) {
       expect(isMachineSelectable(machine({ state }))).toBe(false);
     }
+  });
+});
+
+describe('machineChoice', () => {
+  const reachable = machine({ peerId: 'peer-1', state: 'reachable' });
+
+  it('defaults to the local machine, which a launch names as no machine at all', () => {
+    const { value, remote } = machineChoice([local, reachable], null);
+    expect(value).toBe('me');
+    expect(remote).toBeUndefined();
+  });
+
+  it('carries a selectable peer through to the request', () => {
+    expect(machineChoice([local, reachable], 'peer-1')).toEqual({
+      value: 'peer-1',
+      remote: 'peer-1',
+    });
+  });
+
+  it('drops a pick that has stopped being selectable while the dialog sat open', () => {
+    // The `Select` disables the option but keeps its value, so without
+    // this the launch goes out against a machine already known to be
+    // unusable and fails a round trip later. Local is both what is
+    // sent and what the control shows — they never disagree.
+    for (const state of ['unreachable', 'revoked', 'no-endpoint'] as const) {
+      const gone = machine({ peerId: 'peer-1', state });
+      expect(machineChoice([local, gone], 'peer-1')).toEqual({
+        value: 'me',
+        remote: undefined,
+      });
+    }
+  });
+
+  it('drops a pick for a machine that has left the list entirely', () => {
+    expect(machineChoice([local], 'peer-1')).toEqual({
+      value: 'me',
+      remote: undefined,
+    });
+  });
+
+  it('D8: with only the local machine there is nothing remote to name', () => {
+    expect(machineChoice([local], null).remote).toBeUndefined();
   });
 });
 
