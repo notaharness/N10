@@ -315,6 +315,43 @@ describe('BeamNodeBridge', () => {
     ]);
   });
 
+  it('a stale write that is itself what forks the replacement is dropped, not delivered to it', async () => {
+    const bridge = new BeamNodeBridge();
+
+    const opening = bridge.ptyOpen('peer-1', { cols: 80, rows: 24 });
+    await tick();
+    const openReq = child.postMessage.mock.calls.find(
+      (c) => (c[0] as { op: string }).op === 'ptyOpen'
+    )?.[0] as { id: number };
+    child.emit('message', {
+      kind: 'response',
+      id: openReq.id,
+      ok: true,
+      result: { streamId: 'pty-1' },
+    });
+    const staleHandle = await opening;
+
+    // The worker dies; nothing has forked a replacement yet — the
+    // restart is only scheduled. The cross-wire test above forces the
+    // fork with a fresh `ptyOpen` first, which is exactly why it
+    // cannot see this: here the stale write is the *first* thing to
+    // reach `ensureChild` after the exit, so it forks the replacement
+    // on its own way through `request()`.
+    const replacement = makeChild();
+    fork.mockReturnValue(replacement);
+    child.emit('exit', 1);
+    await tick();
+
+    bridge.ptyWrite(staleHandle.streamId, 'oops');
+    await tick();
+
+    // Whether or not a replacement exists yet, a generation-1 raw id
+    // must never be posted to one: `RemoteOps.nextStreamId` restarts
+    // at 1 in the new process, so "pty-1" there is somebody else's
+    // pane.
+    expect(replacement.postMessage).not.toHaveBeenCalled();
+  });
+
   it('a late message from an already-replaced worker keeps its own (dead) generation, never the live one (finding 4, second pass)', async () => {
     const bridge = new BeamNodeBridge();
 

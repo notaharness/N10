@@ -71,8 +71,10 @@ export class BeamNodeBridge
   >();
   private readonly mailListeners = new Set<(event: InboundMailEvent) => void>();
   private shuttingDown = false;
-  /** Bumped once per forked worker. Every pty stream id handed to a
-   *  caller is wrapped with the generation that opened it
+  /** Bumped when a worker forks and again when one exits, so no live
+   *  generation number ever names a worker that is already gone.
+   *  Every pty stream id handed to a caller is wrapped with the
+   *  generation that opened it
    *  (`beam-stream-id.ts`), so a handle from a worker that has since
    *  died can never be mistaken for a same-numbered stream on its
    *  replacement (finding 1) — `RemoteOps.nextStreamId` restarts at 1
@@ -206,6 +208,15 @@ export class BeamNodeBridge
    */
   private onExit(code: number | null): void {
     this.child = null;
+    // A dead worker's ids die with it, at the moment of death rather
+    // than whenever a replacement happens to fork. Bumping only in
+    // `ensureChild` left a window — from this exit until the restart
+    // timer fires — in which `currentGenerationRawId` still called
+    // this worker's ids current, so a `ptyWrite` for one of them
+    // passed the guard and then forked the replacement itself on its
+    // way through `request()`, posting a dead generation's raw id to a
+    // brand-new worker whose own `nextStreamId` restarts at 1.
+    this.generation += 1;
     // Drain pending before closing streams: closeOpenStreams runs
     // listener callbacks synchronously, and a listener that reacts by
     // starting a reconnect must never have its brand-new request caught
