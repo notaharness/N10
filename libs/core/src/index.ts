@@ -65,6 +65,7 @@ export {
 } from './lib/inactive-alerts.js';
 export * from './lib/agents/registry.js';
 export * from './lib/agents/agent-options.js';
+export * from './lib/agents/agent-config-dirs.js';
 export * from './lib/session/launch-session.js';
 export * from './lib/session/session-launch-context.js';
 export * from './lib/session/session-menu.js';

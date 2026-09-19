@@ -27,6 +27,7 @@ import {
 } from '../session-resolver.js';
 import { readWorktreeHead } from '../discovery/worktree-origin.js';
 import type { LaunchSpec } from '../agents/registry.js';
+import { machineEnvAdditions, type MachineEnvRequest } from './machine-env.js';
 import type { SessionRequest } from './session-request.js';
 
 export interface OpenSessionParams {
@@ -38,6 +39,13 @@ export interface OpenSessionParams {
   cwd: string;
   cols: number;
   rows: number;
+  /**
+   * What this launch wants from the machine it lands on — a Claude
+   * configuration directory, an index of its own. Resolved here, on
+   * the launching machine, rather than being handed over as paths:
+   * see `machine-env.ts`.
+   */
+  machine?: MachineEnvRequest;
   /** Called only when a process must start, never during attachment. */
   build: (
     previousAgent?: string,
@@ -119,7 +127,7 @@ async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
       }
     : launchPlan(session, existing, launch.agent, fresh, params.expected);
   const backend = await createTmuxBackend(
-    sessionSpec(params, launch.spec, !!fresh),
+    sessionSpec(params, launch.spec, !!fresh, launch.agent),
     plan
   );
   const key =
@@ -149,10 +157,12 @@ function resolveOpenTarget(params: OpenSessionParams): TaggedSession | null {
 function sessionSpec(
   params: OpenSessionParams,
   launch: LaunchSpec,
-  fresh: boolean
+  fresh: boolean,
+  agent: string | undefined
 ): SessionSpec {
   const additions = {
     ...launch.env,
+    ...machineEnvAdditions(params.machine, params.cwd, agent),
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
   const env: Record<string, string | undefined> = {
