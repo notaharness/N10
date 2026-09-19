@@ -158,6 +158,14 @@ export class RemoteTmuxBackend implements SessionBackend {
         cols: this.width,
         rows: this.height,
       });
+      // `dispose()` clears a *scheduled* retry; it cannot cancel one
+      // already awaiting `open()`. Adopting this handle on a backend
+      // that was torn down (or whose process exited) meanwhile leaks
+      // the remote pty stream — nothing would ever dispose it.
+      if (this.disposed || !this.state.running) {
+        handle.dispose();
+        return;
+      }
       this.handle.dispose();
       this.handle = handle;
       this.bindHandle(handle);

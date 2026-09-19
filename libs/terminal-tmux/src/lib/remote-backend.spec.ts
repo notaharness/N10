@@ -278,6 +278,48 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(opensAttempted).toBe(5);
   });
 
+  // `dispose()` can only clear a *scheduled* retry. One already
+  // awaiting `open()` resolves onto a backend whose handle, callbacks
+  // and poll subscription are gone; adopting that handle leaks the
+  // remote pty stream, because nothing else holds a reference to it.
+  it('disposes a stream that finishes opening after dispose(), instead of adopting it on a torn-down backend', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    let releaseOpen: () => void = () => undefined;
+    const pendingOpen = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    let attempted = 0;
+    machine.ptyOpener.open = vi.fn(async () => {
+      attempted += 1;
+      const opened = fakeHandle();
+      opens.push(opened);
+      // The initial attach resolves at once; the reconnect hangs until
+      // the test releases it, so dispose() lands mid-flight.
+      if (attempted > 1) await pendingOpen;
+      return opened.handle;
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    opens[0]!.close();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(opens).toHaveLength(2);
+
+    backend.dispose();
+    releaseOpen();
+    await flushMicrotasks();
+    expect(opens[1]!.handle.dispose).toHaveBeenCalled();
+    expect(backend.connectionState).not.toBe('connected');
+  });
+
   it('reconnect() is a no-op while already connected', async () => {
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))
