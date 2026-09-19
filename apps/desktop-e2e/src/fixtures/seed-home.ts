@@ -16,6 +16,7 @@ import {
   type TerminalSeed,
 } from '../setup/terminals.js';
 import { seedPeerTable, type PeerSeed } from '../setup/beam-peer.js';
+import { seedIdentity } from '../setup/beam-identity.js';
 
 /**
  * Everything a test wants already on disk (or already running) when the
@@ -101,8 +102,9 @@ export interface HomeSeed {
 /**
  * Write the isolated `$HOME` a test runs against: global config, the
  * per-project config (cwd-hashed, as the config store keys it), any
- * agent-authored drafts, desktop prefs, and — when a scenario is given
- * — the fake `gh`. Returns the environment additions the app needs.
+ * agent-authored drafts, desktop prefs, this machine's beam identity,
+ * and — when a scenario is given — the fake `gh`. Returns the
+ * environment additions the app needs.
  */
 export function seedHome(
   homeDir: string,
@@ -125,6 +127,10 @@ export function seedHome(
   seedProjectConfig(n10, repoPath, opts);
   seedDrafts(n10, opts.drafts);
 
+  // Unconditional: this machine's label and fingerprint are rendered in
+  // every machines surface, and an identity the app generates for itself
+  // makes both random per run — see `setup/beam-identity.ts`.
+  seedIdentity(homeDir);
   if (opts.beamPeers) seedPeerTable(homeDir, opts.beamPeers);
 
   if (opts.desktopPrefs) {

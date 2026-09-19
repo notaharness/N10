@@ -1,5 +1,4 @@
-import { generateKeyPairSync } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,6 +9,11 @@ import {
   type Identity,
   type PeerRecord,
 } from '@n10/beam';
+import {
+  beamDirIn,
+  deterministicKeypair,
+  fingerprint,
+} from './beam-identity.js';
 
 /**
  * A second, real machine for the machines visual suite — see
@@ -28,8 +32,28 @@ import {
  * bigger fixture.
  */
 
+/** The *peer's* own beam dir — the far side of the pairing, not the
+ *  app's. It deliberately sits outside the fixture HOME rather than
+ *  under it: the fixture HOME is the app's `$BEAM_DIR`, and a second
+ *  node's identity and peer table have no business inside it. The
+ *  directory is empty of anything durable (this side's peer table is
+ *  written and thrown away) and `PeerHost.close()` removes it. */
 const beamDirFor = (label: string): string =>
-  mkdtempSync(join(tmpdir(), `n10-visual-${label}-`));
+  mkdtempSync(join(tmpdir(), `n10-e2e-peer-${label}-`));
+
+const peerPhrase = (label: string): string => `n10-e2e-peer:${label}`;
+
+/** The `peerId` `startPeerHost(label)` will advertise — derived, like
+ *  the keypair it comes from, from the label alone, so a test can
+ *  assert the fingerprint a pairing dialog shows. */
+export function peerHostPeerId(label: string): string {
+  return derivePeerId(deterministicKeypair(peerPhrase(label)).publicKeyPem);
+}
+
+/** What that `peerId` renders as in the UI's grouped form. */
+export function peerHostFingerprint(label: string): string {
+  return fingerprint(peerHostPeerId(label));
+}
 
 export interface PeerHost {
   identity: Identity;
@@ -41,29 +65,37 @@ export interface PeerHost {
 /** Start a real `Host` on an ephemeral loopback port, advertising itself
  *  at its own bound address. Its `PeerTable` is empty and thrown away —
  *  this side never needs to recognise the app back, only answer its
- *  descriptor and `/pair` requests. */
+ *  descriptor and `/pair` requests.
+ *
+ *  The keypair comes from the label rather than from
+ *  `generateKeyPairSync`, so the fingerprint the pairing dialog shows
+ *  (and that a paired row copies) is the same on every run — a
+ *  screenshot of the confirm step is only worth taking if the thing it
+ *  exists to show holds still. The bound port stays ephemeral and is
+ *  masked wherever it is rendered; pinning one would trade a random
+ *  pixel for a random "address in use". */
 export async function startPeerHost(label: string): Promise<PeerHost> {
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  const publicKeyPem = publicKey
-    .export({ type: 'spki', format: 'pem' })
-    .toString();
-  const privateKeyPem = privateKey
-    .export({ type: 'pkcs8', format: 'pem' })
-    .toString();
+  const { publicKeyPem, privateKeyPem } = deterministicKeypair(
+    peerPhrase(label)
+  );
   const identity: Identity = {
     peerId: derivePeerId(publicKeyPem),
     label,
     publicKeyPem,
     privateKeyPem,
   };
-  const peers = new PeerTable(beamDirFor(label));
+  const beamDir = beamDirFor(label);
+  const peers = new PeerTable(beamDir);
   const host = new Host({ identity, peers });
   await host.listen();
   host.setEndpoints([host.baseUrl]);
   return {
     identity,
     pairingUrl: () => host.issuePairingUrl().url,
-    close: () => host.close(),
+    close: async () => {
+      await host.close();
+      rmSync(beamDir, { recursive: true, force: true });
+    },
   };
 }
 
@@ -99,7 +131,7 @@ export const UNREACHABLE_ENDPOINT = 'http://127.0.0.1:1';
  *  is present, so omitting them keeps "never seen" / "revoked" literal
  *  and stable rather than a clock-dependent "3m ago". */
 export function seedPeerTable(homeDir: string, peers: PeerSeed[]): void {
-  const dir = join(homeDir, '.config', 'beam');
+  const dir = beamDirIn(homeDir);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const records: PeerRecord[] = peers.map((p) => ({
     peerId: p.peerId,
@@ -126,7 +158,7 @@ export function seedOutboundQueue(
   peerId: string,
   n: number
 ): void {
-  const dir = join(homeDir, '.config', 'beam', 'mailbox', 'out', peerId);
+  const dir = join(beamDirIn(homeDir), 'mailbox', 'out', peerId);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (let seq = 1; seq <= n; seq += 1) {
     const envelope: Envelope = {
