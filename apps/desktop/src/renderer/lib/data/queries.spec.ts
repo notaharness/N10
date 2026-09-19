@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
+  AcceptingStatus,
   N10HostApi,
   RepoInfo,
   SidebarItem,
@@ -215,22 +216,31 @@ describe('loadSidebarModel', () => {
 });
 
 describe('acceptingStatusQuery', () => {
-  it('fetches whether or not the panel is open', () => {
+  const status = (accepting: boolean): AcceptingStatus => ({
+    accepting,
+    boundAddress: accepting ? '0.0.0.0:4000' : null,
+    pairingUrl: accepting ? 'http://x/pair#token=y' : null,
+    pairingExpiresAt: accepting ? 60_000 : null,
+    connectedCount: 0,
+  });
+
+  it('fetches without waiting to be asked', () => {
     // Nothing else reads this machine's accepting state — it does not
-    // ride the `onMachinesChanged` push — so a query that only runs
-    // while the panel is expanded leaves the switch falling back to
+    // ride the `onMachinesChanged` push — so a query gated on the
+    // panel being expanded leaves the switch falling back to
     // `accepting: false`, rendering "off" beside copy promising this
     // machine cannot be dialled from elsewhere, for a machine that is
     // in fact accepting connections.
-    expect(acceptingStatusQuery(false).enabled).toBe(true);
-    expect(acceptingStatusQuery(true).enabled).toBe(true);
+    expect(acceptingStatusQuery().enabled).toBe(true);
   });
 
-  it('polls only while the panel is open', () => {
-    // The 1s poll is the countdown's, and the countdown is only on
-    // screen while the panel is expanded.
-    expect(acceptingStatusQuery(true).refetchInterval).toBe(1_000);
-    expect(acceptingStatusQuery(false).refetchInterval).toBe(false);
+  it('polls while this machine is accepting, and not otherwise', () => {
+    // The 1s poll belongs to the countdown and the connection count,
+    // which are on screen exactly while the machine is accepting.
+    const interval = acceptingStatusQuery().refetchInterval;
+    expect(interval({ state: { data: status(true) } })).toBe(1_000);
+    expect(interval({ state: { data: status(false) } })).toBe(false);
+    expect(interval({ state: {} })).toBe(false);
   });
 });
 

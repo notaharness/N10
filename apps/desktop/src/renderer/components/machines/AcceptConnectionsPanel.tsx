@@ -28,27 +28,24 @@ function offToast(connectedCount: number): string {
  * a desktop-to-desktop handshake over that URL, so the URL itself is
  * the whole affordance.
  *
- * The switch reads this machine's own accepting state, not whether the
- * panel happens to be expanded — the copy beside it is a claim about
- * who can reach this machine. Only the 1s poll is tied to the panel
- * being open, for the countdown and the connection count.
+ * The switch and everything under it read this machine's own accepting
+ * state — the copy beside the switch is a claim about who can reach
+ * this machine, so it is never a fallback. The clock the countdown
+ * reads ticks for as long as that state says the machine is accepting.
  */
 export function AcceptConnectionsPanel() {
-  const [expanded, setExpanded] = useState(false);
-  const status = useAcceptingStatus(expanded);
+  const status = useAcceptingStatus();
   const setAccepting = useSetAccepting();
   const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!expanded) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [expanded]);
-
   const accepting = status.data?.accepting ?? false;
 
+  useEffect(() => {
+    if (!accepting) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [accepting]);
+
   const toggle = (checked: boolean) => {
-    setExpanded(checked);
     setAccepting.mutate(checked, {
       onSuccess: (result) => {
         toast.success(
