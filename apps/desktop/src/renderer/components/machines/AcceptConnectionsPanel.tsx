@@ -12,7 +12,6 @@ import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Switch } from '../ui/switch.js';
 import { RowShell } from '../settings/RowShell.js';
-import { QrCode } from './QrCode.js';
 
 /** Toast copy for turning accepting off: it does not drop existing
  *  connections, so the count is worth saying either way. */
@@ -24,10 +23,12 @@ function offToast(connectedCount: number): string {
 
 /**
  * "This desktop is dialled" — the switch, the bound address, and once
- * on: the QR code, the URL as selectable text, a live countdown to the
- * token's expiry, and what pairing grants. Off by default; the panel
- * only polls (`useAcceptingStatus`) while expanded, since the
- * countdown and connection count are the whole point of having it open.
+ * on: the pairing URL as selectable text with a copy button, a live
+ * countdown to the token's expiry, and what pairing grants. Pairing is
+ * a desktop-to-desktop handshake over that URL, so the URL itself is
+ * the whole affordance. Off by default; the panel only polls
+ * (`useAcceptingStatus`) while expanded, since the countdown and
+ * connection count are the whole point of having it open.
  */
 export function AcceptConnectionsPanel() {
   const [expanded, setExpanded] = useState(false);
@@ -81,8 +82,8 @@ export function AcceptConnectionsPanel() {
   );
 }
 
-/** The QR code, URL and countdown — or, once expired, the "generate a
- *  new code" affordance instead of a silently dead code. */
+/** The pairing URL and its countdown — or, once expired, the "generate
+ *  a new URL" affordance instead of a silently dead URL. */
 function ExpandedPanel({
   status,
   now,
@@ -101,41 +102,36 @@ function ExpandedPanel({
   };
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-md border border-border bg-card p-3 sm:flex-row">
+    <div className="mt-3 min-w-0 space-y-2 rounded-md border border-border bg-card p-3">
       {expired ? (
-        <div className="flex size-[204px] shrink-0 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
-          Expired
-        </div>
-      ) : (
-        <QrCode value={status.pairingUrl ?? ''} />
-      )}
-
-      <div className="min-w-0 flex-1 space-y-2">
-        {expired ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            This pairing URL has expired.
+          </p>
           <Button size="sm" onClick={() => regenerate.mutate()}>
-            Generate a new code
+            Generate a new URL
           </Button>
-        ) : (
-          <>
-            <p className="select-all break-all font-mono text-xs text-foreground">
-              {status.pairingUrl}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={copyUrl}>
-                <CopyIcon className="size-3.5" />
-                Copy
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                expires in {formatCountdown((expiresAt ?? now) - now)}
-              </span>
-            </div>
-          </>
-        )}
-        <p className="text-sm text-muted-foreground">
-          Pairing grants a shell on this machine as this user, revocable at any
-          time.
-        </p>
-      </div>
+        </>
+      ) : (
+        <>
+          <p className="select-all break-all font-mono text-xs text-foreground">
+            {status.pairingUrl}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={copyUrl}>
+              <CopyIcon className="size-3.5" />
+              Copy
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              expires in {formatCountdown((expiresAt ?? now) - now)}
+            </span>
+          </div>
+        </>
+      )}
+      <p className="text-sm text-muted-foreground">
+        Pairing grants a shell on this machine as this user, revocable at any
+        time.
+      </p>
     </div>
   );
 }

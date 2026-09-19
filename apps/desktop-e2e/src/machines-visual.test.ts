@@ -109,31 +109,28 @@ test.describe('Machines visual @visual', () => {
     }
   });
 
-  test('accept connections: the QR code, URL and countdown', async ({
+  test('accept connections: the pairing URL and countdown', async ({
     desktop,
   }) => {
     const { app, page } = desktop;
     await openMachinesSettings(app, page);
     await page.getByRole('switch', { name: 'Accept connections' }).click();
 
-    const qr = page.getByRole('img', {
-      name: 'Scan to pair with this machine',
-    });
     const boundTo = page.getByText(/^Bound to /);
     const pairingUrl = page.getByText(/^http:\/\//);
     const countdown = page.getByText(/^expires in \d/);
-    await expect(qr).toBeVisible();
+    await expect(pairingUrl).toBeVisible();
     await expect(countdown).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
 
-    // The bound port, the pairing token and therefore the QR code and
-    // countdown are freshly random every run — masked rather than
-    // pinned, since nothing here exposes a fixed port or a seeded
-    // clock. What is left unmasked (the switch, the panel layout, the
-    // copy button, what pairing grants) is exactly what a regression
-    // would actually break.
+    // The bound port, the pairing token and the countdown are freshly
+    // random every run — masked rather than pinned, since nothing here
+    // exposes a fixed port or a seeded clock. What is left unmasked
+    // (the switch, the panel layout, the copy button, what pairing
+    // grants) is exactly what a regression would actually break.
     await expect(page).toHaveScreenshot('settings-machines-accepting.png', {
       ...shot,
-      mask: [qr, boundTo, pairingUrl, countdown],
+      mask: [boundTo, pairingUrl, countdown],
     });
   });
 
