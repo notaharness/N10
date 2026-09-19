@@ -125,6 +125,51 @@ describe('ReachabilityProber', () => {
     prober.stop();
   });
 
+  it('probes a peer paired alongside others without waiting for a tick', async () => {
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a');
+    const prober = new ReachabilityProber({
+      peers,
+      connections,
+      intervalMs: 50_000,
+      timeoutMs: 1000,
+      onChange: () => undefined,
+    });
+    prober.sync();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(state.calls).toEqual(['http://a']);
+
+    // The timer is already running for the first peer; the second one
+    // must still resolve now, not at the next tick.
+    addPeer('cccccccccccccccc', 'http://b');
+    prober.sync();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(prober.get('cccccccccccccccc')).toBe('reachable');
+    // And only the newcomer is dialed — a sync is not a full sweep.
+    expect(state.calls).toEqual(['http://a', 'http://b']);
+    prober.stop();
+  });
+
+  it('does not re-probe settled peers when a sync gains nothing', async () => {
+    addPeer('bbbbbbbbbbbbbbbb', 'http://a');
+    addPeer('cccccccccccccccc', 'http://b');
+    const prober = new ReachabilityProber({
+      peers,
+      connections,
+      intervalMs: 50_000,
+      timeoutMs: 1000,
+      onChange: () => undefined,
+    });
+    prober.sync();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(state.calls.length).toBe(2);
+
+    peers.revoke('cccccccccccccccc');
+    prober.sync();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(state.calls.length).toBe(2);
+    prober.stop();
+  });
+
   it('stops ticking once nothing needs probing, and resumes when something does', async () => {
     const prober = new ReachabilityProber({
       peers,

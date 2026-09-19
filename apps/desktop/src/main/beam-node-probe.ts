@@ -45,18 +45,25 @@ export class ReachabilityProber {
   /** Call after anything that might change who needs probing: a
    *  pairing, a revoke, a forget, a connect or a disconnect. */
   sync(): void {
-    const needsProbe = this.targets().length > 0;
-    if (needsProbe && !this.timer) {
+    const targets = this.targets();
+    if (targets.length > 0 && !this.timer) {
       this.timer = setInterval(
         () => void this.probeAll(),
         this.options.intervalMs
       );
       this.timer.unref?.();
-      void this.probeAll();
-    } else if (!needsProbe && this.timer) {
+    } else if (targets.length === 0 && this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // A target with no result yet is a machine the UI is showing as
+    // "Checking…" this moment — usually one just paired. Resolve those
+    // now rather than at the next tick, a whole interval away. Targets
+    // that already have a result belong to the timer, so a sync that
+    // gains nothing (a revoke, a disconnect of someone else) costs no
+    // network.
+    const unresolved = targets.filter((p) => !this.results.has(p.peerId));
+    if (unresolved.length > 0) void this.probe(unresolved);
   }
 
   stop(): void {
@@ -76,18 +83,22 @@ export class ReachabilityProber {
   }
 
   private async probeAll(): Promise<void> {
+    await this.probe(this.targets());
+    // A peer may have gained/lost its last endpoint, or connected,
+    // between ticks — keep the timer's own condition honest.
+    this.sync();
+  }
+
+  private async probe(peers: readonly PeerRecord[]): Promise<void> {
     let changed = false;
     await Promise.all(
-      this.targets().map(async (peer) => {
+      peers.map(async (peer) => {
         const result = await this.probeOne(peer);
         if (this.results.get(peer.peerId) !== result) changed = true;
         this.results.set(peer.peerId, result);
       })
     );
     if (changed) this.options.onChange();
-    // A peer may have gained/lost its last endpoint, or connected,
-    // between ticks — keep the timer's own condition honest.
-    this.sync();
   }
 
   private async probeOne(
