@@ -30,24 +30,11 @@ import { setRemoteMachinePort } from '../host/services/remote-machines.js';
 import { parseStreamId, wrapStreamId } from './beam-stream-id.js';
 import type { InboundMailEvent } from './beam-node-mail.js';
 import { MailRelay, type RelayPort } from './beam-mail-relay.js';
+import { RestartPolicy } from './beam-node-restart.js';
 
 interface Pending {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-}
-
-/** Bounded restart policy for a worker that keeps exiting after it
- *  successfully started (finding 2) — a startup failure never reaches
- *  this path at all, since `beam-node-worker.ts` now catches its own
- *  construction throw and stays up to report it. Exponential, capped,
- *  and finite: an unbounded fork loop is worse than giving up and
- *  leaving the last synthetic "unreachable" push on screen. */
-const RESTART_BASE_DELAY_MS = 500;
-const RESTART_MAX_DELAY_MS = 30_000;
-const MAX_RESTART_ATTEMPTS = 5;
-
-function restartDelayFor(attempt: number): number {
-  return Math.min(RESTART_BASE_DELAY_MS * 2 ** attempt, RESTART_MAX_DELAY_MS);
 }
 
 /**
@@ -83,16 +70,10 @@ export class BeamNodeBridge
   /** Wrapped ids for streams the current worker has open. Walked on
    *  exit to synthesize the closes that worker will never send. */
   private readonly openStreams = new Set<string>();
-  private restartAttempts = 0;
-  private restartTimer?: ReturnType<typeof setTimeout>;
-  /** Set once `scheduleRestart` spends the budget (finding 3, second
-   *  pass): the cap lived only on the exit → restart path, but
-   *  `ensureChild` refused to fork solely on `shuttingDown`, so the
-   *  very next ordinary `request()` after the budget ran out — and
-   *  `RemoteSessionPoller` fires one every second — forked again with
-   *  no backoff and no budget, once per poll tick, forever. The cap
-   *  now lives wherever a fork can happen, not only on the exit path. */
-  private restartBudgetExhausted = false;
+  /** When a replacement may fork and whether one still may at all
+   *  (`beam-node-restart.ts`). Every fork goes through `ensureChild`,
+   *  and `ensureChild` asks this first. */
+  private readonly restarts = new RestartPolicy();
 
   private ensureChild(): Promise<UtilityProcess> {
     if (this.child) return Promise.resolve(this.child);
@@ -103,10 +84,17 @@ export class BeamNodeBridge
     // instead of failing, undoing the very shutdown in progress.
     if (this.shuttingDown)
       return Promise.reject(new Error('beam node is shutting down'));
-    if (this.restartBudgetExhausted)
+    if (this.restarts.spent)
       return Promise.reject(
         new Error('beam node exited repeatedly and gave up restarting')
       );
+    // A restart the backoff has armed is the fork: joining it is what
+    // keeps ordinary traffic in the dead-child window — the session
+    // poller's request a second, a `ptyWrite`, a `ptyClose` — from
+    // forking immediately and leaving the 500ms/1s/2s spacing
+    // unenforced.
+    const armed = this.restarts.pending;
+    if (armed) return armed;
     this.generation += 1;
     const gen = this.generation;
     this.starting = new Promise((resolve) => {
@@ -138,10 +126,7 @@ export class BeamNodeBridge
    *  pass) closed, through the one path it left open (finding 4,
    *  second pass). */
   private onMessage(message: BeamWorkerMessage, gen: number): void {
-    // Any message at all is proof the worker started successfully —
-    // reset the backoff counter so a later, unrelated crash gets the
-    // same bounded retries a fresh install would.
-    this.restartAttempts = 0;
+    this.restarts.noteMessage(gen);
     if (message.kind === 'event') {
       if (message.name === 'changed') {
         receiveMachinesUpdate(message.payload as MachineView[]);
@@ -217,6 +202,7 @@ export class BeamNodeBridge
     // way through `request()`, posting a dead generation's raw id to a
     // brand-new worker whose own `nextStreamId` restarts at 1.
     this.generation += 1;
+    this.restarts.noteExit();
     // Drain pending before closing streams: closeOpenStreams runs
     // listener callbacks synchronously, and a listener that reacts by
     // starting a reconnect must never have its brand-new request caught
@@ -236,28 +222,7 @@ export class BeamNodeBridge
           : { ...m, state: 'unreachable', transport: null }
     );
     if (synthetic.length > 0) receiveMachinesUpdate(synthetic);
-    this.scheduleRestart();
-  }
-
-  /** Bounded, backed-off retry (finding 2): a worker that keeps dying
-   *  after it started (not a caught startup failure — that one never
-   *  exits at all) gets a handful of increasingly spaced-out chances
-   *  before this gives up. Giving up leaves the last synthetic
-   *  "unreachable" push from `onExit` on screen rather than looping
-   *  forever with nothing to show for it. */
-  private scheduleRestart(): void {
-    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
-      // Budget spent: block `ensureChild` outright rather than merely
-      // not scheduling another timer-driven attempt, so an ordinary
-      // `request()` — the poller fires one every second — cannot fork
-      // its own way around the cap (finding 3, second pass).
-      this.restartBudgetExhausted = true;
-      return;
-    }
-    const delay = restartDelayFor(this.restartAttempts);
-    this.restartAttempts += 1;
-    this.restartTimer = setTimeout(() => void this.ensureChild(), delay);
-    this.restartTimer.unref?.();
+    this.restarts.schedule(() => this.ensureChild());
   }
 
   private request<T>(op: string, payload?: unknown): Promise<T> {
@@ -395,7 +360,7 @@ export class BeamNodeBridge
    */
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
-    clearTimeout(this.restartTimer);
+    this.restarts.cancel(new Error('beam node is shutting down'));
     if (!this.child) return;
     try {
       await Promise.race([
