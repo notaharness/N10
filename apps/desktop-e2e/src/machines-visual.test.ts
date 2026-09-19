@@ -1,7 +1,9 @@
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import { createWorktree, sidebarRow } from './setup/app.js';
 import { openNewTerminalDialog } from './setup/terminals.js';
 import {
+  machineRow,
   openAddMachineDialog,
   openMachinesSettings,
   pairWithUrl,
@@ -12,7 +14,7 @@ import {
   peerHostFingerprint,
   startPeerHost,
   UNREACHABLE_ENDPOINT,
-  type PeerSeed,
+  type PeerSeeds,
 } from './setup/beam-peer.js';
 import { shot } from './setup/visual.js';
 
@@ -36,28 +38,43 @@ import { shot } from './setup/visual.js';
  * not a file dropped on disk before launch.
  */
 
-const UNREACHABLE_PEER: PeerSeed = {
-  peerId: 'a1b2c3d4e5f60001',
-  label: 'stale-laptop',
-  endpoints: [UNREACHABLE_ENDPOINT],
+const UNREACHABLE_PEER: PeerSeeds = {
+  a1b2c3d4e5f60001: {
+    label: 'stale-laptop',
+    endpoints: [UNREACHABLE_ENDPOINT],
+  },
 };
-const NO_ENDPOINT_PEER: PeerSeed = {
-  peerId: 'a1b2c3d4e5f60002',
-  label: 'phone',
-  queued: 2,
+const NO_ENDPOINT_PEER: PeerSeeds = {
+  a1b2c3d4e5f60002: { label: 'phone', queued: 2 },
 };
-const REVOKED_PEER: PeerSeed = {
-  peerId: 'a1b2c3d4e5f60003',
-  label: 'old-workstation',
-  revoked: true,
+const REVOKED_PEER: PeerSeeds = {
+  a1b2c3d4e5f60003: { label: 'old-workstation', revoked: true },
 };
+
+/** The "Where?" step's current-repository choice, masked wherever the
+ *  New terminal dialog is shot: it is described by the repo's own
+ *  `mkdtemp` path, the one piece of this dialog no seeding can hold
+ *  still. The whole choice rather than the path alone — the path is
+ *  what sizes its own box, so a mask over just that text is itself a
+ *  different width every run. Asserted visible before it is used: a
+ *  mask whose locator stops matching stops applying, and the random
+ *  path then lands in the baseline. */
+function currentRepoChoice(scope: Page | Locator): Locator {
+  // By its text and not its `radio` role: one of these shots is taken
+  // with a Select popover open, which takes the rest of the page out of
+  // the accessibility tree. The choice is the title's grandparent —
+  // `Choice` wraps its title and description in one span.
+  return scope
+    .getByText('Current repository', { exact: true })
+    .locator('xpath=../..');
+}
 
 test.describe('Machines visual @visual', () => {
   test.use({ repo: { name: 'n10-visual-machines' } });
 
   test.describe('peer table states', () => {
     test.use({
-      beamPeers: [UNREACHABLE_PEER, NO_ENDPOINT_PEER, REVOKED_PEER],
+      beamPeers: { ...UNREACHABLE_PEER, ...NO_ENDPOINT_PEER, ...REVOKED_PEER },
     });
 
     test('settings machines panel with a peer in every D6 state', async ({
@@ -71,13 +88,26 @@ test.describe('Machines visual @visual', () => {
         // The seeded rows' probes resolve at BeamNode startup (an empty
         // endpoint list needs none; a closed local port fails fast) —
         // wait for what they settle into rather than a fixed delay.
-        await expect(page.getByText('Unreachable')).toBeVisible();
-        await expect(page.getByText('Can reach us only')).toBeVisible();
+        // Each state is asserted on the row that must show it: the
+        // status bar's own segment ("3 machines · 1 unreachable") is a
+        // second, case-insensitive match for these words.
+        await expect(
+          machineRow(page, 'stale-laptop').getByText('Unreachable')
+        ).toBeVisible();
+        await expect(
+          machineRow(page, 'phone').getByText('Can reach us only')
+        ).toBeVisible();
         // `exact` — the row's own secondary text is the literal
         // `revoked` (machine-model.ts's `secondaryText` with no
         // `revokedAt`), a second case-insensitive substring match.
-        await expect(page.getByText('Revoked', { exact: true })).toBeVisible();
-        await expect(page.getByText('2 waiting')).toBeVisible();
+        await expect(
+          machineRow(page, 'old-workstation').getByText('Revoked', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          machineRow(page, 'phone').getByText('2 waiting')
+        ).toBeVisible();
 
         // The fifth state — `reachable` — only exists once something
         // real answers a probe, so it is paired live rather than seeded.
@@ -119,9 +149,13 @@ test.describe('Machines visual @visual', () => {
 
       const endpoint = dialog.getByText(PEER_ENDPOINT_TEXT);
       await expect(endpoint).toBeVisible();
+      // The field still holds what was pasted into it: an OS-assigned
+      // port and a single-use token, both fresh every run.
+      const pasted = dialog.getByPlaceholder(/pair#token=/);
+      await expect(pasted).toBeVisible();
       await expect(dialog).toHaveScreenshot('dialog-pair-machine-confirm.png', {
         ...shot,
-        mask: [endpoint],
+        mask: [endpoint, pasted],
       });
     } finally {
       await peerHost.close();
@@ -158,7 +192,7 @@ test.describe('Machines visual @visual', () => {
   });
 
   test.describe('launch surfaces with a paired machine', () => {
-    test.use({ beamPeers: [UNREACHABLE_PEER] });
+    test.use({ beamPeers: UNREACHABLE_PEER });
 
     test('new terminal dialog offers the reachable machine and shows why the other is disabled', async ({
       desktop,
@@ -184,9 +218,11 @@ test.describe('Machines visual @visual', () => {
         // endpoint) behind the dialog.
         const endpoint = page.getByText(PEER_ENDPOINT_TEXT);
         await expect(endpoint).toBeVisible();
+        const cwd = currentRepoChoice(page);
+        await expect(cwd).toBeVisible();
         await expect(page).toHaveScreenshot(
           'dialog-new-terminal-machine-select.png',
-          { ...shot, mask: [endpoint] }
+          { ...shot, mask: [endpoint, cwd] }
         );
       } finally {
         await peerHost.close();
@@ -261,9 +297,11 @@ test.describe('Machines visual @visual', () => {
       await expect(
         dialog.getByRole('combobox', { name: 'Machine' })
       ).toHaveCount(0);
+      const cwd = currentRepoChoice(dialog);
+      await expect(cwd).toBeVisible();
       await expect(dialog).toHaveScreenshot(
         'dialog-new-terminal-local-only.png',
-        shot
+        { ...shot, mask: [cwd] }
       );
     });
 

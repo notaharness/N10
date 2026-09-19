@@ -15,7 +15,7 @@ import {
   startSurvivingTerminal,
   type TerminalSeed,
 } from '../setup/terminals.js';
-import { seedPeerTable, type PeerSeed } from '../setup/beam-peer.js';
+import { seedPeerTable, type PeerSeeds } from '../setup/beam-peer.js';
 import { seedIdentity } from '../setup/beam-identity.js';
 
 /**
@@ -94,9 +94,10 @@ export interface HomeSeed {
    * `setup/beam-peer.ts`). Covers the D6 states a live second machine
    * cannot honestly produce in this fixture (`unreachable`,
    * `no-endpoint`, `revoked`); pairing with a real `startPeerHost()` for
-   * `reachable` happens live, inside the test.
+   * `reachable` happens live, inside the test. Keyed by peerId — see
+   * `PeerSeeds`.
    */
-  beamPeers?: PeerSeed[];
+  beamPeers?: PeerSeeds;
 }
 
 /**

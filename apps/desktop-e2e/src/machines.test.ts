@@ -181,13 +181,12 @@ test.describe('Machines — D8 regression', () => {
 // permanently true.
 test.describe('Machines — the workspace with a peer registered', () => {
   test.use({
-    beamPeers: [
-      {
-        peerId: 'a1b2c3d4e5f60001',
+    beamPeers: {
+      a1b2c3d4e5f60001: {
         label: 'stale-laptop',
         endpoints: [UNREACHABLE_ENDPOINT],
       },
-    ],
+    },
   });
 
   test('the status bar counts the machines once one is paired', async ({

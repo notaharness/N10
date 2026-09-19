@@ -106,7 +106,6 @@ export async function startPeerHost(label: string): Promise<PeerHost> {
  *  below). `publicKeyPem` is never read for these rows: nothing in the
  *  visual suite dials or verifies them, only lists, probes and revokes. */
 export interface PeerSeed {
-  peerId: string;
   label: string;
   endpoints?: string[];
   revoked?: boolean;
@@ -114,6 +113,13 @@ export interface PeerSeed {
    *  badge — see `seedOutboundQueue`. */
   queued?: number;
 }
+
+/** Seeded rows keyed by the peerId each is stored under, which is also
+ *  the fingerprint its row renders. A record rather than a list for the
+ *  reason `DesktopOptions.liveTerminals` is one: Playwright reads any
+ *  array whose second element is an object as a `[value, options]`
+ *  fixture tuple, so a two-row list arrives as its first row. */
+export type PeerSeeds = Record<string, PeerSeed>;
 
 /** A loopback port nothing listens on. `fetchDescriptor` against it
  *  fails with an immediate connection refusal rather than a timeout, so
@@ -130,11 +136,12 @@ export const UNREACHABLE_ENDPOINT = 'http://127.0.0.1:1';
  *  `secondaryText` only falls back to a relative-time string once one
  *  is present, so omitting them keeps "never seen" / "revoked" literal
  *  and stable rather than a clock-dependent "3m ago". */
-export function seedPeerTable(homeDir: string, peers: PeerSeed[]): void {
+export function seedPeerTable(homeDir: string, peers: PeerSeeds): void {
   const dir = beamDirIn(homeDir);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const records: PeerRecord[] = peers.map((p) => ({
-    peerId: p.peerId,
+  const rows = Object.entries(peers);
+  const records: PeerRecord[] = rows.map(([peerId, p]) => ({
+    peerId,
     label: p.label,
     publicKeyPem: '-- seeded row, never verified --',
     endpoints: p.endpoints ?? [],
@@ -144,8 +151,8 @@ export function seedPeerTable(homeDir: string, peers: PeerSeed[]): void {
   writeFileSync(join(dir, 'peers.json'), JSON.stringify(records, null, 2), {
     mode: 0o600,
   });
-  for (const p of peers) {
-    if (p.queued) seedOutboundQueue(homeDir, p.peerId, p.queued);
+  for (const [peerId, p] of rows) {
+    if (p.queued) seedOutboundQueue(homeDir, peerId, p.queued);
   }
 }
 
