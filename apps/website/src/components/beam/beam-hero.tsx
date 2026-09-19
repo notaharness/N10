@@ -8,13 +8,13 @@ export function BeamHero() {
         @notaharness/beam
       </span>
       <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-        Run your agents on another machine
+        Run agents where the power is
       </h1>
       <p className="text-fd-muted-foreground max-w-xl text-lg">
-        Pair your laptop with a beefier workstation or a headless build box, and
-        reach it like it&apos;s local — a real terminal, a single command, or a
-        message that waits until it comes back online. No SSH keys, no tunnels
-        to set up.
+        Pair your laptop with a powerful workstation or headless build box, then
+        use it like it&apos;s local: open a real terminal, run one command, or
+        send a message that waits for it to come back online. No SSH keys. No
+        tunnels to configure.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <Link href="/docs/beam" className={buttonVariants({ size: 'lg' })}>

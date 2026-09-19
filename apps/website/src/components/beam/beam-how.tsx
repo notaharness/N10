@@ -2,17 +2,17 @@ const steps = [
   {
     title: 'Pair once',
     description:
-      'Run beam serve on the machine you want to reach. It prints a link — open it from your laptop and confirm the fingerprint. From then on, both machines know and trust each other.',
+      "Run beam serve on the machine you want to reach. Open the link it prints on your laptop, then confirm the fingerprint. That's it — the machines now know and trust each other.",
   },
   {
-    title: 'Reach it whenever you need to',
+    title: 'Connect whenever you need to',
     description:
-      'Either machine can dial the other, whichever way the network allows. If neither can reach the other right now, anything you send just waits and arrives the moment they reconnect.',
+      'Either machine can dial the other — whichever direction the network allows. If neither is reachable, anything you send waits and arrives as soon as they reconnect.',
   },
   {
-    title: 'The agent runs there, not here',
+    title: 'Run the agent over there',
     description:
-      'n10 and Orchestra still do the same thing they always did — start tmux, check out a worktree, launch an agent — beam just carries those calls to the other machine instead of running them locally.',
+      'n10 and Orchestra work exactly as before: start tmux, check out a worktree, and launch an agent. Beam simply carries those calls to the other machine instead of running them locally.',
   },
 ];
 

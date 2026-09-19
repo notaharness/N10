@@ -3,21 +3,21 @@ import { BeamStreamsDiagram } from '@/components/beam/beam-streams-diagram';
 const streams = [
   {
     name: 'beam connect',
-    title: 'A real terminal',
+    title: 'A real, interactive terminal',
     description:
-      'Open a real, interactive terminal on the other machine — resize it, run a full shell, attach a tmux client to it. It behaves like the terminal you already have, just somewhere else.',
+      "Open a real terminal on the other machine. Resize it, run a full shell, or attach a tmux client. It works like the terminal you already use — it's just running somewhere else.",
   },
   {
     name: 'beam exec',
-    title: 'One command, and its result',
+    title: 'One command. One result.',
     description:
-      'Run a single command on the other machine and get its output and exit code back, the same way ssh host cmd does. Scripts that already shell out to ssh can switch to this with barely any changes.',
+      'Run a single command on the other machine and get its output and exit code back — just like ssh host cmd. Scripts that already shell out to SSH can switch with barely any changes.',
   },
   {
     name: 'beam msg',
-    title: 'Messages that wait for you',
+    title: 'Messages that can wait',
     description:
-      'Send a short message to a machine that happens to be asleep or off the network. Beam holds onto it on disk and delivers it the moment that machine comes back, so nothing gets lost in between.',
+      'Send a short message even when the other machine is asleep or off the network. Beam keeps it on disk and delivers it when that machine returns, so nothing gets lost along the way.',
   },
 ];
 
