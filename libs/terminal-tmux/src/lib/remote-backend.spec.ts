@@ -320,6 +320,44 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(backend.connectionState).not.toBe('connected');
   });
 
+  // A link that comes back and drops again inside the stability window
+  // was never a successful reconnection. Resetting the attempt counter
+  // on a bare `open()` lets it retry forever at the backoff floor,
+  // never reaching `failed` and never offering the pane's Reconnect
+  // action — while the local backend, on the same flapping link, gives
+  // up (decisions.md D5).
+  it('a flapping link that drops again inside the stability window still exhausts its attempts and reports failed', async () => {
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    // Every attach succeeds; each one is dropped again well before the
+    // two-second window that would mark it stable.
+    for (const backoff of [500, 1000, 2000]) {
+      opens.at(-1)!.close();
+      expect(backend.connectionState).toBe('reconnecting');
+      await vi.advanceTimersByTimeAsync(backoff);
+      await flushMicrotasks();
+      expect(backend.connectionState).toBe('connected');
+    }
+    expect(opens).toHaveLength(4);
+
+    opens.at(-1)!.close();
+    await flushMicrotasks();
+    expect(backend.connectionState).toBe('failed');
+    // No fifth attach: the bounded budget is spent, and the user gets
+    // the manual Reconnect affordance rather than an endless retry.
+    expect(opens).toHaveLength(4);
+  });
+
   it('reconnect() is a no-op while already connected', async () => {
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))

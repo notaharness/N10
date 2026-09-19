@@ -67,6 +67,12 @@ function sanitizedEnv(spec: SessionSpec): Record<string, string> {
 
 const MAX_RECONNECT_ATTEMPTS = 3;
 
+/** How long a re-attached stream must survive before the reconnection
+ *  counts as successful — the same window `tmux-backend.ts` applies
+ *  locally, so a flapping link exhausts its attempts and surfaces the
+ *  Reconnect affordance on both transports (decisions.md D5). */
+const STABLE_CONNECTION_MS = 2000;
+
 export class RemoteTmuxBackend implements SessionBackend {
   readonly name: string;
   /** No local OS process backs a remote session. */
@@ -85,6 +91,7 @@ export class RemoteTmuxBackend implements SessionBackend {
   private finalFrame: string | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private stableTimer?: ReturnType<typeof setTimeout>;
   private readonly unsubscribePoll: () => void;
   private disposed = false;
   private killed = false;
@@ -119,6 +126,10 @@ export class RemoteTmuxBackend implements SessionBackend {
     if (this.disposed || !this.state.running || this.connection !== 'connected')
       return;
     this.connection = 'reconnecting';
+    // A stream that dropped before the window elapsed was never a
+    // successful reconnection: cancel the pending reset so a flapping
+    // link accumulates attempts instead of restarting from zero.
+    clearTimeout(this.stableTimer);
     for (const cb of [...this.disconnects]) cb();
     this.scheduleReconnect();
   }
@@ -170,7 +181,16 @@ export class RemoteTmuxBackend implements SessionBackend {
       this.handle = handle;
       this.bindHandle(handle);
       this.connection = 'connected';
-      this.reconnectAttempts = 0;
+      // A stream that survives the window is a successful
+      // reconnection, exactly as in `tmux-backend.ts`. Resetting the
+      // counter on `open()` alone lets a link that drops again inside
+      // the window retry forever at the backoff floor instead of
+      // reaching `failed`.
+      clearTimeout(this.stableTimer);
+      this.stableTimer = setTimeout(() => {
+        this.reconnectAttempts = 0;
+      }, STABLE_CONNECTION_MS);
+      this.stableTimer.unref?.();
       await this.replayFinalFrame();
     } catch {
       this.scheduleReconnect();
@@ -192,6 +212,7 @@ export class RemoteTmuxBackend implements SessionBackend {
     };
     this.unsubscribePoll();
     clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
     // Best-effort: the exit itself is already reported below either
     // way. A `void` alone here is not error handling (root AGENTS.md)
     // — the capture-pane call this awaits can reject on any transport
@@ -269,6 +290,7 @@ export class RemoteTmuxBackend implements SessionBackend {
     if (this.disposed) return;
     this.disposed = true;
     clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
     this.unsubscribePoll();
     this.data.clear();
     this.exits.clear();
