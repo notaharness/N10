@@ -10,7 +10,14 @@
 import type { PeerRecord, PeerTable } from '@n10/beam';
 import { RuntimeError } from './usage.js';
 
-export function resolvePeer(peers: PeerTable, nameOrId: string): PeerRecord {
+/** The peer `nameOrId` names, or null when it names none. Refuses an
+ * ambiguous name either way — for a command that owns its own "unknown
+ * peer" outcome (`msg send`, whose rejection shape is part of D11's
+ * contract) and so must not have this function invent one. */
+export function findPeer(
+  peers: PeerTable,
+  nameOrId: string
+): PeerRecord | null {
   const byId = peers.get(nameOrId);
   const byLabel = peers.list().find((peer) => peer.label === nameOrId);
   if (byId && byLabel && byId.peerId !== byLabel.peerId) {
@@ -19,7 +26,11 @@ export function resolvePeer(peers: PeerTable, nameOrId: string): PeerRecord {
         `and the label of peer ${byLabel.peerId}. Use the full peer id to disambiguate.`
     );
   }
-  const match = byId ?? byLabel;
+  return byId ?? byLabel ?? null;
+}
+
+export function resolvePeer(peers: PeerTable, nameOrId: string): PeerRecord {
+  const match = findPeer(peers, nameOrId);
   if (!match) {
     throw new RuntimeError(
       `unknown peer "${nameOrId}" — run "beam peers" to see known peers`

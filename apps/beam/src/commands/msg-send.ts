@@ -6,9 +6,15 @@
  * revoked/oversized rejection, so both the running-node and ephemeral
  * paths produce identically-shaped outcomes and the exact D11 rejection
  * causes, rather than this command pre-empting them with its own check.
+ *
+ * The one thing the mailbox cannot decide for itself is ambiguity: its
+ * resolution prefers an id match over a label match, so a name that is one
+ * peer's id and a different peer's label would silently pick one. That case
+ * is refused here first, the same way every other `<peer>` command refuses
+ * it (`peer-resolve.ts`).
  */
 
-import type { SendOutcome } from '@n10/beam';
+import { PeerTable, type SendOutcome } from '@n10/beam';
 import { parseArgs } from '../args.js';
 import { beamDirFor, inboxSocketPath } from '../context.js';
 import { dialPeer } from '../dial-peer.js';
@@ -16,6 +22,7 @@ import { printJson } from '../fmt/json.js';
 import type { Io } from '../io.js';
 import { connectToRunningNode, requestOnce } from '../ipc-client.js';
 import { buildEphemeral, ephemeralMailbox } from '../node.js';
+import { findPeer } from '../peer-resolve.js';
 import { readAllStdin } from '../stdin.js';
 import { UsageError } from '../usage.js';
 
@@ -66,7 +73,7 @@ async function sendViaEphemeralNode(
   request: SendRequest
 ): Promise<WireOutcome> {
   const ctx = buildEphemeral(io);
-  const peer = ctx.peers.resolve(request.to);
+  const peer = findPeer(ctx.peers, request.to);
   const attemptedDial =
     Boolean(peer) &&
     peer?.revoked === false &&
@@ -123,6 +130,12 @@ export async function runMsgSend(args: string[], io: Io): Promise<number> {
         'refusing to wait on an interactive stdin with no --message — pass one, or pipe input.'
     );
   }
+  // Refuse an ambiguous name before a payload is read or anything is
+  // sent, on the running-node path as well as the ephemeral one. Unknown
+  // and revoked peers stay the mailbox's to reject, so their D11 outcome
+  // objects keep their shape.
+  findPeer(new PeerTable(beamDirFor(io)), nameOrId);
+
   const payload =
     messageFlag !== undefined && messageFlag !== '-'
       ? messageFlag

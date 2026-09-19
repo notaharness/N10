@@ -141,6 +141,33 @@ describe('beam msg send', () => {
     expect(io.stderrText()).toContain('usage:');
   });
 
+  it("refuses a name that is one peer's id and a different peer's label", async () => {
+    const peers = new PeerTable(beamDir);
+    peers.upsert({
+      peerId: 'aaaaaaaaaaaaaaaa',
+      label: 'workbox',
+      publicKeyPem: 'key-a',
+      endpoints: [],
+    });
+    peers.upsert({
+      peerId: 'bbbbbbbbbbbbbbbb',
+      label: 'aaaaaaaaaaaaaaaa', // same text as the first peer's id
+      publicKeyPem: 'key-b',
+      endpoints: [],
+    });
+
+    // Through run(), which is what turns the RuntimeError into exit 1.
+    // Preferring the id match silently would send this to whichever peer
+    // the library happened to pick, and say it had delivered it.
+    const code = await run(
+      ['msg', 'send', 'aaaaaaaaaaaaaaaa', '--message', 'hi'],
+      io
+    );
+    expect(code).toBe(1);
+    expect(io.stderrText()).toContain('ambiguous');
+    expect(io.stdoutText()).toBe('');
+  });
+
   it('reads the payload from stdin when --message is "-"', async () => {
     const peers = new PeerTable(beamDir);
     peers.upsert({
