@@ -6,8 +6,10 @@ import {
   openMachinesSettings,
   pairWithUrl,
   previewPairingUrl,
+  PEER_ENDPOINT_TEXT,
 } from './setup/machines.js';
 import {
+  peerHostFingerprint,
   startPeerHost,
   UNREACHABLE_ENDPOINT,
   type PeerSeed,
@@ -71,17 +73,25 @@ test.describe('Machines visual @visual', () => {
         // wait for what they settle into rather than a fixed delay.
         await expect(page.getByText('Unreachable')).toBeVisible();
         await expect(page.getByText('Can reach us only')).toBeVisible();
-        await expect(page.getByText('Revoked')).toBeVisible();
+        // `exact` — the row's own secondary text is the literal
+        // `revoked` (machine-model.ts's `secondaryText` with no
+        // `revokedAt`), a second case-insensitive substring match.
+        await expect(page.getByText('Revoked', { exact: true })).toBeVisible();
         await expect(page.getByText('2 waiting')).toBeVisible();
 
         // The fifth state — `reachable` — only exists once something
         // real answers a probe, so it is paired live rather than seeded.
         await pairWithUrl(page, peerHost.pairingUrl());
 
-        await expect(page).toHaveScreenshot(
-          'settings-machines-peers.png',
-          shot
-        );
+        // The paired row's secondary text is `machine.endpoints[0]` —
+        // a loopback URL on an OS-assigned port, the only part of this
+        // panel that is not fixed.
+        const endpoint = page.getByText(PEER_ENDPOINT_TEXT);
+        await expect(endpoint).toBeVisible();
+        await expect(page).toHaveScreenshot('settings-machines-peers.png', {
+          ...shot,
+          mask: [endpoint],
+        });
       } finally {
         await peerHost.close();
       }
@@ -100,10 +110,19 @@ test.describe('Machines visual @visual', () => {
 
       await expect(dialog.getByText('workbox')).toBeVisible();
       await expect(dialog.getByRole('button', { name: 'Pair' })).toBeVisible();
-      await expect(dialog).toHaveScreenshot(
-        'dialog-pair-machine-confirm.png',
-        shot
-      );
+      // The fingerprint is the whole point of this screen, and
+      // `startPeerHost` derives its keypair from the label, so the
+      // exact text it must show is known rather than merely stable.
+      await expect(
+        dialog.getByText(peerHostFingerprint('workbox'))
+      ).toBeVisible();
+
+      const endpoint = dialog.getByText(PEER_ENDPOINT_TEXT);
+      await expect(endpoint).toBeVisible();
+      await expect(dialog).toHaveScreenshot('dialog-pair-machine-confirm.png', {
+        ...shot,
+        mask: [endpoint],
+      });
     } finally {
       await peerHost.close();
     }
@@ -119,13 +138,17 @@ test.describe('Machines visual @visual', () => {
     const boundTo = page.getByText(/^Bound to /);
     const pairingUrl = page.getByText(/^http:\/\//);
     const countdown = page.getByText(/^expires in \d/);
+    await expect(boundTo).toBeVisible();
     await expect(pairingUrl).toBeVisible();
     await expect(countdown).toBeVisible();
     await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
 
     // The bound port, the pairing token and the countdown are freshly
     // random every run — masked rather than pinned, since nothing here
-    // exposes a fixed port or a seeded clock. What is left unmasked
+    // exposes a fixed port or a seeded clock. Each is asserted visible
+    // above: a mask whose locator stops matching silently stops
+    // applying, and a random port then lands in the baseline as an
+    // intermittent pixel diff instead of a clear failure. What is left unmasked
     // (the switch, the panel layout, the copy button, what pairing
     // grants) is exactly what a regression would actually break.
     await expect(page).toHaveScreenshot('settings-machines-accepting.png', {
@@ -156,10 +179,14 @@ test.describe('Machines visual @visual', () => {
         ).toBeVisible();
 
         // The Select's popover portals to <body>, outside the dialog —
-        // the full page is what actually shows both rows.
+        // the full page is what actually shows both rows, and that
+        // includes the machines panel (and its paired row's ephemeral
+        // endpoint) behind the dialog.
+        const endpoint = page.getByText(PEER_ENDPOINT_TEXT);
+        await expect(endpoint).toBeVisible();
         await expect(page).toHaveScreenshot(
           'dialog-new-terminal-machine-select.png',
-          shot
+          { ...shot, mask: [endpoint] }
         );
       } finally {
         await peerHost.close();
@@ -195,6 +222,13 @@ test.describe('Machines visual @visual', () => {
           page.getByRole('option', { name: /stale-laptop.*Unreachable/ })
         ).toBeVisible();
 
+        // Nothing to mask here, asserted rather than assumed: creating
+        // the worktree activated its own tab, and `EditorArea` unmounts
+        // an inactive pane with no session — so the machines panel (and
+        // the paired row's ephemeral port) is gone from the page, and a
+        // change that kept it mounted would silently reintroduce a
+        // random port into this baseline.
+        await expect(page.getByText(PEER_ENDPOINT_TEXT)).toHaveCount(0);
         await expect(page).toHaveScreenshot(
           'dialog-launch-agent-machine-select.png',
           shot

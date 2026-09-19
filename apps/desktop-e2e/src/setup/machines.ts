@@ -14,13 +14,30 @@ import { tab } from './app.js';
  * the sequence `PairMachineDialog.tsx` actually implements.
  */
 
+/** The settings nav's own Machines entry. `exact` because accessible-name
+ *  matching is substring and case-insensitive by default, and the status
+ *  bar renders a second `role="button"` named after its own text —
+ *  `"2 machines"`, `"3 machines · 1 unreachable"` — the moment a peer is
+ *  registered. Exact matching is full-string and case-sensitive, so it
+ *  picks the nav button whether or not that segment is on screen. */
+export function machinesNavButton(page: Page): Locator {
+  return page.getByRole('button', { name: 'Machines', exact: true });
+}
+
+/** The loopback endpoint a live `startPeerHost` advertises. The port is
+ *  OS-assigned, so this is the one thing about a `reachable` row a
+ *  screenshot cannot hold still — masked wherever it is rendered, and
+ *  asserted visible first so a mask that stops applying fails as a
+ *  locator error rather than as an intermittent pixel diff. */
+export const PEER_ENDPOINT_TEXT = /^http:\/\/127\.0\.0\.1:\d+$/;
+
 export async function openMachinesSettings(
   app: ElectronApplication,
   page: Page
 ): Promise<void> {
   await clickAppMenuItem(app, 'Settings…');
   await expect(tab(page, /Settings/)).toBeVisible();
-  await page.getByRole('button', { name: 'Machines' }).click();
+  await machinesNavButton(page).click();
 }
 
 export async function openAddMachineDialog(page: Page): Promise<Locator> {
@@ -39,7 +56,10 @@ export async function previewPairingUrl(
 ): Promise<void> {
   await dialog.getByPlaceholder(/pair#token=/).fill(url);
   await dialog.getByRole('button', { name: 'Continue' }).click();
-  await expect(dialog.getByText('Fingerprint')).toBeVisible();
+  // `exact` — the card's own explainer ("Compare the fingerprint with
+  // what the other machine shows…") is a second, case-insensitive
+  // substring match for this field label.
+  await expect(dialog.getByText('Fingerprint', { exact: true })).toBeVisible();
 }
 
 /** Step 2: spend the token. Waits for the paired row to read `Reachable`
@@ -51,7 +71,10 @@ export async function confirmPairing(
 ): Promise<void> {
   await dialog.getByRole('button', { name: 'Pair' }).click();
   await dialog.waitFor({ state: 'hidden' });
-  await expect(page.getByText('Reachable')).toBeVisible();
+  // `exact` — `Unreachable` (machine-model.ts's STATE_LABEL for the
+  // seeded stale peer) contains `Reachable`, and text matching is
+  // substring and case-insensitive by default.
+  await expect(page.getByText('Reachable', { exact: true })).toBeVisible();
 }
 
 /** The whole "Add a machine" flow against a real pairing URL, ending with
