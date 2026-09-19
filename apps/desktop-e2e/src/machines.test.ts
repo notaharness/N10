@@ -2,18 +2,34 @@ import { test, expect } from './fixtures/desktop.js';
 import { openPalette, sidebarRow, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
 import { openNewTerminalDialog } from './setup/terminals.js';
+import {
+  machineRows,
+  machinesNavButton,
+  openMachinesSettings,
+  pairWithUrl,
+} from './setup/machines.js';
+import {
+  peerHostFingerprint,
+  startPeerHost,
+  UNREACHABLE_ENDPOINT,
+} from './setup/beam-peer.js';
+import {
+  LOCAL_MACHINE_FINGERPRINT,
+  LOCAL_MACHINE_LABEL,
+} from './setup/beam-identity.js';
 
 /**
- * Phase 4: the machines panel, with nothing paired.
+ * Phase 4: the machines panel, and the app around it.
  *
- * These are the two guards the brief calls out explicitly: the empty
- * state offers both pairing directions (so a first-time user is never
- * stuck), and — the regression an existing user would actually notice
- * — the workspace chrome is unchanged when only the local machine is
- * registered (D8). Every other machines behaviour (state derivation,
- * pairing, revoke/forget) is covered at the unit level in
- * apps/desktop; this suite only has to prove the feature does not leak
- * into the app before anyone has paired anything.
+ * Three guards. The empty state offers both pairing directions, so a
+ * first-time user is never stuck. Pairing itself works end to end
+ * against a real second beam `Host` — the one machines flow that has to
+ * cross the wire to mean anything. And — the regression an existing
+ * user would actually notice — the workspace chrome is unchanged when
+ * only the local machine is registered (D8), with the peer-registered
+ * case asserted alongside it so each absence guard has something that
+ * proves its locator still matches. State derivation and
+ * revoke/forget stay at the unit level in apps/desktop.
  */
 
 test.describe('Machines — empty state', () => {
@@ -24,7 +40,7 @@ test.describe('Machines — empty state', () => {
     await clickAppMenuItem(desktop.app, 'Settings…');
     await expect(tab(page, /Settings/)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Machines' }).click();
+    await machinesNavButton(page).click();
 
     await expect(
       page.getByText('Pair a machine once and either side can reach the other.')
@@ -38,16 +54,20 @@ test.describe('Machines — empty state', () => {
 
     // The local machine's own row and fingerprint are shown even with
     // nothing paired — that is what the other side will be asked to
-    // confirm.
+    // confirm, so both are asserted as text rather than as presence.
+    // The fixture seeds `identity.json`, so this is the machine's real
+    // identity as the app loaded it (see `setup/beam-identity.ts`).
     await expect(page.getByText('You', { exact: true })).toBeVisible();
+    await expect(page.getByText(LOCAL_MACHINE_LABEL)).toBeVisible();
+    await expect(page.getByText(LOCAL_MACHINE_FINGERPRINT)).toBeVisible();
   });
 
-  test('the Add a machine dialog walks through paste, preview, confirm', async ({
+  test('the Add a machine dialog names what is wrong with an unusable URL', async ({
     desktop,
   }) => {
     const { page } = desktop;
     await clickAppMenuItem(desktop.app, 'Settings…');
-    await page.getByRole('button', { name: 'Machines' }).click();
+    await machinesNavButton(page).click();
     await page.getByRole('button', { name: 'Add a machine' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -59,6 +79,42 @@ test.describe('Machines — empty state', () => {
     await expect(
       dialog.getByText('does not look like a pairing URL')
     ).toBeVisible();
+  });
+
+  // The other half of that dialog: paste, preview, confirm, against a
+  // real `Host` from `@n10/beam` speaking the actual descriptor and
+  // `/pair` wire protocol on a loopback port. Everything the confirm
+  // screen exists to show — the machine's label and the fingerprint a
+  // user is asked to compare out of band — is asserted by value, which
+  // `startPeerHost` makes possible by deriving its keypair from its
+  // label.
+  test('pairing through the dialog previews the machine, then registers it', async ({
+    desktop,
+  }) => {
+    const { app, page } = desktop;
+    const peerHost = await startPeerHost('workbox');
+    try {
+      await openMachinesSettings(app, page);
+      await expect(machineRows(page)).toHaveCount(1);
+
+      await pairWithUrl(page, peerHost.pairingUrl(), async (dialog) => {
+        await expect(dialog.getByText('workbox')).toBeVisible();
+        await expect(
+          dialog.getByText(peerHostFingerprint('workbox'))
+        ).toBeVisible();
+      });
+
+      // The panel now lists this machine and the one just paired, and
+      // the footer's machines segment — hidden until a peer exists
+      // (D8) — counts both.
+      await expect(machineRows(page)).toHaveCount(2);
+      await expect(page.getByText('workbox')).toBeVisible();
+      await expect(
+        page.locator('footer').getByText('2 machines')
+      ).toBeVisible();
+    } finally {
+      await peerHost.close();
+    }
   });
 
   test('the command palette can start pairing without the mouse', async ({
@@ -85,12 +141,14 @@ test.describe('Machines — D8 regression', () => {
     await expect(statusBar).toBeVisible();
     await expect(statusBar.getByText(/machine/i)).toHaveCount(0);
 
-    // Settings' own nav still renders Appearance first and does not
-    // force any machines-only chrome onto the rest of the page.
-    await clickAppMenuItem(desktop.app, 'Settings…');
-    await expect(
-      page.getByRole('button', { name: 'Appearance' })
-    ).toBeVisible();
+    // And the machines panel itself lists this machine and nothing
+    // else. The empty-state test above asserts the "You" badge is
+    // present, which is a claim about the local row; this is the claim
+    // that matters to an existing user — that no other row exists.
+    // Counting the per-row actions menu means a leaked peer row fails
+    // here, and so does a local row that stopped rendering.
+    await openMachinesSettings(desktop.app, page);
+    await expect(machineRows(page)).toHaveCount(1);
   });
 
   // Phase 7b: the agent launch flow's own D8 guard — the one the
@@ -109,6 +167,33 @@ test.describe('Machines — D8 regression', () => {
     );
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
+  });
+});
+
+// The positive control for D8's footer guard: the same `footer` +
+// /machine/i locator that must find nothing above has to find something
+// here, or a segment renamed out of its reach would make that guard
+// permanently true.
+test.describe('Machines — the workspace with a peer registered', () => {
+  test.use({
+    beamPeers: [
+      {
+        peerId: 'a1b2c3d4e5f60001',
+        label: 'stale-laptop',
+        endpoints: [UNREACHABLE_ENDPOINT],
+      },
+    ],
+  });
+
+  test('the status bar counts the machines once one is paired', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const statusBar = page.locator('footer');
+    await expect(statusBar.getByText(/machine/i)).toHaveCount(1);
+    await expect(
+      statusBar.getByText('2 machines · 1 unreachable')
+    ).toBeVisible();
   });
 });
 
@@ -161,17 +246,21 @@ test.describe('Machines — agent launch surface, D8 regression', () => {
 });
 
 /**
- * What is NOT covered here, and why: proving the control is *present*
- * and *working* for a registered peer — the other half of ux-machines.md
- * §5 — needs a second real machine (a reachable beam peer) to select
- * and launch on. No fixture here stands one up (the empty-state and D8
- * suites above are deliberately the only machines coverage at this
- * level), and faking one at the IPC layer would prove the mock, not the
- * feature. That side of the machine `Select` — which options are
- * enabled or disabled and why, the step progress, a failure leaving the
- * dialog open with input intact — is covered at the unit level instead:
- * `machine-model.spec.ts` (`machineSelectOptions`, `isMachineSelectable`,
- * `hasPeerMachines`) and `launch-request.spec.ts` /
- * `terminal-launch-request.spec.ts` (the request a chosen machine
- * produces).
+ * What is NOT covered here, and why: actually *launching* on a
+ * registered peer — the other half of ux-machines.md §5. `startPeerHost`
+ * answers descriptor and `/pair` requests, which is enough to pair with
+ * and to probe, but not to run anything: that needs the full `dial()`
+ * mutual-auth handshake and a live pty stream on the far side. Faking
+ * it at the IPC layer would prove the mock, not the feature. Which
+ * options that `Select` enables or disables and why, the step progress,
+ * and a failure leaving the dialog open with input intact are covered
+ * at the unit level instead: `machine-model.spec.ts`
+ * (`machineSelectOptions`, `isMachineSelectable`, `hasPeerMachines`)
+ * and `launch-request.spec.ts` / `terminal-launch-request.spec.ts` (the
+ * request a chosen machine produces).
+ *
+ * The sidebar's `machine-badge` and a tab's `<machine> · ` prefix are
+ * asserted absent above with no positive control, for the same reason:
+ * `resolveMachineLabel` returns null for a local session, so both need
+ * a session actually running on a remote machine to appear at all.
  */

@@ -31,6 +31,13 @@ export function machinesNavButton(page: Page): Locator {
  *  locator error rather than as an intermittent pixel diff. */
 export const PEER_ENDPOINT_TEXT = /^http:\/\/127\.0\.0\.1:\d+$/;
 
+/** Every row of the machines panel, counted by the per-row actions
+ *  menu `MachineRow` always renders. An aria-label rather than a class:
+ *  it names what is being counted, and survives restyling. */
+export function machineRows(page: Page): Locator {
+  return page.getByRole('button', { name: 'Machine actions' });
+}
+
 export async function openMachinesSettings(
   app: ElectronApplication,
   page: Page
@@ -78,9 +85,16 @@ export async function confirmPairing(
 }
 
 /** The whole "Add a machine" flow against a real pairing URL, ending with
- *  the newly paired peer visible and `Reachable`. */
-export async function pairWithUrl(page: Page, url: string): Promise<void> {
+ *  the newly paired peer visible and `Reachable`. `inspectPreview` runs
+ *  on the confirm step, before the token is spent — the one moment at
+ *  which nothing has been stored yet. */
+export async function pairWithUrl(
+  page: Page,
+  url: string,
+  inspectPreview?: (dialog: Locator) => Promise<void>
+): Promise<void> {
   const dialog = await openAddMachineDialog(page);
   await previewPairingUrl(dialog, url);
+  await inspectPreview?.(dialog);
   await confirmPairing(page, dialog);
 }
