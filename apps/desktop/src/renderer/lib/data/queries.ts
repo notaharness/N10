@@ -7,7 +7,11 @@ import { parseDiffInWorker } from '../diff/diff-worker-client.js';
 import { measured } from '../perf.js';
 import { keys } from './query-keys.js';
 import { errorMessage } from '../utils.js';
-import type { RepoInfo, SidebarItem } from '../../../host/contract.js';
+import type {
+  MachineView,
+  RepoInfo,
+  SidebarItem,
+} from '../../../host/contract.js';
 
 /**
  * The renderer's reads: every host query the app makes, so refetch
@@ -303,6 +307,15 @@ export function useForeignSessions() {
   });
 }
 
+/** The safety net under `onMachinesChanged`, not the way the list is
+ *  kept current: a real change is pushed straight into the cache, so
+ *  this only has to catch a push that never arrived. `StatusBar` is
+ *  always mounted and calls `useMachines` unconditionally, which makes
+ *  this interval every install's baseline IPC traffic — including the
+ *  local-only ones that D8 keeps every machines surface hidden from,
+ *  and which have exactly one machine that cannot change. */
+const MACHINES_POLL_MS = 5 * 60_000;
+
 /**
  * Every machine: the local one first, then paired peers. Not repo-
  * scoped — survives a repo switch (CROSS_REPO_KEYS). Pushed on every
@@ -310,27 +323,40 @@ export function useForeignSessions() {
  * into this cache), so the poll here is only the fallback for the
  * first load and for a missed push.
  */
-export function useMachines() {
-  return useQuery({
+export function machinesQuery() {
+  return {
     queryKey: keys.machines,
     queryFn: () => window.n10.listMachines(),
-    refetchInterval: 10_000,
-    placeholderData: (prev) => prev,
-  });
+    refetchInterval: MACHINES_POLL_MS,
+    placeholderData: (prev: MachineView[] | undefined) => prev,
+  };
+}
+
+export function useMachines() {
+  return useQuery(machinesQuery());
 }
 
 /** This machine's accept-connections state — bound address, the
- *  pairing URL and its expiry, who is connected. Polled only while
- *  `live` (the accept-connections panel is open): the countdown and
- *  connection count are the whole point of that surface, but nothing
- *  elsewhere needs them warm. */
-export function useAcceptingStatus(live: boolean) {
-  return useQuery({
+ *  pairing URL and its expiry, who is connected.
+ *
+ *  Always enabled, whatever `live` says: `AcceptingStatus` is not
+ *  carried by the `onMachinesChanged` push, so gating the query on the
+ *  panel being open left nothing to fetch it, and the switch fell back
+ *  to `accepting: false` — rendering "off", under copy saying this
+ *  machine cannot be dialled from elsewhere, for a machine that is in
+ *  fact accepting. Only the 1s poll is gated: the countdown it feeds
+ *  genuinely only matters while the panel is open. */
+export function acceptingStatusQuery(live: boolean) {
+  return {
     queryKey: keys.acceptingStatus,
     queryFn: () => window.n10.getAcceptingStatus(),
-    refetchInterval: live ? 1_000 : false,
-    enabled: live,
-  });
+    refetchInterval: live ? 1_000 : (false as const),
+    enabled: true,
+  };
+}
+
+export function useAcceptingStatus(live: boolean) {
+  return useQuery(acceptingStatusQuery(live));
 }
 
 /** Debounced per-session agent activity (spinner/blink source). The

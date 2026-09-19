@@ -41,8 +41,8 @@ const FIRST_RESTART_MS = 500;
 
 /** `tick()` under fake timers: `setImmediate` is faked too, so the
  *  microtask flush has to come from the clock. */
-function settle(ms = 0): Promise<void> {
-  return vi.advanceTimersByTimeAsync(ms);
+async function settle(ms = 0): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
 }
 
 beforeEach(() => {

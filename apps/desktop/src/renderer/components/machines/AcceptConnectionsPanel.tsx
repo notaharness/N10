@@ -26,9 +26,12 @@ function offToast(connectedCount: number): string {
  * on: the pairing URL as selectable text with a copy button, a live
  * countdown to the token's expiry, and what pairing grants. Pairing is
  * a desktop-to-desktop handshake over that URL, so the URL itself is
- * the whole affordance. Off by default; the panel only polls
- * (`useAcceptingStatus`) while expanded, since the countdown and
- * connection count are the whole point of having it open.
+ * the whole affordance.
+ *
+ * The switch reads this machine's own accepting state, not whether the
+ * panel happens to be expanded — the copy beside it is a claim about
+ * who can reach this machine. Only the 1s poll is tied to the panel
+ * being open, for the countdown and the connection count.
  */
 export function AcceptConnectionsPanel() {
   const [expanded, setExpanded] = useState(false);

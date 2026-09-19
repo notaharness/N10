@@ -7,9 +7,11 @@ import type {
 } from '../../../host/contract.js';
 import { keys, resetRepoScopedCache } from './query-keys.js';
 import {
+  acceptingStatusQuery,
   loadBranchRemovalSafety,
   loadRepoGate,
   loadSidebarModel,
+  machinesQuery,
 } from './queries.js';
 
 /**
@@ -209,5 +211,37 @@ describe('loadSidebarModel', () => {
         Promise.resolve({ cwd: '/elsewhere', items: [row('theirs')] }),
     });
     await expect(loadSidebarModel('/repo', undefined)).resolves.toEqual([]);
+  });
+});
+
+describe('acceptingStatusQuery', () => {
+  it('fetches whether or not the panel is open', () => {
+    // Nothing else reads this machine's accepting state — it does not
+    // ride the `onMachinesChanged` push — so a query that only runs
+    // while the panel is expanded leaves the switch falling back to
+    // `accepting: false`, rendering "off" beside copy promising this
+    // machine cannot be dialled from elsewhere, for a machine that is
+    // in fact accepting connections.
+    expect(acceptingStatusQuery(false).enabled).toBe(true);
+    expect(acceptingStatusQuery(true).enabled).toBe(true);
+  });
+
+  it('polls only while the panel is open', () => {
+    // The 1s poll is the countdown's, and the countdown is only on
+    // screen while the panel is expanded.
+    expect(acceptingStatusQuery(true).refetchInterval).toBe(1_000);
+    expect(acceptingStatusQuery(false).refetchInterval).toBe(false);
+  });
+});
+
+describe('machinesQuery', () => {
+  it('leaves the list to the push rather than polling it often', () => {
+    // `StatusBar` is always mounted and calls `useMachines`
+    // unconditionally, so this interval is every install's baseline
+    // IPC traffic — including the local-only installs D8 hides every
+    // machines surface from, whose one machine cannot change. Real
+    // changes arrive on `onMachinesChanged`; this only catches a push
+    // that never came.
+    expect(machinesQuery().refetchInterval).toBeGreaterThanOrEqual(60_000);
   });
 });
