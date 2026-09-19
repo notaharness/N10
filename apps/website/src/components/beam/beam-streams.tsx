@@ -1,3 +1,5 @@
+import { BeamStreamsDiagram } from '@/components/beam/beam-streams-diagram';
+
 const streams = [
   {
     name: 'beam connect',
@@ -25,7 +27,10 @@ export function BeamStreams() {
       <h2 className="text-center text-2xl font-semibold">
         Three ways to reach a paired machine
       </h2>
-      <div className="mt-8 grid gap-6 sm:grid-cols-3">
+      <div className="mt-8">
+        <BeamStreamsDiagram />
+      </div>
+      <div className="grid gap-6 sm:grid-cols-3">
         {streams.map((stream) => (
           <div
             key={stream.name}

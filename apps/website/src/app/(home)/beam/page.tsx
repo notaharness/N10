@@ -3,6 +3,8 @@ import { BeamCta } from '@/components/beam/beam-cta';
 import { BeamHero } from '@/components/beam/beam-hero';
 import { BeamHow } from '@/components/beam/beam-how';
 import { BeamNotes } from '@/components/beam/beam-notes';
+import { BeamOverviewDiagram } from '@/components/beam/beam-overview-diagram';
+import { BeamQueueDiagram } from '@/components/beam/beam-queue-diagram';
 import { BeamStreams } from '@/components/beam/beam-streams';
 import { Footer } from '@/components/landing/footer';
 
@@ -16,8 +18,10 @@ export default function BeamPage() {
   return (
     <main className="flex flex-1 flex-col">
       <BeamHero />
+      <BeamOverviewDiagram />
       <BeamHow />
       <BeamStreams />
+      <BeamQueueDiagram />
       <BeamNotes />
       <BeamCta />
       <Footer />
