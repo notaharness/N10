@@ -37,6 +37,12 @@ export function appEnv(opts: {
   // app's sessions on the developer's own tmux server.
   delete env.TMUX;
   delete env.TMUX_PANE;
+  // `$BEAM_CONFIG_DIR` names a beam directory outright and wins over
+  // the XDG_CONFIG_HOME set below — so a developer who exports it (the
+  // documented override, and exactly what someone working on the
+  // machines feature sets) would run the whole suite against their real
+  // identity, peer table and paired machines.
+  delete env.BEAM_CONFIG_DIR;
   // The suite exists to drive the *built* app. This variable makes the
   // main process load the Vite dev server instead, and the desktop dev
   // orchestrator exports it into every shell it starts — so a run from
