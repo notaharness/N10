@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { withRawStdin } from './connect.js';
+import { runConnect, withRawStdin } from './connect.js';
+import { makeFakeIoWithBeamDir } from '../test-support/fake-io.js';
+import { RuntimeError, USAGE } from '../usage.js';
 
 interface FakeRawStdin {
   isTTY?: boolean;
@@ -113,5 +115,36 @@ describe('withRawStdin', () => {
     expect(code).toBe(0);
     expect(stdin.modes).toEqual([]);
     expect(process.listenerCount('SIGTERM')).toBe(before);
+  });
+});
+
+/** The help text is a promise about what you may type, so `--transport`
+ * lists only values `connect` accepts: anything else hands the user a
+ * value the command turns around and refuses. The WebRTC transport is a
+ * seam (docs/beam.md, "Deliberately out of scope"), and a seam belongs in
+ * the design notes rather than in the help. Whoever implements it makes
+ * these two tests agree again by making the flag work. */
+describe('connect transports', () => {
+  const advertised = (text: string): string[] => {
+    const match = text.match(/--transport ([a-z|]+)/);
+    return match ? match[1].split('|') : [];
+  };
+
+  it('advertises exactly the transports the command implements', () => {
+    expect(advertised(USAGE)).toEqual(['ws']);
+  });
+
+  it('refuses an unimplemented transport as unimplemented, not as a usage error', async () => {
+    const { io } = makeFakeIoWithBeamDir();
+
+    // Rejected on the transport alone: `worker` is not in this empty peer
+    // table, so a run that got as far as resolving the peer would fail with
+    // a different message and this assertion would catch the difference.
+    const rejection = runConnect(['worker', '--transport', 'webrtc'], io);
+
+    await expect(rejection).rejects.toBeInstanceOf(RuntimeError);
+    await expect(rejection).rejects.toThrow(
+      /--transport webrtc is not implemented/
+    );
   });
 });

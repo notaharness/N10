@@ -505,12 +505,13 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   Immediately means the transport is destroyed, not asked to close, and the muxer stops
   serving frames the moment the connection is reaped — a revoked peer gets no window in which
   to open one more shell.
-- The WebSocket transport is not encrypted. WebRTC data channels are (DTLS). Mutual
-  authentication is mandatory on both, so a plain-WS network attacker can read traffic but
-  cannot impersonate either side. That extends to the upgrade itself: a ticket read off the
-  wire is not enough to connect, because `/ws` also requires a signature over
-  `beam-ws:<ticket>` from the key the host stored at pairing. Run over Tailscale or tailcat
-  when the network is not trusted.
+- The WebSocket transport is not encrypted, and it is the only transport that exists today —
+  the WebRTC data channels that would bring DTLS are a seam, not an option a caller can pick
+  (see "Deliberately out of scope"). Mutual authentication is mandatory, so a network
+  attacker can read traffic but cannot impersonate either side. That extends to the upgrade
+  itself: a ticket read off the wire is not enough to connect, because `/ws` also requires
+  a signature over `beam-ws:<ticket>` from the key the host stored at pairing. Run over
+  Tailscale or tailcat when the network is not trusted.
 - Default bind is loopback. Exposing the node on other interfaces requires an explicit
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout

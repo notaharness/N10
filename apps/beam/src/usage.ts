@@ -35,7 +35,7 @@ Commands:
   revoke <peer>
   status [--json]
       This machine's identity, whether a node is running, bind address, peer summary.
-  connect <peer> [pty|pty:<program>] [--transport ws|webrtc] [-- argv...]
+  connect <peer> [pty|pty:<program>] [--transport ws] [-- argv...]
       stdin/stdout into a pty stream on that machine.
   exec <peer> [--cwd PATH] [--env K=V]... -- argv...
       Run argv there. stdout and stderr stay separate; the remote exit code becomes this one's.
