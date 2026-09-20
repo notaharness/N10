@@ -5,7 +5,7 @@
  */
 export function BeamStreamsDiagram() {
   return (
-    <div className="border-fd-border bg-fd-card mx-auto mb-8 max-w-3xl rounded-lg border p-6">
+    <div className="n10-frame bg-fd-card mx-auto mb-8 w-full max-w-3xl rounded-xl p-6">
       <svg
         viewBox="0 0 640 190"
         className="h-auto w-full"

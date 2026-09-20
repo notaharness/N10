@@ -18,13 +18,15 @@ const steps = [
 
 export function BeamHow() {
   return (
-    <section className="mx-auto max-w-5xl px-4 py-12">
-      <h2 className="text-center text-2xl font-semibold">How it works</h2>
+    <section className="mx-auto w-full max-w-5xl px-4 py-12">
+      <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
+        How it works
+      </h2>
       <div className="mt-8 grid gap-6 sm:grid-cols-3">
         {steps.map((step, i) => (
           <div
             key={step.title}
-            className="border-fd-border bg-fd-card rounded-lg border p-5"
+            className="border-fd-border bg-fd-card rounded-xl border p-6"
           >
             <div className="text-fd-primary font-mono text-sm font-semibold">
               {i + 1}

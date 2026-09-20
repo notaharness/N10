@@ -18,10 +18,14 @@ export default function BeamPage() {
   return (
     <main className="flex flex-1 flex-col">
       <BeamHero />
-      <BeamOverviewDiagram />
+      <div className="px-4">
+        <BeamOverviewDiagram />
+      </div>
       <BeamHow />
       <BeamStreams />
-      <BeamQueueDiagram />
+      <div className="px-4">
+        <BeamQueueDiagram />
+      </div>
       <BeamNotes />
       <BeamCta />
       <Footer />

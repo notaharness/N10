@@ -18,7 +18,7 @@ const notes = [
 
 export function BeamNotes() {
   return (
-    <section className="mx-auto max-w-3xl px-4 py-12">
+    <section className="mx-auto w-full max-w-3xl px-4 py-12">
       <div className="flex flex-col gap-6">
         {notes.map((note) => (
           <div key={note.title}>

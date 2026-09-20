@@ -7,7 +7,7 @@
  */
 export function BeamOverviewDiagram() {
   return (
-    <div className="border-fd-border bg-fd-card mx-auto max-w-3xl rounded-lg border p-6">
+    <div className="n10-frame bg-fd-card mx-auto w-full max-w-3xl rounded-xl p-6">
       <svg
         viewBox="0 0 640 220"
         className="h-auto w-full"

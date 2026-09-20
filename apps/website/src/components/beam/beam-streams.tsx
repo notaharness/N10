@@ -23,8 +23,8 @@ const streams = [
 
 export function BeamStreams() {
   return (
-    <section className="mx-auto max-w-5xl px-4 py-12">
-      <h2 className="text-center text-2xl font-semibold">
+    <section className="mx-auto w-full max-w-5xl px-4 py-12">
+      <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
         Three ways to reach a paired machine
       </h2>
       <div className="mt-8">
@@ -34,7 +34,7 @@ export function BeamStreams() {
         {streams.map((stream) => (
           <div
             key={stream.name}
-            className="border-fd-border bg-fd-card rounded-lg border p-5"
+            className="border-fd-border bg-fd-card rounded-xl border p-6"
           >
             <code className="text-fd-primary font-mono text-sm">
               {stream.name}
