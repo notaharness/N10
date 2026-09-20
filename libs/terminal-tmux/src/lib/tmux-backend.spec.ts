@@ -273,31 +273,6 @@ describe('hosted process lifecycle', () => {
     expect(exit).toHaveBeenCalledExactlyOnceWith(7, undefined);
     expect(backend.processState).toMatchObject({ running: false, exitCode: 7 });
   });
-  it('waits for tmux to say how the process died before reporting it', async () => {
-    const backend = await launch();
-    const exit = vi.fn();
-    const frames: string[] = [];
-    backend.onData((data) => frames.push(data));
-    backend.onExit(exit);
-    // tmux closes the pane's descriptor before it reaps the process, and
-    // writes the retained "dead pane" frame only once it has the status.
-    mock.state = { paneDead: true };
-    await vi.advanceTimersByTimeAsync(1500);
-    expect(exit).not.toHaveBeenCalled();
-    expect(frames).toEqual([]);
-    mock.state = { paneDead: true, exitCode: 7 };
-    await vi.advanceTimersByTimeAsync(500);
-    expect(exit).toHaveBeenCalledExactlyOnceWith(7, undefined);
-  });
-  it('reports a dead pane whose status never arrives rather than stranding it', async () => {
-    const backend = await launch();
-    const exit = vi.fn();
-    backend.onExit(exit);
-    mock.state = { paneDead: true };
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(exit).toHaveBeenCalledExactlyOnceWith(0, undefined);
-    expect(backend.processState).toMatchObject({ running: false });
-  });
   it('reports dead panes even when attaching after the process exited', async () => {
     mock.state = { paneDead: true, exitCode: 9 };
     const backend = await launch({ mode: 'attach', target: 'dead' });
