@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { sessionBranch } from './setup/session-keys.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,6 +27,22 @@ import { armContextMenuChoice } from './setup/menu.js';
  * provider being reachable, so a failing network can't make them lie.
  */
 
+/**
+ * Wait for tmux's retained dead-pane notice.
+ *
+ * The agent exits in milliseconds, but the notice is several hops away:
+ * the session is created in a utility process, the backend polls the
+ * pane every 500ms, and only then is the retained frame replayed into
+ * the renderer. On a loaded two-core runner that chain routinely takes
+ * longer than the suite's default expect timeout, so every test that
+ * waits for it waits on the same budget.
+ */
+function expectPaneDead(page: Page): Promise<void> {
+  return expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
 test.describe('An agent that exits immediately', () => {
   test.use({ n10Config: { aiCommand: fakeAgent({ exitAfterMs: 300 }) } });
 
@@ -38,9 +55,7 @@ test.describe('An agent that exits immediately', () => {
 
     // tmux retains the final frame and its dead-pane notice, even when
     // the process exits before the renderer subscribes.
-    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    await expectPaneDead(page);
 
     await expect
       .poll(
@@ -65,7 +80,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible();
+    await expectPaneDead(page);
     await expect(
       page.getByRole('button', { name: 'Relaunch agent', exact: true })
     ).toBeVisible();
@@ -83,9 +98,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    await expectPaneDead(page);
     await expect(
       page.getByRole('button', { name: 'Relaunch agent', exact: true })
     ).toBeVisible();
