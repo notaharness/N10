@@ -3,6 +3,7 @@ import { openPalette, sidebarRow, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
 import { openNewTerminalDialog } from './setup/terminals.js';
 import {
+  machineRow,
   machineRows,
   machinesNavButton,
   openMachinesSettings,
@@ -57,9 +58,13 @@ test.describe('Machines — empty state', () => {
     // confirm, so both are asserted as text rather than as presence.
     // The fixture seeds `identity.json`, so this is the machine's real
     // identity as the app loaded it (see `setup/beam-identity.ts`).
-    await expect(page.getByText('You', { exact: true })).toBeVisible();
-    await expect(page.getByText(LOCAL_MACHINE_LABEL)).toBeVisible();
-    await expect(page.getByText(LOCAL_MACHINE_FINGERPRINT)).toBeVisible();
+    // Each claim is made about the row that has to carry it: `You` and
+    // a fingerprint found anywhere on the page would be satisfied by
+    // any other machine's row.
+    const localRow = machineRow(page, LOCAL_MACHINE_LABEL);
+    await expect(localRow).toBeVisible();
+    await expect(localRow.getByText('You', { exact: true })).toBeVisible();
+    await expect(localRow.getByText(LOCAL_MACHINE_FINGERPRINT)).toBeVisible();
   });
 
   test('the Add a machine dialog names what is wrong with an unusable URL', async ({
@@ -111,9 +116,13 @@ test.describe('Machines — empty state', () => {
 
       // The panel now lists this machine and the one just paired, and
       // the footer's machines segment — hidden until a peer exists
-      // (D8) — counts both.
+      // (D8) — counts both. The row rather than the page: pairing ends
+      // in a `Paired with workbox` toast, which is a second match for
+      // that label for as long as it is on screen — long enough on a
+      // slow machine to make a page-wide locator a strict-mode
+      // violation, and a page-wide *presence* check vacuous.
       await expect(machineRows(page)).toHaveCount(2);
-      await expect(page.getByText('workbox')).toBeVisible();
+      await expect(machineRow(page, 'workbox')).toBeVisible();
       await expect(
         page.locator('footer').getByText('2 machines')
       ).toBeVisible();
