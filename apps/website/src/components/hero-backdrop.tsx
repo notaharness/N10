@@ -59,7 +59,14 @@ const grid: CSSProperties = {
     'radial-gradient(ellipse 75% 90% at 50% 0%, black 25%, transparent 78%)',
 };
 
-export function HeroBackdrop({ className }: { className?: string }) {
+export function HeroBackdrop({
+  cells: showCells = true,
+  className,
+}: {
+  /** Off for short, contained uses where the clusters would be cropped. */
+  cells?: boolean;
+  className?: string;
+}) {
   return (
     <div
       aria-hidden
@@ -71,19 +78,21 @@ export function HeroBackdrop({ className }: { className?: string }) {
       <div className="n10-backdrop-glow n10-backdrop-glow--sage" />
       <div className="n10-backdrop-glow n10-backdrop-glow--sand" />
       <div className="absolute inset-0" style={grid} />
-      <div className="absolute inset-0 max-sm:hidden">
-        {cells.map((cell, i) => (
-          <div
-            key={`${cell.col}:${cell.row}`}
-            className={cn(
-              'n10-backdrop-cell',
-              `n10-backdrop-cell--${cell.tone}`,
-              cell.pulse && 'n10-backdrop-cell--pulse'
-            )}
-            style={cellStyle(cell, i)}
-          />
-        ))}
-      </div>
+      {showCells && (
+        <div className="absolute inset-0 max-sm:hidden">
+          {cells.map((cell, i) => (
+            <div
+              key={`${cell.col}:${cell.row}`}
+              className={cn(
+                'n10-backdrop-cell',
+                `n10-backdrop-cell--${cell.tone}`,
+                cell.pulse && 'n10-backdrop-cell--pulse'
+              )}
+              style={cellStyle(cell, i)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

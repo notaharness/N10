@@ -6,10 +6,10 @@ export function Hero() {
   return (
     <section className="relative overflow-hidden">
       <HeroBackdrop />
-      <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 pt-20 pb-16 text-center sm:pt-28 sm:pb-24">
+      <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pt-20 pb-16 text-center sm:pt-28 sm:pb-24">
         {/* Starts split and mixes on load; hover splits it again. */}
         <Logo intro hover className="h-20 w-auto sm:h-24" />
-        <h1 className="mt-10 text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
+        <h1 className="mt-10 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
           Run coding agents across git worktrees
         </h1>
         <p className="text-fd-muted-foreground mt-6 max-w-2xl text-lg text-pretty">

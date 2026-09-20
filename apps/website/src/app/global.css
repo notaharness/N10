@@ -240,3 +240,21 @@
 .dark .n10-stage-glow {
   opacity: 0.22;
 }
+
+/* The pane behind a feature demo: one sheet of the mark's glass, set
+ * back and off to the outer corner of the frame. */
+.n10-pane {
+  opacity: 0.4;
+}
+
+.dark .n10-pane {
+  opacity: 0.22;
+}
+
+.n10-pane--sage {
+  background: var(--n10-sage);
+}
+
+.n10-pane--sand {
+  background: var(--n10-sand);
+}
