@@ -7,17 +7,28 @@
 // plus a stripped manifest keeps the tarball to the bundle and its one
 // native dependency.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertVersionsMatch } from '../../../scripts/shared-version.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const distPkgPath = resolve(__dirname, '../dist/package.json');
+const appDir = resolve(__dirname, '..');
+const distDir = resolve(appDir, 'dist');
+const distPkgPath = resolve(distDir, 'package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 
 // beam ships in the same release as the TUI and the desktop app.
 assertVersionsMatch();
+
+// npm only picks up a README/LICENSE that sit in the pack root, and the
+// pack root is dist/ — without these the npm page is blank and the tarball
+// carries no licence text for the MIT it declares.
+copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
+copyFileSync(
+  resolve(appDir, '..', '..', 'LICENSE'),
+  resolve(distDir, 'LICENSE')
+);
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
 // Everything else — @n10/beam included — is bundled into dist/main.js, and a
@@ -36,7 +47,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js'],
+  files: ['main.js', 'README.md', 'LICENSE'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,

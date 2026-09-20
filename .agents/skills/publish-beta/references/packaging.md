@@ -2,7 +2,10 @@
 
 All three packages share one version, enforced by `scripts/shared-version.mjs`.
 Publish preparation must leave no private `@n10/*` workspace dependencies in
-the distribution manifests.
+the distribution manifests. Each one copies its own `README.md` and the
+repository `LICENSE` into its `dist`, because npm reads both from the pack
+root: without them the npm page is blank and the tarball carries no licence
+text for the MIT it declares.
 
 ## CLI
 

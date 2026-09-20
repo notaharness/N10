@@ -6,17 +6,28 @@
 // npm registry, plus dev deps and nx config bloat. This strips all of it.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertVersionsMatch } from '../../../scripts/shared-version.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const distPkgPath = resolve(__dirname, '../dist/package.json');
+const appDir = resolve(__dirname, '..');
+const distDir = resolve(appDir, 'dist');
+const distPkgPath = resolve(distDir, 'package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 
 // The TUI, the desktop app and beam ship as one release under one version.
 assertVersionsMatch();
+
+// npm only picks up a README/LICENSE that sit in the pack root, and the
+// pack root is dist/ — without these the npm page is blank and the tarball
+// carries no licence text for the MIT it declares.
+copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
+copyFileSync(
+  resolve(appDir, '..', '..', 'LICENSE'),
+  resolve(distDir, 'LICENSE')
+);
 
 // @cwasm/webp is bundled but loads its wasm from disk at runtime — it
 // has to sit next to main.js and ship in the tarball.
@@ -40,7 +51,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js', 'webp.wasm'],
+  files: ['main.js', 'webp.wasm', 'README.md', 'LICENSE'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,
