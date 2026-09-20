@@ -16,7 +16,12 @@ import {
   UNREACHABLE_ENDPOINT,
   type PeerSeeds,
 } from './setup/beam-peer.js';
-import { pinMaskedBox, settleToasts, shot } from './setup/visual.js';
+import {
+  pinMaskedBox,
+  settleSettingsScroll,
+  settleToasts,
+  shot,
+} from './setup/visual.js';
 
 /**
  * The machines feature added a lot of UI with no visual coverage — see
@@ -130,6 +135,7 @@ test.describe('Machines visual @visual', () => {
           ENDPOINT_BOX
         );
         await settleToasts(page);
+        await settleSettingsScroll(page, 'machines');
         await expect(page).toHaveScreenshot('settings-machines-peers.png', {
           ...shot,
           mask: [endpoint],
@@ -210,6 +216,7 @@ test.describe('Machines visual @visual', () => {
     );
     await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
     await settleToasts(page);
+    await settleSettingsScroll(page, 'machines');
 
     await expect(page).toHaveScreenshot('settings-machines-accepting.png', {
       ...shot,
@@ -248,6 +255,7 @@ test.describe('Machines visual @visual', () => {
         );
         const cwd = await pinMaskedBox(currentRepoChoice(page));
         await settleToasts(page);
+        await settleSettingsScroll(page, 'machines');
         await expect(page).toHaveScreenshot(
           'dialog-new-terminal-machine-select.png',
           { ...shot, mask: [endpoint, cwd] }

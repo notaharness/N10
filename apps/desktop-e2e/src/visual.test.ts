@@ -9,7 +9,7 @@ import {
 } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
-import { shot } from './setup/visual.js';
+import { settleSettingsScroll, shot } from './setup/visual.js';
 
 /**
  * Screenshot comparisons, kept to the surfaces where they earn their
@@ -81,6 +81,7 @@ test.describe('Visual @visual', () => {
     await expect(
       page.getByRole('switch', { name: 'Accept connections' })
     ).toBeVisible();
+    await settleSettingsScroll(page, 'machines');
     await expect(page).toHaveScreenshot('settings-machines-empty.png', shot);
   });
 
