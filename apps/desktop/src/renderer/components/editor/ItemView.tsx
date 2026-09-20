@@ -2,7 +2,12 @@ import { Loader2Icon, PlayIcon, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useAllBranches, useSessions } from '../../lib/data/queries.js';
+import {
+  useAllBranches,
+  useSessions,
+  useWorktrees,
+} from '../../lib/data/queries.js';
+import { useTerminalTabs } from '../../lib/terminals/use-terminal-tabs.js';
 import {
   itemBranch,
   itemHasWorktree,
@@ -180,6 +185,12 @@ export function ItemView({
   const { branch, state } = useItemState(repo.cwd, item, items);
   const baseBranch = useBaseBranch(repo.cwd);
   const menu = useLaunchMenu(branch, active, state);
+  const worktrees = useWorktrees(repo.cwd);
+  const { launchTerminal } = useTerminalTabs();
+  const worktreePath = worktrees.data?.find((w) => w.branch === branch)?.path;
+  const onOpenTerminal = worktreePath
+    ? () => launchTerminal('shell', worktreePath)
+    : undefined;
 
   // Measured off the pane the terminal will actually occupy, not off
   // the tab: the rail beside it is resizable, so no fraction of the tab
@@ -245,6 +256,7 @@ export function ItemView({
           busy={busy}
           onLaunch={onLaunchClick}
           onStop={stop}
+          onOpenTerminal={onOpenTerminal}
         />
         {dialog}
       </div>
@@ -267,6 +279,7 @@ export function ItemView({
           busy={busy}
           onLaunch={onLaunchClick}
           onStop={stop}
+          onOpenTerminal={onOpenTerminal}
         />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">

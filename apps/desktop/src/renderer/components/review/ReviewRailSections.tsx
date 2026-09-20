@@ -6,6 +6,7 @@ import {
   PlayIcon,
   SendIcon,
   SquareIcon,
+  TerminalIcon,
 } from 'lucide-react';
 import type { ReviewComment } from '../../../host/contract.js';
 import { severityCounts } from '../../lib/diff/diff-model.js';
@@ -32,6 +33,7 @@ export function AgentSection({
   onSelectAgent,
   onLaunch,
   onStop,
+  onOpenTerminal,
 }: {
   running: boolean;
   busy: boolean;
@@ -40,48 +42,77 @@ export function AgentSection({
   onSelectAgent: () => void;
   onLaunch: () => void;
   onStop: () => void;
+  /** Absent when the branch has no worktree yet — there is nowhere to
+   *  open a shell. */
+  onOpenTerminal?: () => void;
 }) {
   if (!running) {
     return (
-      <Button className="w-full" size="sm" onClick={onLaunch} disabled={busy}>
-        <PlayIcon />{' '}
-        {busy ? 'Working…' : hasSession ? 'Relaunch agent' : 'Launch agent'}
-      </Button>
+      <div className="space-y-1">
+        <Button className="w-full" size="sm" onClick={onLaunch} disabled={busy}>
+          <PlayIcon />{' '}
+          {busy ? 'Working…' : hasSession ? 'Relaunch agent' : 'Launch agent'}
+        </Button>
+        <OpenTerminalButton onOpenTerminal={onOpenTerminal} />
+      </div>
     );
   }
   return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={onSelectAgent}
-        className={cn(
-          'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
-          agentActive
-            ? 'bg-sidebar-active text-foreground'
-            : 'hover:bg-sidebar-accent'
-        )}
-      >
-        <span className="relative flex size-4 shrink-0 items-center justify-center">
-          <BotIcon className="size-4 text-muted-foreground" />
-          <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
-          </span>
-        </span>
-        <span className="min-w-0 flex-1 truncate text-left">Agent</span>
-        <span className="shrink-0 text-xs text-muted-foreground">running</span>
-      </button>
-      <Tip label="Stop agent">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onStop}
-          aria-label="Stop agent"
+    <div className="space-y-1">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onSelectAgent}
+          className={cn(
+            'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
+            agentActive
+              ? 'bg-sidebar-active text-foreground'
+              : 'hover:bg-sidebar-accent'
+          )}
         >
-          <SquareIcon />
-        </Button>
-      </Tip>
+          <span className="relative flex size-4 shrink-0 items-center justify-center">
+            <BotIcon className="size-4 text-muted-foreground" />
+            <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
+            </span>
+          </span>
+          <span className="min-w-0 flex-1 truncate text-left">Agent</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            running
+          </span>
+        </button>
+        <Tip label="Stop agent">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onStop}
+            aria-label="Stop agent"
+          >
+            <SquareIcon />
+          </Button>
+        </Tip>
+      </div>
+      <OpenTerminalButton onOpenTerminal={onOpenTerminal} />
     </div>
+  );
+}
+
+function OpenTerminalButton({
+  onOpenTerminal,
+}: {
+  onOpenTerminal?: () => void;
+}) {
+  if (!onOpenTerminal) return null;
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="w-full"
+      onClick={onOpenTerminal}
+    >
+      <TerminalIcon /> Open terminal
+    </Button>
   );
 }
 

@@ -90,6 +90,7 @@ export function PrWorkspace({
   busy,
   onLaunch,
   onStop,
+  onOpenTerminal,
 }: {
   /** Absent for a worktree without a PR: the rail degrades gracefully
    *  (no comments, drafts or review walkthrough — just Agent + Files). */
@@ -107,6 +108,9 @@ export function PrWorkspace({
   busy: boolean;
   onLaunch: () => void;
   onStop: () => void;
+  /** Open a plain shell in the branch's worktree; absent when there is
+   *  none yet. */
+  onOpenTerminal?: () => void;
 }) {
   const { repo } = useRepo();
   const prId = pr?.id ?? 0;
@@ -268,6 +272,7 @@ export function PrWorkspace({
                   onSelectAgent={() => setMode('agent')}
                   onLaunch={onLaunch}
                   onStop={onStop}
+                  onOpenTerminal={onOpenTerminal}
                   onHide={() => setRailHidden(true)}
                   drafts={drafts}
                   reviewActive={effMode === 'review'}

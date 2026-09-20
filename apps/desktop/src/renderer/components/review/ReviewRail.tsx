@@ -23,6 +23,7 @@ export function ReviewRail({
   onSelectAgent,
   onLaunch,
   onStop,
+  onOpenTerminal,
   onHide,
   drafts,
   reviewActive,
@@ -52,6 +53,8 @@ export function ReviewRail({
   onSelectAgent: () => void;
   onLaunch: () => void;
   onStop: () => void;
+  /** Absent when the branch has no worktree yet. */
+  onOpenTerminal?: () => void;
   onHide: () => void;
   drafts: ReviewComment[];
   reviewActive: boolean;
@@ -120,6 +123,7 @@ export function ReviewRail({
           onSelectAgent={onSelectAgent}
           onLaunch={onLaunch}
           onStop={onStop}
+          onOpenTerminal={onOpenTerminal}
         />
       </div>
 
