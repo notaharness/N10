@@ -6,21 +6,22 @@ import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
 import { CommentsList, type CommentListItem } from './comments/CommentsList.js';
 import { FileTree, type FileEntry } from './diff/FileTree.js';
+import type { WorktreeSession } from '../../lib/review/worktree-sessions.js';
 import {
-  AgentSection,
   PlanSection,
   ReviewReadySection,
+  SessionsSection,
 } from './ReviewRailSections.js';
 
 export function ReviewRail({
   hasPr,
   overviewActive,
   onOverview,
-  running,
   busy,
   hasSession,
-  agentActive,
-  onSelectAgent,
+  sessions,
+  selectedSession,
+  onSelectSession,
   onLaunch,
   onStop,
   onOpenTerminal,
@@ -46,11 +47,13 @@ export function ReviewRail({
   hasPr: boolean;
   overviewActive: boolean;
   onOverview: () => void;
-  running: boolean;
   busy: boolean;
   hasSession: boolean;
-  agentActive: boolean;
-  onSelectAgent: () => void;
+  /** Every live session of this worktree — see `worktree-sessions.ts`. */
+  sessions: WorktreeSession[];
+  /** Registry key of the one showing in the pane, if any. */
+  selectedSession: string | null;
+  onSelectSession: (session: WorktreeSession) => void;
   onLaunch: () => void;
   onStop: () => void;
   /** Absent when the branch has no worktree yet. */
@@ -112,15 +115,15 @@ export function ReviewRail({
         </div>
       )}
 
-      {/* Agent — a running row you can select to view the terminal, or
-          a launch button (opening the session/review menu) otherwise. */}
+      {/* Sessions — the worktree's live sessions, as rows you switch
+          between, plus the ways to start another. */}
       <div className="shrink-0 border-b border-border px-2 pb-2">
-        <AgentSection
-          running={running}
+        <SessionsSection
+          sessions={sessions}
+          selected={selectedSession}
           busy={busy}
           hasSession={hasSession}
-          agentActive={agentActive}
-          onSelectAgent={onSelectAgent}
+          onSelect={onSelectSession}
           onLaunch={onLaunch}
           onStop={onStop}
           onOpenTerminal={onOpenTerminal}

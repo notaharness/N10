@@ -142,57 +142,54 @@ the bug, so the gate lives in `machineEnvAdditions` rather than in each caller.
 The directory list is desktop-configured and deliberately absent from the shared
 settings catalog in `settings/fields.ts`.
 
-## Concurrent agents in one worktree
+## Several sessions in one worktree
 
-A background review reads a checkout another agent may be writing. Two things
-keep that from being a collision rather than merely being asked not to be:
+A worktree can hold more than one live session: the agent working on the
+branch, a reviewer running beside it, and any shells the user opens there. The
+review rail lists them and the content pane switches between them
+(`renderer/lib/review/worktree-sessions.ts`), which is the point of running
+them at once — watch the agent, flip to the reviewer, flip to a shell for
+ad-hoc work.
 
-- `GIT_OPTIONAL_LOCKS=0` stops git taking the locks that `git status` and
-  `git diff` need to refresh the index's stat cache. Without it a review that
-  only ever looks at the diff still writes `.git/index` and contends with the
-  working agent.
-- `GIT_INDEX_FILE` points at a copy of the worktree's index taken at launch, so
-  anything that does write an index writes that one. The copy is why the index
-  is a copy and not an empty file: an empty index reads every tracked file as
-  newly added. When it cannot be copied the variable is left unset and only the
-  lock suppression applies.
+They are different kinds of thing underneath: the branch agent is a `worktree`
+session keyed by branch, the rest are terminals keyed by their tmux name. The
+list exists so the rail does not have to care. Order is fixed — branch agent,
+reviewer, then shells — because a row that moves when another session starts is
+a row the user clicks by mistake. An exited session keeps its row and says so;
+its pane still holds the transcript.
 
-Everything else is instruction, not enforcement, and the difference matters.
-Claude is additionally given `--allowedTools` (`BACKGROUND_REVIEW_TOOLS` in
-`session/review-prompt.ts`), which is a real ceiling: read and search tools, the
-read-only git subcommands, and `n10 util add-comment` — no write tool and no
-index-writing git command. Agents that cannot be given a tool allowlist get the
-same rules as prompt text and nothing more.
+Sessions share the checkout, with no isolation between them. Two agents running
+git in one worktree is ordinary git concurrency: `.git/index` is locked by git
+itself, and the failure mode is a transient, visible lock error. A reviewer is
+asked by its prompt not to write to the tree; nothing enforces that, and the
+honest description is that it can.
 
-The review reads a tree that is being changed under it. That is accepted rather
-than prevented: the point of running the two at once is reviewing work as it
-happens, and the alternative — a second checkout — would review something the
-branch no longer is. The prompt says so, so the agent reports what it saw
-instead of trying to hold the tree still.
+## Reviews
 
-## Background reviews
+A launched review runs in its own tmux session against the worktree, so it runs
+alongside the agent working on the branch rather than taking its session
+(`session/launch-review.ts`). It is an ordinary interactive agent — nothing
+headless, no tool restrictions — that happens to be a second session in the same
+checkout. Its prompt always starts a fresh conversation: `--continue` in a
+shared worktree would resume whatever the working agent was last saying.
 
-A launched review runs in its own tmux session against the worktree, so starting
-one no longer displaces the agent working on the branch
-(`session/launch-review.ts`). The session is an `agent` terminal, which already
-retains its pane after the process exits — that is how a transcript nobody
-watched stays readable — carrying `@orchestra-review` with the pull request id.
-It is deliberately not a `worktree` session: that type means the agent that owns
-the branch, which Orchestra reads as a player.
+The session is an `agent` terminal, which already retains its pane after the
+process exits, carrying `@orchestra-review` with the pull request id. It is
+deliberately not a `worktree` session: that type means the agent that owns the
+branch, which Orchestra reads as a player.
 
-The agent runs through its one-shot mode (`AgentDefinition.headless`), because
-there is nobody to answer a permission prompt or a question. An agent with no
-one-shot mode falls back to an interactive session of its own: concurrency is
-the goal and unattended is the ideal, not the precondition.
+One review per pull request. Launching a review that already has a live session
+attaches to it — asking to review again means "show me the reviewer I have" —
+and one whose pane has exited restarts in place, keeping its name and its
+scrollback. Nothing kills a live agent to make room. Launches of one pull
+request coalesce, so a double-click joins the first rather than racing it. The
+replacement reuses the ended session's label, so it is adopted under its own
+name to carry the relay sequence forward; renumbering from 1 would have a
+mounted pane discard everything the new session printed.
 
-Output surfaces in three places and none of them require watching the pane: the
-comments appear live in the diff viewer as they are posted, which is the review's
-actual product; the session is an ordinary terminal tab whose transcript is
-there whenever someone opens it; and its running/exited state comes back on the
-existing terminal listing. Launching a review for a pull request replaces the
-previous one for that pull request, which is what bounds retained sessions — one
-per reviewed pull request, not one per launch — and closing the tab kills it
-like any other terminal.
+The comments are the review's product and appear in the diff viewer as it posts
+them. The session also joins the tab strip through the existing terminal
+listing, and is listed in its worktree's sessions in the review rail.
 
 ## Discovery, restart and terminal lifecycle
 

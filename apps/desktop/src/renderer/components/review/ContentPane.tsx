@@ -35,6 +35,51 @@ function StackedPane({
 }
 
 /**
+ * The worktree's terminals: the branch agent on its own pane mode, and
+ * whichever other session of the worktree the user picked. Both stay
+ * mounted so their scrollback survives a trip to the diff; the picked
+ * one is keyed by name, so switching between two of them remounts onto
+ * the right session rather than re-pointing one emulator.
+ */
+function SessionPanes({
+  effMode,
+  sessionName,
+  sessionEpoch,
+  pickedSession,
+  active,
+}: {
+  effMode: Mode;
+  sessionName?: string;
+  sessionEpoch: number;
+  pickedSession?: string;
+  active: boolean;
+}) {
+  return (
+    <>
+      {sessionName && (
+        <StackedPane visible={effMode === 'agent'}>
+          <SessionTerminal
+            name={sessionName}
+            epoch={sessionEpoch}
+            active={active && effMode === 'agent'}
+          />
+        </StackedPane>
+      )}
+      {pickedSession && (
+        <StackedPane visible={effMode === 'session'}>
+          <SessionTerminal
+            key={pickedSession}
+            name={pickedSession}
+            epoch={0}
+            active={active && effMode === 'session'}
+          />
+        </StackedPane>
+      )}
+    </>
+  );
+}
+
+/**
  * The single content pane, with every mode's view stacked in it. The
  * terminal and the walkthrough stay mounted and are hidden rather than
  * unmounted, so switching modes never costs their scrollback or their
@@ -48,6 +93,7 @@ export function ContentPane({
   baseBranch,
   sessionName,
   sessionEpoch,
+  pickedSession,
   active,
   files,
   filesByName,
@@ -81,6 +127,8 @@ export function ContentPane({
   /** Changes when a new agent is spawned into this pane — see
    *  `SessionTerminal`, which re-fits its grid on it. */
   sessionEpoch: number;
+  /** Registry key of the other worktree session being viewed, if any. */
+  pickedSession?: string;
   active: boolean;
   files: [string, DiffLine[]][];
   filesByName: Map<string, DiffLine[]>;
@@ -122,15 +170,13 @@ export function ContentPane({
     : general;
   return (
     <div data-terminal-pane className="relative h-full min-h-0">
-      {sessionName && (
-        <StackedPane visible={effMode === 'agent'}>
-          <SessionTerminal
-            name={sessionName}
-            epoch={sessionEpoch}
-            active={active && effMode === 'agent'}
-          />
-        </StackedPane>
-      )}
+      <SessionPanes
+        effMode={effMode}
+        sessionName={sessionName}
+        sessionEpoch={sessionEpoch}
+        pickedSession={pickedSession}
+        active={active}
+      />
       {hasDrafts && (
         <StackedPane visible={effMode === 'review'}>
           {effMode === 'review' && (

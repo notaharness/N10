@@ -24,24 +24,27 @@ import { openSession } from './open-session.js';
 // runs in a session of its own instead, against the same checkout, so
 // the two proceed at once.
 //
-// **What that session is.** A terminal session of kind `agent` — n10
-// already models those, and they already retain their pane after the
-// process exits, which is what makes a transcript nobody watched still
-// readable afterwards. What makes it a review is the
-// `@orchestra-review` tag naming the pull request. It is deliberately
-// not a `worktree` session: that type means "the agent that owns this
-// branch", which Orchestra reads as a player, and a review is neither.
+// **What that session is.** An ordinary interactive agent session, in
+// a terminal of kind `agent` — n10 already models those, and they
+// already retain their pane after the process exits, so a transcript
+// survives whether or not anyone was watching. What makes it a review
+// is the `@orchestra-review` tag naming the pull request. It is
+// deliberately not a `worktree` session: that type means "the agent
+// that owns this branch", which Orchestra reads as a player, and a
+// review is neither.
 //
-// **How it is cleaned up.** Launching a review for a pull request
-// replaces the previous one for that pull request, so a branch
-// reviewed twenty times leaves one session behind, not twenty. It is
-// otherwise an ordinary terminal tab: closing it confirms and kills,
-// and quitting n10 only detaches.
+// **One per pull request.** Launching a review for a pull request that
+// already has a live one attaches to it rather than starting a second
+// — the user asking to review again wants the reviewer they have, not
+// a replacement for it. A review whose pane has exited restarts in
+// place, keeping its name and its scrollback. Either way a pull
+// request has at most one review session, and nothing kills a live
+// agent to make room.
 //
-// **What it shares.** The checkout, and nothing else: the session gets
-// its own git index (`MachineEnvRequest.isolateGitIndex`), so a review
-// reading the diff cannot contend with the working agent over
-// `.git/index`. See `machine-env.ts`.
+// **What it shares.** The checkout, with no isolation: a reviewer runs
+// git in the same worktree as the branch's agent, and that is ordinary
+// git concurrency — `.git/index` is locked by git itself. The prompt
+// asks a reviewer not to write; nothing enforces it.
 
 export interface ReviewSessionParams {
   /** Symlink-resolved main checkout — the `@orchestra-repo` tag. */
@@ -78,16 +81,17 @@ export function findReviewSession(
 }
 
 /**
- * Start a review of `pullRequest` in its own session.
+ * Start, or return to, the review of `pullRequest`.
  *
- * Any earlier review of the same pull request is ended first — one
- * review per pull request is what bounds retained sessions, since a
- * finished one keeps its pane until someone looks at it or closes it.
+ * A live review is attached to rather than replaced; an exited one is
+ * restarted in place. `openSession` makes that choice from the native
+ * pane state once it is given the existing target, which is the same
+ * path a terminal tab takes.
  */
 export async function launchReviewSession(
   params: ReviewSessionParams
 ): Promise<NamedPtyEntry> {
-  endReviewSession(params.repo, params.pullRequest);
+  const existing = findReviewSession(params.repo, params.pullRequest);
   return openSession({
     session: {
       type: 'terminal',
@@ -95,12 +99,13 @@ export async function launchReviewSession(
       repo: params.repo,
       branch: params.branch,
       review: params.pullRequest,
+      ...(existing ? { target: existing.name } : {}),
     },
-    mode: 'create',
+    mode: existing ? 'open' : 'create',
     cwd: params.cwd,
     cols: params.cols,
     rows: params.rows,
-    machine: { ...params.machine, isolateGitIndex: true },
+    machine: params.machine,
     build: () =>
       buildAgentLaunch({
         config: params.config,
@@ -111,11 +116,11 @@ export async function launchReviewSession(
 }
 
 /**
- * End the background review of a pull request, if there is one.
+ * End the review of a pull request, if there is one.
  *
  * Kills the entry this process holds when it holds one, so the tab
  * hears about it, and the tmux session either way — a review started
- * by an earlier run is still this repository's to replace.
+ * by an earlier run is still this repository's to end.
  */
 export function endReviewSession(repo: string, pullRequest: string): void {
   const existing = findReviewSession(repo, pullRequest);

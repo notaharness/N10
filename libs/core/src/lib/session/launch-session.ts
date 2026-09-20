@@ -25,9 +25,7 @@ export type LaunchIntent =
   | 'blank'
   | 'continue-or-blank'
   | 'seed'
-  | 'continue-or-seed'
-  /** Run the prompt to completion and exit, with no one watching. */
-  | 'headless';
+  | 'continue-or-seed';
 
 export interface LaunchRequest {
   intent: LaunchIntent;
@@ -39,27 +37,19 @@ export interface LaunchRequest {
    * support it (Claude), folded into the prompt for the rest.
    */
   systemGuidance?: string;
-  /**
-   * Tools a `headless` run may use unattended. Only a real restriction
-   * for agents that take an allowlist — see {@link SeedOptions.allowedTools}.
-   */
-  allowedTools?: readonly string[];
 }
 
 function foldGuidance(
   agent: AgentDefinition,
   prompt: string,
-  req: Pick<LaunchRequest, 'systemGuidance' | 'allowedTools'>
+  req: Pick<LaunchRequest, 'systemGuidance'>
 ): { prompt: string; opts: SeedOptions | undefined } {
   const guidance = req.systemGuidance;
-  const tools = req.allowedTools?.length
-    ? { allowedTools: req.allowedTools }
-    : undefined;
-  if (!guidance) return { prompt, opts: tools };
+  if (!guidance) return { prompt, opts: undefined };
   if (agent.supportsAppendSystemPrompt) {
-    return { prompt, opts: { ...tools, appendSystemPrompt: guidance } };
+    return { prompt, opts: { appendSystemPrompt: guidance } };
   }
-  return { prompt: `${guidance}\n\n${prompt}`, opts: tools };
+  return { prompt: `${guidance}\n\n${prompt}`, opts: undefined };
 }
 
 /**
@@ -73,23 +63,11 @@ function foldGuidance(
  */
 function buildSeedSpec(agent: AgentDefinition, req: LaunchRequest): LaunchSpec {
   const { prompt, opts } = foldGuidance(agent, req.prompt ?? '', req);
-  const preferred = preferredBuilder(agent, req.intent)?.(prompt, opts);
-  if (preferred) return preferred;
-  // Every ladder ends the same way. An agent with no one-shot mode
-  // still gets a session of its own, and the pane is there for whoever
-  // wants to watch it: concurrency is the point, and unattended is the
-  // ideal rather than the condition.
+  if (req.intent === 'continue-or-seed') {
+    const continued = agent.continueOrSeed?.(prompt, opts);
+    if (continued) return continued;
+  }
   return agent.seed?.(prompt, opts) ?? agent.blank();
-}
-
-/** The capability an intent would rather use than plain `seed`. */
-function preferredBuilder(
-  agent: AgentDefinition,
-  intent: LaunchIntent
-): AgentDefinition['seed'] {
-  if (intent === 'headless') return agent.headless;
-  if (intent === 'continue-or-seed') return agent.continueOrSeed;
-  return undefined;
 }
 
 export function buildLaunchSpec(
@@ -103,7 +81,6 @@ export function buildLaunchSpec(
       return agent.continueOrBlank?.() ?? agent.blank();
     case 'seed':
     case 'continue-or-seed':
-    case 'headless':
       return buildSeedSpec(agent, req);
   }
 }

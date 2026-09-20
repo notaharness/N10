@@ -73,40 +73,17 @@ export function buildReviewLaunchRequest(
 }
 
 /**
- * What a background review may do, as an allowlist rather than as a
- * request.
+ * The same review, run in a session of its own.
  *
- * A background review shares its worktree with whatever agent is
- * working on the branch, so it must not touch the checkout. Claude
- * takes this as `--allowedTools` and is held to it; an agent that
- * cannot be told a tool allowlist gets the same rules as guidance and
- * nothing more, which the PR description says plainly.
+ * The request above resumes the worktree's own conversation, which is
+ * the right thing when the review *is* that session. A background
+ * review is a second session in the same checkout, so it always starts
+ * a fresh conversation: `--continue` there would resume whatever the
+ * working agent was last saying, not a prior review.
  *
- * Note what is *not* here: no write tool, no `git add`, `git commit`,
- * `git checkout` or `git stash`. The review's one side effect is
- * `n10 util add-comment`, which writes n10's own comment store rather
- * than the working tree.
- */
-export const BACKGROUND_REVIEW_TOOLS: readonly string[] = [
-  'Read',
-  'Grep',
-  'Glob',
-  'Bash(n10 util add-comment:*)',
-  'Bash(git diff:*)',
-  'Bash(git log:*)',
-  'Bash(git show:*)',
-  'Bash(git status:*)',
-];
-
-/**
- * The same review, run to completion in a session of its own.
- *
- * The interactive request above takes over the worktree's session,
- * which displaces whoever was working there. This one is launched into
- * a separate tmux session against the same checkout, so the two run at
- * once — see `launch-review.ts` for what that session is and how it is
- * identified, and `docs/decisions.md` for what sharing a worktree
- * costs.
+ * The reviewer shares the worktree with that agent and is an ordinary
+ * interactive session — nothing stops it writing. The guidance below
+ * asks it not to; it does not prevent it, and the PR says as much.
  */
 export function buildBackgroundReviewRequest(
   pr: Parameters<typeof buildReviewLaunchRequest>[0],
@@ -114,21 +91,17 @@ export function buildBackgroundReviewRequest(
 ): LaunchRequest {
   const base = buildReviewLaunchRequest(pr, additionalInstruction);
   return {
-    intent: 'headless',
+    intent: 'seed',
     prompt: base.prompt,
     systemGuidance: `${base.systemGuidance ?? ''}\n\n${SHARED_WORKTREE_RULES}`,
-    allowedTools: BACKGROUND_REVIEW_TOOLS,
   };
 }
 
 const SHARED_WORKTREE_RULES =
-  `You are running unattended, in your own session, in a worktree that ` +
-  `another agent may be editing at the same time. Nobody will answer a ` +
-  `question, so do not ask one — finish the review and exit.\n\n` +
-  `- Do not modify, create or delete any file in the checkout\n` +
-  `- Do not run any git command that writes: no add, commit, checkout, ` +
-  `switch, stash, reset, merge or rebase\n` +
-  `- The tree may change under you while you read it. Review what you ` +
-  `see; do not try to stop it changing\n` +
-  `- Your only output is the comments you post with n10 util add-comment. ` +
-  `Nothing reads your terminal, so anything you only print is lost`;
+  `You are reviewing in a worktree that another agent may be editing at ` +
+  `the same time, in a session beside yours.\n\n` +
+  `- Read and review; do not modify, create or delete files in the checkout\n` +
+  `- Do not run git commands that write: no add, commit, checkout, switch, ` +
+  `stash, reset, merge or rebase\n` +
+  `- The tree may change under you while you read it. Review what you see ` +
+  `and say so if it shifts; do not try to stop it changing`;

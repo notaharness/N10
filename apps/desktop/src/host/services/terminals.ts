@@ -54,6 +54,8 @@ const DEFAULT_ROWS = 40;
 interface KnownTerminal extends RelayEntry {
   kind: TerminalKind;
   cwd: string;
+  /** Set when this session is a review: the pull request id. */
+  review?: string;
 }
 
 const known = new Map<string, KnownTerminal>();
@@ -167,7 +169,8 @@ function adoptLaunched(
   requestedName: string | undefined,
   name: string,
   kind: TerminalKind,
-  cwd: string
+  cwd: string,
+  review?: string
 ): string {
   const prev = requestedName ? known.get(requestedName) : undefined;
   if (requestedName && name !== requestedName) known.delete(requestedName);
@@ -175,6 +178,9 @@ function adoptLaunched(
     ...newRelayEntry(prev?.seq ?? 0),
     kind,
     cwd,
+    // Carried forward when a listing did not name it: a restart keeps
+    // reviewing the pull request it was started for.
+    ...(review ?? prev?.review ? { review: review ?? prev?.review } : {}),
   };
   known.set(name, entry);
   watchForEnd(name, entry);
@@ -208,7 +214,13 @@ export async function launchReviewTerminal(
   // reuses its label, so a tab still mounted on the old one holds a
   // watermark: numbering the replacement's output from 1 again would
   // have the pane discard every chunk of it.
-  const name = adoptLaunched(launched.name, launched.name, 'agent', params.cwd);
+  const name = adoptLaunched(
+    launched.name,
+    launched.name,
+    'agent',
+    params.cwd,
+    params.pullRequest
+  );
   noteRepository(params.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Review ${name} ended during launch`);
@@ -243,6 +255,7 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
       : {}),
     kind: entry.kind,
     agent: getSession(name)?.agent,
+    ...(entry.review ? { review: entry.review } : {}),
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
     repo: terminalRepo(entry.cwd, isGitRepo),
@@ -280,6 +293,10 @@ export async function adoptTerminal(
   terminal: DiscoveredTerminal
 ): Promise<void> {
   await start(terminal.name, terminal.kind, terminal.path, {}, 'attach');
+  // tmux is the record: a review adopted after a restart is still a
+  // review, and its tag is how the listing knows.
+  const entry = known.get(terminal.name);
+  if (entry && terminal.review) entry.review = terminal.review;
   noteRepository(terminal.path);
 }
 

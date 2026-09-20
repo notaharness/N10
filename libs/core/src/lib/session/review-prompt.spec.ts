@@ -4,7 +4,6 @@ import {
   CONVENTIONAL_LABELS,
 } from '@n10/review-comments';
 import {
-  BACKGROUND_REVIEW_TOOLS,
   buildBackgroundReviewRequest,
   buildReviewLaunchRequest,
 } from './review-prompt.js';
@@ -77,12 +76,15 @@ describe('buildReviewLaunchRequest', () => {
   describe('buildBackgroundReviewRequest', () => {
     const req = () => buildBackgroundReviewRequest(pr);
 
-    it('runs to completion instead of taking over a live session', () => {
-      expect(req().intent).toBe('headless');
+    it('always starts a fresh conversation', () => {
+      // A review in its own session shares the worktree with the
+      // branch's agent, and `--continue` there would resume whatever
+      // that agent was last saying rather than a prior review.
+      expect(req().intent).toBe('seed');
       expect(buildReviewLaunchRequest(pr).intent).toBe('continue-or-seed');
     });
 
-    it('asks for the same review as the interactive one', () => {
+    it('asks for the same review as the one in the worktree session', () => {
       expect(req().prompt).toBe(buildReviewLaunchRequest(pr).prompt);
     });
 
@@ -90,23 +92,13 @@ describe('buildReviewLaunchRequest', () => {
       expect(req().systemGuidance).toContain('n10 util add-comment');
     });
 
-    it('allows reading and commenting, and nothing that writes the tree', () => {
-      const tools = req().allowedTools ?? [];
-      expect(tools).toEqual(BACKGROUND_REVIEW_TOOLS);
-      expect(tools).toContain('Bash(n10 util add-comment:*)');
-      expect(tools).toContain('Read');
-      for (const forbidden of ['Write', 'Edit', 'Bash(git add:*)']) {
-        expect(tools).not.toContain(forbidden);
-      }
-      // A bare `Bash` would readmit everything the list leaves out.
-      expect(tools).not.toContain('Bash');
-    });
-
-    it('says it is unattended and sharing the checkout', () => {
+    it('says the worktree is shared and asks for reads only', () => {
+      // Guidance, not enforcement: the session is an ordinary
+      // interactive agent and nothing stops it writing.
       const guidance = req().systemGuidance ?? '';
       expect(guidance).toMatch(/another agent may be editing/);
-      expect(guidance).toMatch(/do not ask one/i);
-      expect(guidance).toMatch(/Do not modify, create or delete any file/);
+      expect(guidance).toMatch(/do not modify, create or delete files/i);
+      expect(guidance).toMatch(/no add, commit/);
     });
   });
 });

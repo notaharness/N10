@@ -655,10 +655,18 @@ describe('launchReviewTerminal', () => {
         cols: 100,
         rows: 30,
         config: { vendorAuth: {}, vendorProject: {} },
-        request: { intent: 'headless', prompt: 'review it' },
+        request: { intent: 'seed', prompt: 'review it' },
       } as Parameters<typeof terminals.launchReviewTerminal>[0],
       HOME
     );
+
+  it('is listed as the review it is, not as a bare agent terminal', async () => {
+    // The worktree's session list labels it from this, and a later
+    // launch uses it to return to the reviewer instead of starting one.
+    const summary = await review();
+    expect(summary.review).toBe('42');
+    expect(terminals.listTerminals(HOME)[0].review).toBe('42');
+  });
 
   it('surfaces as its own terminal, in the listing the tabs are built from', async () => {
     // A worktree is a repository root of its own, so the review tab is

@@ -108,41 +108,23 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(seen.terminals[0]).toMatchObject({ kind: 'agent', review: '42' });
     });
 
-    it('launches the agent unattended, with its own git index', async () => {
+    it('launches an ordinary interactive agent', async () => {
+      // Nothing headless and no tool allowlist: a reviewer is a normal
+      // session that happens to sit beside the branch's agent.
       await review();
       const start = await started();
-      expect(start.args[0]).toBe('--print');
-      expect(start.args).toContain('--allowedTools');
-      expect(start.env.GIT_OPTIONAL_LOCKS).toBe('0');
-      expect(start.env.GIT_INDEX_FILE).toBeTruthy();
-      expect(start.env.GIT_INDEX_FILE).not.toBe(
-        join(fixture.repo, '.git', 'index')
-      );
+      expect(start.args).not.toContain('--print');
+      expect(start.args).not.toContain('--allowedTools');
+      expect(start.args[start.args.length - 1]).toContain('Review PR #42');
     });
 
-    it('passes nothing that would void the tool allowlist', async () => {
-      // `--allowedTools` is only a ceiling while nothing alongside it
-      // waives permission checks. Asserted on the argv the agent was
-      // actually started with, not on what the builder meant to send,
-      // because this is the claim the whole read-only story rests on.
+    it('shares the worktree with the branch agent, with no git isolation', async () => {
+      // Two agents in one checkout is ordinary git concurrency —
+      // `.git/index` is locked by git itself.
       await review();
-      const { args } = await started();
-      for (const waiver of [
-        '--dangerously-skip-permissions',
-        '--permission-mode',
-        '--permissionMode',
-      ]) {
-        expect(args).not.toContain(waiver);
-      }
-      // And the git entries name subcommands: `Bash(git *)` would let
-      // `git stash` through and undo the isolation above.
-      const tools = args.slice(
-        args.indexOf('--allowedTools') + 1,
-        args.length - 1
-      );
-      expect(tools.filter((t) => /^Bash\(git\s*\*?\)$/.test(t))).toEqual([]);
-      expect(tools).not.toContain('Bash');
-      expect(tools).toContain('Bash(git diff:*)');
+      const start = await started();
+      expect(start.env.GIT_INDEX_FILE).toBeNull();
+      expect(start.env.GIT_OPTIONAL_LOCKS).toBeNull();
     });
 
     it('expands the chosen config directory against the running home', async () => {
@@ -160,23 +142,23 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(start.env.CLAUDE_CONFIG_DIR).toBeNull();
     });
 
-    it('replaces the previous review of the same pull request', async () => {
-      // What bounds retained sessions: reviewing a pull request twenty
-      // times leaves one session behind, not twenty. The label is free
-      // again once the old session is gone, so the replacement reusing
-      // it is the expected outcome rather than a collision.
-      await review();
-      const first = await started();
+    it('returns to a live review rather than starting a second', async () => {
+      // One review per pull request, and nothing kills a running agent
+      // to make room: the second launch attaches to the first.
+      const first = await review();
+      const started1 = await started();
       rmSync(join(fixture.home, 'agent-start.json'));
-      const second = await review();
-      const next = await started();
 
-      expect(next.pid).not.toBe(first.pid);
+      const second = await review();
+      expect(second.pty.name).toBe(first.pty.name);
+      // Attaching starts no process, so the fake agent never reran.
+      expect(existsSync(join(fixture.home, 'agent-start.json'))).toBe(false);
+      expect(started1.pid).toBeGreaterThan(0);
+
       const reviews = listOurSessions().filter(
         (s) => s.review === '42' && s.repo === fixture.repo
       );
       expect(reviews).toHaveLength(1);
-      expect(reviews[0].name).toBe(second.pty.name);
     });
 
     it('tags the session so Orchestra cannot read it as a player', async () => {

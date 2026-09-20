@@ -41,10 +41,9 @@ export interface OpenSessionParams {
   cols: number;
   rows: number;
   /**
-   * What this launch wants from the machine it lands on — a Claude
-   * configuration directory, an index of its own. Resolved here, on
-   * the launching machine, rather than being handed over as paths:
-   * see `machine-env.ts`.
+   * What this launch wants from the machine it lands on — currently a
+   * Claude configuration directory. Resolved here, on the launching
+   * machine, rather than handed over as a path: see `machine-env.ts`.
    */
   machine?: MachineEnvRequest;
   /** Called only when a process must start, never during attachment. */
@@ -163,7 +162,7 @@ function sessionSpec(
 ): SessionSpec {
   const additions = {
     ...launch.env,
-    ...machineEnvAdditions(params.machine, params.cwd, agent),
+    ...machineEnvAdditions(params.machine, agent),
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
   const env: Record<string, string | undefined> = {

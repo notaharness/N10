@@ -21,10 +21,6 @@ import type { AgentId, AppConfig } from '@n10/vcs-core';
 //     agents reject automatic resume rather than silently starting over.
 //   • New launches may use the existing continue-or-fresh capability;
 //     attaching a tmux session never invokes an agent adapter.
-//   • Every CLI here has a one-shot mode that runs a prompt to
-//     completion and exits (`headless`). Only Claude can be given a
-//     tool allowlist on the way in; for the rest the allowlist is
-//     advisory and the agent's own configuration decides.
 
 /** Extends the public {@link AgentId} with the internal, UI-hidden test runner. */
 export type ResolvedAgentId = AgentId | 'test';
@@ -49,18 +45,6 @@ export interface SeedOptions {
    * `seed`, so implementations that don't support it can ignore this.
    */
   appendSystemPrompt?: string;
-  /**
-   * The tools a {@link AgentDefinition.headless} run may use without
-   * being asked.
-   *
-   * A one-shot run has nobody to answer a permission prompt, so an
-   * agent that cannot be told this up front can only do whatever its
-   * own configuration already permits. Claude takes the list as
-   * `--allowedTools`, which makes it a real restriction rather than a
-   * request; implementations that cannot express it ignore it, and
-   * callers must not treat it as enforcement for those.
-   */
-  allowedTools?: readonly string[];
 }
 
 export interface AgentDefinition {
@@ -73,12 +57,6 @@ export interface AgentDefinition {
   supportsAppendSystemPrompt: boolean;
   /** Start a blank interactive session. */
   blank(): LaunchSpec;
-  /**
-   * Run `prompt` to completion and exit, with no interactive pane to
-   * answer to. `undefined` ⇒ the agent has no one-shot mode and the
-   * launcher falls back to seeding an interactive session instead.
-   */
-  headless?(prompt: string, opts?: SeedOptions): LaunchSpec;
   /** Resume an exited agent without silently starting a new conversation. */
   resume?(prompt?: string, opts?: SeedOptions): LaunchSpec;
   /**
@@ -142,22 +120,6 @@ const CLAUDE: AgentDefinition = {
           args: ['--append-system-prompt', opts.appendSystemPrompt, prompt],
         }
       : { cmd: 'claude', args: [prompt] },
-  headless: (prompt, opts) => ({
-    cmd: 'claude',
-    args: [
-      '--print',
-      ...(opts?.appendSystemPrompt
-        ? ['--append-system-prompt', opts.appendSystemPrompt]
-        : []),
-      // Without this a one-shot run may use no tool that needs
-      // permission, because there is nobody to grant it. With it the
-      // allowlist is also the run's ceiling.
-      ...(opts?.allowedTools?.length
-        ? ['--allowedTools', ...opts.allowedTools]
-        : []),
-      prompt,
-    ],
-  }),
   continueOrBlank: () => shellInvoke('claude --continue || claude'),
   continueOrSeed: (prompt, opts) => {
     const sys = opts?.appendSystemPrompt;
@@ -183,10 +145,8 @@ const COPILOT: AgentDefinition = {
   blank: () => ({ cmd: 'copilot', args: [] }),
   // `-i` starts an interactive session seeded with the prompt (verified
   // empirically). `-p` is the one-shot programmatic mode that exits, so
-  // we deliberately don't use it for a live pane — it is exactly what a
-  // headless run wants, though.
+  // we deliberately don't use it for a live pane.
   seed: (prompt) => ({ cmd: 'copilot', args: ['-i', prompt] }),
-  headless: (prompt) => ({ cmd: 'copilot', args: ['-p', prompt] }),
   // `copilot --continue` resumes the most-recently-closed session
   // globally, not the one for this worktree — unsafe, so no continue.
 };
@@ -201,9 +161,6 @@ const CODEX: AgentDefinition = {
     args: ['resume', '--last', ...(prompt ? [prompt] : [])],
   }),
   seed: (prompt) => ({ cmd: 'codex', args: [prompt] }),
-  // `codex exec` is the non-interactive subcommand; the sandbox and
-  // approval policy stay whatever the user's codex config says.
-  headless: (prompt) => ({ cmd: 'codex', args: ['exec', prompt] }),
 };
 
 const GEMINI: AgentDefinition = {
@@ -214,7 +171,6 @@ const GEMINI: AgentDefinition = {
   // `-i`/`--prompt-interactive` seeds an interactive session; `-p` is
   // the headless mode that exits.
   seed: (prompt) => ({ cmd: 'gemini', args: ['-i', prompt] }),
-  headless: (prompt) => ({ cmd: 'gemini', args: ['-p', prompt] }),
 };
 
 const OPENCODE: AgentDefinition = {
@@ -223,8 +179,6 @@ const OPENCODE: AgentDefinition = {
   supportsAppendSystemPrompt: false,
   blank: () => ({ cmd: 'opencode', args: [] }),
   seed: (prompt) => ({ cmd: 'opencode', args: ['--prompt', prompt] }),
-  // `opencode run` executes a prompt non-interactively and exits.
-  headless: (prompt) => ({ cmd: 'opencode', args: ['run', prompt] }),
   // `--continue`/`-c` scope is undocumented — treat as unsafe for now.
 };
 
@@ -251,10 +205,6 @@ export function makeTestAgent(rawCommand: string): AgentDefinition {
     supportsAppendSystemPrompt: false,
     blank: () => shellInvoke(rawCommand),
     resume: () => shellInvoke(rawCommand),
-    headless: (prompt) => ({
-      ...shellInvoke(rawCommand),
-      env: { [SEED_PROMPT_ENV]: prompt },
-    }),
     // Seeding a fake is best-effort: run the raw command and expose the
     // prompt via env for fakes that choose to read it.
     seed: (prompt) => ({

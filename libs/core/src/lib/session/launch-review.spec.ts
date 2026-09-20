@@ -25,16 +25,16 @@ vi.mock('../pty-registry.js', () => ({
 }));
 vi.mock('../session-resolver.js', () => ({
   listOurSessions: () => state.sessions,
-  resolveSessionByName: () => null,
+  // openSession resolves a terminal target by its tmux name; answering
+  // null here would make every launch look like a first one.
+  resolveSessionByName: (name: string) =>
+    state.sessions.find((s) => s.name === name) ?? null,
   resolveWorktreeSession: () => null,
 }));
 vi.mock('../discovery/worktree-origin.js', () => ({
   readWorktreeHead: () => ({ branch: 'feature/x' }),
 }));
-vi.mock('./machine-env.js', () => ({
-  machineEnvAdditions: (req: { isolateGitIndex?: boolean } | undefined) =>
-    req?.isolateGitIndex ? { GIT_OPTIONAL_LOCKS: '0' } : {},
-}));
+vi.mock('./machine-env.js', () => ({ machineEnvAdditions: () => ({}) }));
 
 import {
   endReviewSession,
@@ -67,7 +67,7 @@ const params = {
   cols: 80,
   rows: 24,
   config,
-  request: { intent: 'headless' as const, prompt: 'review it' },
+  request: { intent: 'seed' as const, prompt: 'review it' },
 };
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ beforeEach(() => {
   state.held = null;
 });
 
-describe('finding a background review', () => {
+describe('finding a review', () => {
   it('reads the review tag, never the name', () => {
     const review = session({ name: 'anything-at-all', review: '42' });
     state.sessions = [review];
@@ -107,7 +107,7 @@ describe('finding a background review', () => {
   });
 });
 
-describe('launching a background review', () => {
+describe('launching a review', () => {
   it('creates its own session rather than touching the branch player', async () => {
     await launchReviewSession(params);
     const plan = state.create.mock.calls[0][1] as {
@@ -121,32 +121,44 @@ describe('launching a background review', () => {
     expect(plan.tags[ORCHESTRA_TAG.sessionType]).toBe('agent');
     expect(plan.tags[ORCHESTRA_TAG.review]).toBe('42');
     expect(plan.tags[ORCHESTRA_TAG.branch]).toBe('feature/x');
-    // The transcript outlives the run: nobody was watching it.
+    // The pane outlives the process, so its transcript is still there.
     expect(plan.retainOnExit).toBe(true);
   });
 
-  it('gives the session an index of its own', async () => {
+  it('attaches to a live review instead of starting a second', async () => {
+    // Asking to review again means "show me the reviewer I have".
+    // Nothing kills a running agent to make room for another.
+    state.sessions = [session({ name: 'live-review', review: '42' })];
     await launchReviewSession(params);
-    const spec = state.create.mock.calls[0][0] as {
-      envAdditions: Record<string, string>;
-    };
-    expect(spec.envAdditions.GIT_OPTIONAL_LOCKS).toBe('0');
+    expect(state.create.mock.calls[0][1]).toMatchObject({
+      mode: 'attach',
+      target: 'live-review',
+    });
+    expect(state.killTmux).not.toHaveBeenCalled();
+    expect(state.killEntry).not.toHaveBeenCalled();
   });
 
-  it('replaces the previous review of the same pull request', async () => {
-    state.sessions = [session({ name: 'old-review', review: '42' })];
+  it('restarts a review whose pane has exited, keeping its session', async () => {
+    state.sessions = [
+      session({ name: 'dead-review', review: '42', paneDead: true }),
+    ];
     await launchReviewSession(params);
-    expect(state.killTmux).toHaveBeenCalledWith('old-review');
+    expect(state.create.mock.calls[0][1]).toMatchObject({
+      mode: 'restart',
+      target: 'dead-review',
+    });
+    expect(state.killTmux).not.toHaveBeenCalled();
   });
 
-  it('leaves a review of another pull request running', async () => {
+  it('leaves a review of another pull request alone', async () => {
     state.sessions = [session({ name: 'other-review', review: '43' })];
     await launchReviewSession(params);
+    expect(state.create.mock.calls[0][1]).toMatchObject({ mode: 'create' });
     expect(state.killTmux).not.toHaveBeenCalled();
   });
 });
 
-describe('ending a background review', () => {
+describe('ending a review', () => {
   it('kills the held entry so its tab hears about it', () => {
     state.sessions = [session({ name: 'live-review', review: '42' })];
     state.held = { pty: {} };

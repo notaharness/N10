@@ -76,18 +76,27 @@ function files(...names: string[]): [string, DiffLine[]][] {
 // ── resolveMode ──────────────────────────────────────────────────
 
 describe('resolveMode', () => {
-  const ALL: Mode[] = ['diff', 'agent', 'review', 'overview', 'plan'];
+  const ALL: Mode[] = [
+    'diff',
+    'agent',
+    'review',
+    'overview',
+    'plan',
+    'session',
+  ];
   const NOTHING = {
     hasSession: false,
     hasDrafts: false,
     hasPr: false,
     hasPlan: false,
+    hasPickedSession: false,
   };
   const EVERYTHING = {
     hasSession: true,
     hasDrafts: true,
     hasPr: true,
     hasPlan: true,
+    hasPickedSession: true,
   };
 
   it('keeps every mode when its own precondition holds', () => {
@@ -110,14 +119,16 @@ describe('resolveMode', () => {
       resolveMode(mode, { ...NOTHING, hasDrafts: true }),
       resolveMode(mode, { ...NOTHING, hasPr: true }),
       resolveMode(mode, { ...NOTHING, hasPlan: true }),
+      resolveMode(mode, { ...NOTHING, hasPickedSession: true }),
     ]);
     expect(grid).toEqual([
-      // requested       session-only  drafts-only  pr-only   plan-only
-      /* diff     */ ['diff', 'diff', 'diff', 'diff'],
-      /* agent    */ ['agent', 'diff', 'diff', 'diff'],
-      /* review   */ ['diff', 'review', 'diff', 'diff'],
-      /* overview */ ['diff', 'diff', 'overview', 'diff'],
-      /* plan     */ ['diff', 'diff', 'diff', 'plan'],
+      // requested     agent   drafts    pr        plan    picked
+      /* diff     */ ['diff', 'diff', 'diff', 'diff', 'diff'],
+      /* agent    */ ['agent', 'diff', 'diff', 'diff', 'diff'],
+      /* review   */ ['diff', 'review', 'diff', 'diff', 'diff'],
+      /* overview */ ['diff', 'diff', 'overview', 'diff', 'diff'],
+      /* plan     */ ['diff', 'diff', 'diff', 'plan', 'diff'],
+      /* session  */ ['diff', 'diff', 'diff', 'diff', 'session'],
     ]);
   });
 
@@ -131,6 +142,7 @@ describe('resolveMode', () => {
         hasDrafts: false,
         hasPr: true,
         hasPlan: false,
+        hasPickedSession: false,
       })
     ).toBe('diff');
   });
@@ -148,6 +160,7 @@ describe('resolveMode', () => {
         hasDrafts: true,
         hasPr: true,
         hasPlan: false,
+        hasPickedSession: false,
       })
     ).toBe('diff');
   });

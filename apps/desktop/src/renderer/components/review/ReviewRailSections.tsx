@@ -9,6 +9,7 @@ import {
   TerminalIcon,
 } from 'lucide-react';
 import type { ReviewComment } from '../../../host/contract.js';
+import type { WorktreeSession } from '../../lib/review/worktree-sessions.js';
 import { severityCounts } from '../../lib/diff/diff-model.js';
 import { formatSeverityBreakdown } from '../../lib/review/severity.js';
 import { cn } from '../../lib/utils.js';
@@ -22,77 +23,65 @@ import { Tip } from '../ui/tooltip.js';
  */
 
 /**
- * A running agent is a row you select to see its terminal, with Stop
- * beside it; an idle one is just the button that starts it.
+ * Every live session of this worktree, as rows you switch between.
+ *
+ * A worktree can hold several at once — the agent on the branch, a
+ * reviewer beside it, a shell for ad-hoc work — and this is where the
+ * user moves between them: each row selects that session into the
+ * content pane. The branch agent keeps Stop beside it, because it is
+ * the only one this rail is responsible for ending; a terminal is
+ * closed from its own tab like any other.
+ *
+ * With nothing running the list has nothing to show, so the section is
+ * just the two buttons that start something.
  */
-export function AgentSection({
-  running,
+export function SessionsSection({
+  sessions,
+  selected,
   busy,
   hasSession,
-  agentActive,
-  onSelectAgent,
+  onSelect,
   onLaunch,
   onStop,
   onOpenTerminal,
 }: {
-  running: boolean;
+  sessions: WorktreeSession[];
+  /** Registry key of the session showing in the pane, if any. */
+  selected: string | null;
   busy: boolean;
   hasSession: boolean;
-  agentActive: boolean;
-  onSelectAgent: () => void;
+  onSelect: (session: WorktreeSession) => void;
   onLaunch: () => void;
   onStop: () => void;
   /** Absent when the branch has no worktree yet — there is nowhere to
    *  open a shell. */
   onOpenTerminal?: () => void;
 }) {
-  if (!running) {
-    return (
-      <div className="space-y-1">
+  const branchAgentRunning = sessions.some(
+    (session) => session.isBranchAgent && session.running
+  );
+  return (
+    <div className="space-y-1">
+      {sessions.length > 0 && (
+        <ul className="space-y-0.5">
+          {sessions.map((session) => (
+            <li key={session.name}>
+              <SessionRow
+                session={session}
+                active={session.name === selected}
+                onSelect={() => onSelect(session)}
+                onStop={session.isBranchAgent ? onStop : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {!branchAgentRunning && (
         <Button className="w-full" size="sm" onClick={onLaunch} disabled={busy}>
           <PlayIcon />{' '}
           {busy ? 'Working…' : hasSession ? 'Relaunch agent' : 'Launch agent'}
         </Button>
-        <OpenTerminalButton onOpenTerminal={onOpenTerminal} />
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onSelectAgent}
-          className={cn(
-            'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
-            agentActive
-              ? 'bg-sidebar-active text-foreground'
-              : 'hover:bg-sidebar-accent'
-          )}
-        >
-          <span className="relative flex size-4 shrink-0 items-center justify-center">
-            <BotIcon className="size-4 text-muted-foreground" />
-            <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
-            </span>
-          </span>
-          <span className="min-w-0 flex-1 truncate text-left">Agent</span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            running
-          </span>
-        </button>
-        <Tip label="Stop agent">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onStop}
-            aria-label="Stop agent"
-          >
-            <SquareIcon />
-          </Button>
-        </Tip>
-      </div>
+      )}
       <OpenTerminalButton onOpenTerminal={onOpenTerminal} />
     </div>
   );
@@ -113,6 +102,74 @@ function OpenTerminalButton({
     >
       <TerminalIcon /> Open terminal
     </Button>
+  );
+}
+
+const SESSION_ICON: Record<WorktreeSession['kind'], typeof BotIcon> = {
+  agent: BotIcon,
+  review: ClipboardCheckIcon,
+  shell: TerminalIcon,
+};
+
+/**
+ * One session. The live dot is the whole status: a session that has
+ * exited keeps its row — its pane still holds the transcript — and
+ * says so rather than disappearing.
+ */
+function SessionRow({
+  session,
+  active,
+  onSelect,
+  onStop,
+}: {
+  session: WorktreeSession;
+  active: boolean;
+  onSelect: () => void;
+  onStop?: () => void;
+}) {
+  const Icon = SESSION_ICON[session.kind];
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={active}
+        className={cn(
+          'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
+          active
+            ? 'bg-sidebar-active text-foreground'
+            : 'hover:bg-sidebar-accent'
+        )}
+      >
+        <span className="relative flex size-4 shrink-0 items-center justify-center">
+          <Icon className="size-4 text-muted-foreground" />
+          {session.running && (
+            <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
+            </span>
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left">
+          {session.label}
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {session.running ? 'running' : 'exited'}
+        </span>
+      </button>
+      {onStop && session.running && (
+        <Tip label="Stop agent">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onStop}
+            aria-label="Stop agent"
+          >
+            <SquareIcon />
+          </Button>
+        </Tip>
+      )}
+    </div>
   );
 }
 

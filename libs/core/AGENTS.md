@@ -31,11 +31,12 @@ The reasoning behind each rule is in `docs/decisions.md`.
   default; do not "fix" that by forwarding it. Registered directories are
   tokens (`agents/agent-config-dirs.ts`), desktop-configured, and deliberately
   absent from the shared settings catalog.
-- **Background reviews** (`session/launch-review.ts`): a review runs in its own
-  `agent` terminal tagged `@orchestra-review`, never a `worktree` session, so
-  nothing reads it as the branch's player. It uses the agent's `headless` mode,
-  gets its own git index, and replaces the previous review of the same pull
-  request — that replacement is what bounds retained sessions.
+- **Reviews** (`session/launch-review.ts`): a review is an ordinary interactive
+  agent in its own `agent` terminal tagged `@orchestra-review`, never a
+  `worktree` session, so nothing reads it as the branch's player. It always
+  seeds a fresh conversation (`--continue` in a shared worktree resumes the
+  working agent's). One per pull request: a live one is attached to, an exited
+  one restarted in place, never replaced.
 - **Agent restart** (`session/launch-session.ts`): continuation selects the
   recorded agent and its explicit resume adapter. Fresh launch selects the
   user's choice or configured default. Missing metadata must not silently

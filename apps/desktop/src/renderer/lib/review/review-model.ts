@@ -17,7 +17,14 @@ import type { FileEntry } from '../../components/review/diff/FileTree.js';
  */
 
 /** Which pane of the review workspace is showing. */
-export type Mode = 'diff' | 'agent' | 'review' | 'overview' | 'plan';
+export type Mode =
+  | 'diff'
+  | 'agent'
+  | 'review'
+  | 'overview'
+  | 'plan'
+  /** One of the worktree's other live sessions — a reviewer, a shell. */
+  | 'session';
 
 /** What each mode needs in order to be showable at all. */
 export interface ModeContext {
@@ -29,6 +36,8 @@ export interface ModeContext {
   hasPr: boolean;
   /** At least one comment queued in this PR's plan. */
   hasPlan: boolean;
+  /** The picked session still exists — see `worktree-sessions.ts`. */
+  hasPickedSession: boolean;
 }
 
 /**
@@ -46,6 +55,7 @@ export function resolveMode(mode: Mode, ctx: ModeContext): Mode {
   if (mode === 'review' && ctx.hasDrafts) return 'review';
   if (mode === 'overview' && ctx.hasPr) return 'overview';
   if (mode === 'plan' && ctx.hasPlan) return 'plan';
+  if (mode === 'session' && ctx.hasPickedSession) return 'session';
   return 'diff';
 }
 

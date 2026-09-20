@@ -44,4 +44,12 @@ export interface TerminalSummary {
   repo: string | null;
   running: boolean;
   spawnedAt: number;
+  /**
+   * The pull request this session is reviewing, when it is a review.
+   *
+   * A review is an `agent` terminal like any other; this is what tells
+   * the two apart, so the worktree's session list can label it and a
+   * launch can return to it.
+   */
+  review?: string;
 }
