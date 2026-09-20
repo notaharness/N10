@@ -34,6 +34,17 @@ const state = vi.hoisted(() => ({
   injected: [] as { name: string; prompt: string }[],
   /** Branch names whose checkout core should report as failed. */
   checkoutFails: new Set<string>(),
+  /** Background reviews the terminals service was asked to start. */
+  reviews: [] as {
+    repo: string;
+    branch: string;
+    pullRequest: string;
+    cwd: string;
+    config: unknown;
+    agent?: { id: string };
+    request: unknown;
+    machine?: unknown;
+  }[],
 }));
 
 vi.mock('./repo.js', () => ({
@@ -43,6 +54,28 @@ vi.mock('./repo.js', () => ({
 
 vi.mock('@n10/vcs-core', () => ({
   readConfig: (cwd: string) => state.configByCwd[cwd] ?? { fromCwd: cwd },
+}));
+
+// The terminals service owns what a background review *is* — its own
+// session, its tab, its retained transcript — and is covered by
+// `terminals.spec.ts`. Here the question is only what `sessions.ts`
+// asks it for, so the call is recorded rather than carried out.
+vi.mock('./terminals.js', () => ({
+  agentTerminalNames: () => [],
+  terminalBuffer: () => undefined,
+  launchReviewTerminal: (params: {
+    repo: string;
+    branch: string;
+    pullRequest: string;
+    cwd: string;
+    config: unknown;
+    agent?: { id: string };
+    request: unknown;
+    machine?: unknown;
+  }) => {
+    state.reviews.push(params);
+    return Promise.resolve({ name: `review-${params.pullRequest}` });
+  },
 }));
 
 vi.mock('@n10/terminal-tmux', () => ({
@@ -119,10 +152,14 @@ vi.mock('@n10/core', async (importOriginal) => {
       },
       { name: 'Codex', agent: { id: 'codex' } },
     ],
-    buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
-      intent: 'review',
+    buildBackgroundReviewRequest: (
+      pr: { id: number },
+      instruction?: string
+    ) => ({
+      intent: 'headless',
       prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
       systemGuidance: 'guidance',
+      allowedTools: ['Read'],
     }),
     launchSession: async (spec: {
       name: string;
@@ -209,6 +246,7 @@ beforeEach(async () => {
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
+  state.reviews = [];
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -536,63 +574,100 @@ describe('session buffer', () => {
 });
 
 describe('launchReviewAgent', () => {
-  it('launches on the pull request branch with the review prompt', async () => {
-    // The prompt and guidance come from app-core so the desktop and the
-    // TUI seed a review identically; the branch is the PR's source, not
-    // whatever is checked out.
+  const pr = (id: number, sourceBranch: string) =>
+    ({ id, sourceBranch } as Parameters<typeof launchReviewAgent>[0]['pr']);
+
+  it('reviews in a session of its own, leaving the branch agent alone', async () => {
+    // The whole point: an agent already working on the branch keeps
+    // its session. Nothing is spawned on the worktree key at all.
+    state.alive.add(worktreeSessionKey('feature/review', '/repo-a'));
     await launchReviewAgent({
-      pr: { id: 42, sourceBranch: 'feature/review' },
+      pr: pr(42, 'feature/review'),
       instruction: 'focus on error handling',
     } as Parameters<typeof launchReviewAgent>[0]);
 
-    expect(state.spawns).toHaveLength(1);
-    expect(state.spawns[0].name).toBe(
-      worktreeSessionKey('feature/review', '/repo-a')
-    );
-    expect(state.spawns[0].request).toMatchObject({
-      intent: 'seed',
-      prompt: 'review #42: focus on error handling',
-      systemGuidance: 'guidance',
-    });
-  });
-
-  it('rejects overlapping reviews with different instructions instead of dropping a prompt', async () => {
-    const pr = { id: 1, sourceBranch: 'dup' } as Parameters<
-      typeof launchReviewAgent
-    >[0]['pr'];
-    const first = launchReviewAgent({ pr, instruction: 'first' });
-    await expect(
-      launchReviewAgent({ pr, instruction: 'second' })
-    ).rejects.toThrow('Another launch is in progress');
-    await first;
-    expect(state.spawns[0].request).toMatchObject({
-      prompt: 'review #1: first',
-    });
-  });
-
-  it('forwards the selected review agent and guarded fresh intent', async () => {
-    const pr = { id: 1, sourceBranch: 'selected' } as Parameters<
-      typeof launchReviewAgent
-    >[0]['pr'];
-    await launchReviewAgent({ pr, agentId: 'codex' });
-    expect(state.spawns[0]).toMatchObject({
-      fresh: true,
-      agent: { id: 'codex' },
+    expect(state.spawns).toEqual([]);
+    expect(state.killed).toEqual([]);
+    expect(state.reviews).toHaveLength(1);
+    expect(state.reviews[0]).toMatchObject({
+      repo: '/repo-a',
+      branch: 'feature/review',
+      pullRequest: '42',
+      cwd: '/repo-a/.claude/worktrees/feature/review',
       request: {
-        intent: 'seed',
-        prompt: 'review #1',
+        intent: 'headless',
+        prompt: 'review #42: focus on error handling',
         systemGuidance: 'guidance',
       },
     });
   });
 
-  it('goes through the same de-duplication as a plain launch', async () => {
-    const pr = { id: 1, sourceBranch: 'dup' };
-    await Promise.all([
-      launchReviewAgent({ pr } as Parameters<typeof launchReviewAgent>[0]),
-      launchReviewAgent({ pr } as Parameters<typeof launchReviewAgent>[0]),
+  it('reads config from the repo root, not the worktree', async () => {
+    // Per-project config is keyed by cwd hash, so reading it from the
+    // worktree resolves an empty bag.
+    state.configByCwd['/repo-a'] = { agentId: 'gemini' };
+    await launchReviewAgent({ pr: pr(7, 'cfg') } as Parameters<
+      typeof launchReviewAgent
+    >[0]);
+    expect(state.reviews[0].config).toMatchObject({ agentId: 'gemini' });
+  });
+
+  it('forwards the selected agent and config directory', async () => {
+    await launchReviewAgent({
+      pr: pr(1, 'selected'),
+      agentId: 'codex',
+      configDir: '~/.claude-work',
+    } as Parameters<typeof launchReviewAgent>[0]);
+    expect(state.reviews[0]).toMatchObject({
+      agent: { id: 'codex' },
+      machine: { configDir: '~/.claude-work' },
+    });
+  });
+
+  it('sends no machine request when no directory was chosen', async () => {
+    // "Unset" has to stay unset all the way down: it means the host
+    // decides, and an empty object here would still be a request.
+    await launchReviewAgent({ pr: pr(1, 'plain') } as Parameters<
+      typeof launchReviewAgent
+    >[0]);
+    expect(state.reviews[0].machine).toBeUndefined();
+  });
+
+  it('joins a launch already in flight rather than starting a second', async () => {
+    // Both clicks must not race: the second would end the first's
+    // session as "the previous review of this pull request".
+    const [a, b] = await Promise.all([
+      launchReviewAgent({ pr: pr(1, 'dup') } as Parameters<
+        typeof launchReviewAgent
+      >[0]),
+      launchReviewAgent({ pr: pr(1, 'dup') } as Parameters<
+        typeof launchReviewAgent
+      >[0]),
     ]);
-    expect(state.spawns).toHaveLength(1);
+    expect(state.reviews).toHaveLength(1);
+    expect(a).toEqual(b);
+  });
+
+  it('lets a different pull request start while one is in flight', async () => {
+    await Promise.all([
+      launchReviewAgent({ pr: pr(1, 'one') } as Parameters<
+        typeof launchReviewAgent
+      >[0]),
+      launchReviewAgent({ pr: pr(2, 'two') } as Parameters<
+        typeof launchReviewAgent
+      >[0]),
+    ]);
+    expect(state.reviews.map((r) => r.pullRequest).sort()).toEqual(['1', '2']);
+  });
+
+  it('fails when the worktree cannot be resolved', async () => {
+    state.createFails.add('broken');
+    await expect(
+      launchReviewAgent({ pr: pr(3, 'broken') } as Parameters<
+        typeof launchReviewAgent
+      >[0])
+    ).rejects.toThrow('git refused broken');
+    expect(state.reviews).toEqual([]);
   });
 });
 
