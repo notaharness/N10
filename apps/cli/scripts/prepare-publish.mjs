@@ -20,14 +20,9 @@ const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 // The TUI, the desktop app and beam ship as one release under one version.
 assertVersionsMatch();
 
-// npm only picks up a README/LICENSE that sit in the pack root, and the
-// pack root is dist/ — without these the npm page is blank and the tarball
-// carries no licence text for the MIT it declares.
+// npm only picks up a README that sits in the pack root, and the pack
+// root is dist/ — without this the npm page is blank.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
-copyFileSync(
-  resolve(appDir, '..', '..', 'LICENSE'),
-  resolve(distDir, 'LICENSE')
-);
 
 // @cwasm/webp is bundled but loads its wasm from disk at runtime — it
 // has to sit next to main.js and ship in the tarball.
@@ -51,7 +46,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js', 'webp.wasm', 'README.md', 'LICENSE'],
+  files: ['main.js', 'webp.wasm', 'README.md'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,

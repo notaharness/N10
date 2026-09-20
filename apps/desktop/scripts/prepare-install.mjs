@@ -16,6 +16,7 @@
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -37,14 +38,13 @@ copyFileSync(
   resolve(appDir, 'scripts', 'launcher.mjs'),
   resolve(distDir, 'launcher.mjs')
 );
-// npm only picks up a README/LICENSE that sit in the pack root, and the
-// pack root is dist/ — without these the npm page is blank and the tarball
-// carries no licence text for the MIT it declares.
+// npm only picks up a README/LICENSE that sit in the pack root, and
+// the pack root is dist/ — without these the npm page is blank.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
-copyFileSync(
-  resolve(appDir, '..', '..', 'LICENSE'),
-  resolve(distDir, 'LICENSE')
-);
+const licenseSrc = resolve(appDir, '..', '..', 'LICENSE');
+if (existsSync(licenseSrc)) {
+  copyFileSync(licenseSrc, resolve(distDir, 'LICENSE'));
+}
 
 const src = JSON.parse(readFileSync(resolve(appDir, 'package.json'), 'utf8'));
 

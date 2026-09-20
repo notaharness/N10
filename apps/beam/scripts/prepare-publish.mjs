@@ -21,14 +21,9 @@ const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 // beam ships in the same release as the TUI and the desktop app.
 assertVersionsMatch();
 
-// npm only picks up a README/LICENSE that sit in the pack root, and the
-// pack root is dist/ — without these the npm page is blank and the tarball
-// carries no licence text for the MIT it declares.
+// npm only picks up a README that sits in the pack root, and the pack
+// root is dist/ — without this the npm page is blank.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
-copyFileSync(
-  resolve(appDir, '..', '..', 'LICENSE'),
-  resolve(distDir, 'LICENSE')
-);
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
 // Everything else — @n10/beam included — is bundled into dist/main.js, and a
@@ -47,7 +42,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js', 'README.md', 'LICENSE'],
+  files: ['main.js', 'README.md'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,
