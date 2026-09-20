@@ -86,13 +86,14 @@ Linux, so it may work, but nothing here specifically supports it.
 Names are labels; tags carry identity. n10 and the Orchestra skill's bash
 scripts create ordinary tmux sessions using the same user options:
 
-| Session user option       | Meaning                               |
-| ------------------------- | ------------------------------------- |
-| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra` |
-| `@orchestra-repo`         | Canonical main checkout path          |
-| `@orchestra-session-type` | `worktree`, `shell` or `agent`        |
-| `@orchestra-branch`       | Exact branch for a worktree session   |
-| `@orchestra-agent`        | Agent used for the most recent launch |
+| Session user option       | Meaning                                  |
+| ------------------------- | ---------------------------------------- |
+| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra`    |
+| `@orchestra-repo`         | Canonical main checkout path             |
+| `@orchestra-session-type` | `worktree`, `shell` or `agent`           |
+| `@orchestra-branch`       | Exact branch for a worktree session      |
+| `@orchestra-agent`        | Agent used for the most recent launch    |
+| `@orchestra-review`       | Pull request a background review reviews |
 
 The shared names live in `session-identity.ts`. Creator/reporting metadata
 survives attachment and restart; a successful new process updates its agent
@@ -107,13 +108,91 @@ also require a repo tag. A familiar name alone never authorizes attachment or
 termination. Duplicate worktree identities resolve to the oldest session;
 extras are listed, never silently killed.
 
-Labels are `<repo>-<branch>`, `<repo>-shell` or `<repo>-agent`. The repo is the
+Labels are `<repo>-<branch>`, `<repo>-shell`, `<repo>-agent` or
+`<repo>-<branch>-review`. The repo is the
 canonical main checkout's basename; `/`, `.` and `:` become `-`. A label longer
 than 200 characters keeps its first 195 plus a four-digit hash suffix. Name
 collisions add `-2`, `-3`, and so on, always from the original preferred label.
 A duplicate-name race retries allocation without adopting the other session.
 Core registry keys are JSON tuples: `["worktree", repo, exactBranch]` or
 `["terminal", actualTmuxName]`. Display labels never address registry entries.
+
+## Launch environment and the machine it runs on
+
+A session's environment is `process.env` plus an `additions` map, and only the
+second half describes the launch rather than the orchestrating process.
+`session/machine-env.ts` is the one place that fills it, and it is handed
+capabilities rather than paths: a caller asks for "the work Claude
+configuration" or "an index of your own" and the answer is computed where the
+agent will run.
+
+Claude configuration directories are registered per machine and stored as
+tokens: a directory under `HOME` is kept as `~/.claude-work`, and one outside it
+stays absolute and names that machine only (`agents/agent-config-dirs.ts`). The
+default entry is `~/.claude`, which is also what an unconfigured machine has.
+An unselected directory contributes no `CLAUDE_CONFIG_DIR` at all, so whatever
+the host already has stays in force — a launch that inherits nothing is a
+launch that lands in the host's own default, which is the correct answer rather
+than a gap.
+
+**The selection is local-only, by design.** A remote machine has its own home,
+its own credentials and its own registered directories; it is sent no
+`CLAUDE_CONFIG_DIR` and uses its own default. Forwarding this host's answer is
+the bug, so the gate lives in `machineEnvAdditions` rather than in each caller.
+The directory list is desktop-configured and deliberately absent from the shared
+settings catalog in `settings/fields.ts`.
+
+## Concurrent agents in one worktree
+
+A background review reads a checkout another agent may be writing. Two things
+keep that from being a collision rather than merely being asked not to be:
+
+- `GIT_OPTIONAL_LOCKS=0` stops git taking the locks that `git status` and
+  `git diff` need to refresh the index's stat cache. Without it a review that
+  only ever looks at the diff still writes `.git/index` and contends with the
+  working agent.
+- `GIT_INDEX_FILE` points at a copy of the worktree's index taken at launch, so
+  anything that does write an index writes that one. The copy is why the index
+  is a copy and not an empty file: an empty index reads every tracked file as
+  newly added. When it cannot be copied the variable is left unset and only the
+  lock suppression applies.
+
+Everything else is instruction, not enforcement, and the difference matters.
+Claude is additionally given `--allowedTools` (`BACKGROUND_REVIEW_TOOLS` in
+`session/review-prompt.ts`), which is a real ceiling: read and search tools, the
+read-only git subcommands, and `n10 util add-comment` — no write tool and no
+index-writing git command. Agents that cannot be given a tool allowlist get the
+same rules as prompt text and nothing more.
+
+The review reads a tree that is being changed under it. That is accepted rather
+than prevented: the point of running the two at once is reviewing work as it
+happens, and the alternative — a second checkout — would review something the
+branch no longer is. The prompt says so, so the agent reports what it saw
+instead of trying to hold the tree still.
+
+## Background reviews
+
+A launched review runs in its own tmux session against the worktree, so starting
+one no longer displaces the agent working on the branch
+(`session/launch-review.ts`). The session is an `agent` terminal, which already
+retains its pane after the process exits — that is how a transcript nobody
+watched stays readable — carrying `@orchestra-review` with the pull request id.
+It is deliberately not a `worktree` session: that type means the agent that owns
+the branch, which Orchestra reads as a player.
+
+The agent runs through its one-shot mode (`AgentDefinition.headless`), because
+there is nobody to answer a permission prompt or a question. An agent with no
+one-shot mode falls back to an interactive session of its own: concurrency is
+the goal and unattended is the ideal, not the precondition.
+
+Output surfaces in three places and none of them require watching the pane: the
+comments appear live in the diff viewer as they are posted, which is the review's
+actual product; the session is an ordinary terminal tab whose transcript is
+there whenever someone opens it; and its running/exited state comes back on the
+existing terminal listing. Launching a review for a pull request replaces the
+previous one for that pull request, which is what bounds retained sessions — one
+per reviewed pull request, not one per launch — and closing the tab kills it
+like any other terminal.
 
 ## Discovery, restart and terminal lifecycle
 

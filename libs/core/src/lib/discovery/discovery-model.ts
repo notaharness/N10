@@ -28,6 +28,12 @@ export interface DiscoveredTerminal {
   agent?: string;
   /** Absolute directory the session runs in. */
   path: string;
+  /** The pull request this session is reviewing in the background,
+   *  when it is one. A review is an `agent` terminal like any other;
+   *  this is what tells the two apart. */
+  review?: string;
+  /** The branch a review session runs against. */
+  branch?: string;
 }
 
 /** Everything one scan observed about the world outside this process. */

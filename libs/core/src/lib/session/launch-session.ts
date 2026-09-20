@@ -2,6 +2,7 @@ import type { AppConfig } from '@n10/vcs-core';
 import { getSession, type NamedPtyEntry } from '../pty-registry.js';
 import type { SessionIncarnation } from './session-launch-context.js';
 import { openSession } from './open-session.js';
+import type { MachineEnvRequest } from './machine-env.js';
 import { worktreeRequest } from './session-request.js';
 import { noteInput } from '../activity.js';
 import {
@@ -24,7 +25,9 @@ export type LaunchIntent =
   | 'blank'
   | 'continue-or-blank'
   | 'seed'
-  | 'continue-or-seed';
+  | 'continue-or-seed'
+  /** Run the prompt to completion and exit, with no one watching. */
+  | 'headless';
 
 export interface LaunchRequest {
   intent: LaunchIntent;
@@ -36,18 +39,27 @@ export interface LaunchRequest {
    * support it (Claude), folded into the prompt for the rest.
    */
   systemGuidance?: string;
+  /**
+   * Tools a `headless` run may use unattended. Only a real restriction
+   * for agents that take an allowlist — see {@link SeedOptions.allowedTools}.
+   */
+  allowedTools?: readonly string[];
 }
 
 function foldGuidance(
   agent: AgentDefinition,
   prompt: string,
-  guidance: string | undefined
+  req: Pick<LaunchRequest, 'systemGuidance' | 'allowedTools'>
 ): { prompt: string; opts: SeedOptions | undefined } {
-  if (!guidance) return { prompt, opts: undefined };
+  const guidance = req.systemGuidance;
+  const tools = req.allowedTools?.length
+    ? { allowedTools: req.allowedTools }
+    : undefined;
+  if (!guidance) return { prompt, opts: tools };
   if (agent.supportsAppendSystemPrompt) {
-    return { prompt, opts: { appendSystemPrompt: guidance } };
+    return { prompt, opts: { ...tools, appendSystemPrompt: guidance } };
   }
-  return { prompt: `${guidance}\n\n${prompt}`, opts: undefined };
+  return { prompt: `${guidance}\n\n${prompt}`, opts: tools };
 }
 
 /**
@@ -60,19 +72,24 @@ function foldGuidance(
  * same way and then walk the same capability ladder down to `blank()`.
  */
 function buildSeedSpec(agent: AgentDefinition, req: LaunchRequest): LaunchSpec {
-  const { prompt, opts } = foldGuidance(
-    agent,
-    req.prompt ?? '',
-    req.systemGuidance
-  );
-  if (req.intent === 'continue-or-seed') {
-    return (
-      agent.continueOrSeed?.(prompt, opts) ??
-      agent.seed?.(prompt, opts) ??
-      agent.blank()
-    );
-  }
+  const { prompt, opts } = foldGuidance(agent, req.prompt ?? '', req);
+  const preferred = preferredBuilder(agent, req.intent)?.(prompt, opts);
+  if (preferred) return preferred;
+  // Every ladder ends the same way. An agent with no one-shot mode
+  // still gets a session of its own, and the pane is there for whoever
+  // wants to watch it: concurrency is the point, and unattended is the
+  // ideal rather than the condition.
   return agent.seed?.(prompt, opts) ?? agent.blank();
+}
+
+/** The capability an intent would rather use than plain `seed`. */
+function preferredBuilder(
+  agent: AgentDefinition,
+  intent: LaunchIntent
+): AgentDefinition['seed'] {
+  if (intent === 'headless') return agent.headless;
+  if (intent === 'continue-or-seed') return agent.continueOrSeed;
+  return undefined;
 }
 
 export function buildLaunchSpec(
@@ -86,6 +103,7 @@ export function buildLaunchSpec(
       return agent.continueOrBlank?.() ?? agent.blank();
     case 'seed':
     case 'continue-or-seed':
+    case 'headless':
       return buildSeedSpec(agent, req);
   }
 }
@@ -103,6 +121,9 @@ export interface LaunchSessionParams {
    * leaves it unset and gets the configured default.
    */
   agent?: AgentDefinition;
+  /** What the session wants from the machine it runs on — see
+   *  `machine-env.ts`. Carried as tokens, resolved at launch. */
+  machine?: MachineEnvRequest;
   /** Discovery only attaches; a user launch may restart an exited agent. */
   mode?: 'open' | 'attach';
   fresh?: boolean;
@@ -123,6 +144,7 @@ export function launchSession(
     fresh: params.fresh,
     intent: params.request.intent.startsWith('continue') ? 'continue' : 'fresh',
     expected: params.expected,
+    machine: params.machine,
     cwd: params.cwd,
     cols: params.cols,
     rows: params.rows,
@@ -210,10 +232,6 @@ function buildResumeSpec(
     throw new Error(
       `${agent.name} does not support automatic resume. Start a new session explicitly.`
     );
-  const { prompt, opts } = foldGuidance(
-    agent,
-    request.prompt ?? '',
-    request.systemGuidance
-  );
+  const { prompt, opts } = foldGuidance(agent, request.prompt ?? '', request);
   return agent.resume(prompt || undefined, opts);
 }

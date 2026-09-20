@@ -16,6 +16,7 @@ import {
 } from '../session-key.js';
 import {
   ORCHESTRA_TAG,
+  reviewSessionLabel,
   sessionTags,
   terminalSessionLabel,
   worktreeSessionLabel,
@@ -188,10 +189,6 @@ function launchPlan(
   fresh = false,
   expected?: TmuxSessionIncarnation
 ): TmuxLaunchPlan {
-  const identity =
-    request.type === 'worktree'
-      ? { type: 'worktree' as const, branch: request.branch }
-      : { type: request.kind };
   const agentTags: Record<string, string> = agent
     ? { [ORCHESTRA_TAG.agent]: agent }
     : {};
@@ -224,22 +221,55 @@ function launchPlan(
       ...(expected ? { expected, expectedTags: identityGuard(existing) } : {}),
     };
   }
+  return createPlan(request, agentTags, retainOnExit);
+}
+
+function createPlan(
+  request: SessionRequest,
+  agentTags: Record<string, string>,
+  retainOnExit: boolean
+): TmuxLaunchPlan {
+  if (request.type === 'worktree') {
+    return {
+      mode: 'create',
+      label: worktreeSessionLabel(request.repo, request.branch),
+      tags: {
+        ...sessionTags(request.repo, {
+          type: 'worktree',
+          branch: request.branch,
+        }),
+        ...agentTags,
+      },
+      retainOnExit,
+    };
+  }
   return {
     mode: 'create',
-    label:
-      request.type === 'worktree'
-        ? worktreeSessionLabel(request.repo, request.branch)
-        : terminalSessionLabel(request.repo, request.kind),
-    tags: { ...sessionTags(request.repo, identity), ...agentTags },
+    label: terminalLabel(request),
+    tags: {
+      ...sessionTags(request.repo, {
+        type: request.kind,
+        ...(request.branch ? { branch: request.branch } : {}),
+        ...(request.review ? { review: request.review } : {}),
+      }),
+      ...agentTags,
+    },
     retainOnExit,
-    excludedNames:
-      request.type === 'terminal'
-        ? sessionNames().flatMap((key) => {
-            const identity = sessionIdentity(key);
-            return identity?.kind === 'terminal' ? [identity.id] : [];
-          })
-        : undefined,
+    excludedNames: sessionNames().flatMap((key) => {
+      const identity = sessionIdentity(key);
+      return identity?.kind === 'terminal' ? [identity.id] : [];
+    }),
   };
+}
+
+/** A review says what it is in `tmux ls`; every other terminal is named
+ *  for its kind. Labels only — the tags decide identity either way. */
+function terminalLabel(
+  request: Extract<SessionRequest, { type: 'terminal' }>
+): string {
+  return request.review && request.branch
+    ? reviewSessionLabel(request.repo, request.branch)
+    : terminalSessionLabel(request.repo, request.kind);
 }
 
 function shouldAttach(mode: string, session: TaggedSession | null): boolean {

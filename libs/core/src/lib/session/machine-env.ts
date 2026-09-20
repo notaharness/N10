@@ -32,6 +32,8 @@ export interface MachineEnvRequest {
    * Which registered Claude configuration directory to use, as a
    * token (`~/.claude-work`) — never an expanded path. Unset leaves
    * `CLAUDE_CONFIG_DIR` alone, so the host decides.
+   *
+   * **Local launches only** — see {@link machineEnvAdditions}.
    */
   configDir?: ConfigDirToken;
   /**
@@ -40,6 +42,11 @@ export interface MachineEnvRequest {
    * {@link isolatedIndexEnv}.
    */
   isolateGitIndex?: boolean;
+  /**
+   * Whether the session will run on this machine. Defaults to true,
+   * which is every launch there is today.
+   */
+  local?: boolean;
 }
 
 /** Config directories only mean anything to the agent that reads them. */
@@ -49,7 +56,22 @@ const CONFIG_DIR_AGENTS = new Set(['claude']);
  * The additions this machine contributes to a launch.
  *
  * `agent` is the resolved agent id; `cwd` is the directory the session
- * will run in, on this machine.
+ * will run in.
+ *
+ * **The Claude configuration directory is deliberately local-only.**
+ * A remote machine has its own home directory, its own credentials and
+ * its own registered directories, and it is not this machine's business
+ * to choose between them: a remote launch is sent no
+ * `CLAUDE_CONFIG_DIR` at all and uses whatever that host defaults to.
+ * That is the intended behaviour and not a gap to be filled — forwarding
+ * this host's answer is the bug, which is why it is gated here rather
+ * than left to a caller to remember. `sessionEnvFlags` in
+ * `libs/terminal-tmux/src/lib/tmux-launch.ts` reasons the same way
+ * about PATH and HOME.
+ *
+ * The isolated git index is unconditional by contrast: it describes the
+ * checkout the session runs in, wherever that is, and the path it names
+ * is created on that same machine.
  */
 export function machineEnvAdditions(
   request: MachineEnvRequest | undefined,
@@ -57,8 +79,10 @@ export function machineEnvAdditions(
   agent: string | undefined
 ): Record<string, string> {
   if (!request) return {};
+  const localAgentConfig =
+    request.local !== false && agent && CONFIG_DIR_AGENTS.has(agent);
   return {
-    ...(agent && CONFIG_DIR_AGENTS.has(agent)
+    ...(localAgentConfig
       ? configDirEnv(request.configDir, readGlobalConfig().claudeConfigDirs)
       : {}),
     ...(request.isolateGitIndex ? isolatedIndexEnv(cwd) : {}),

@@ -3,7 +3,11 @@ import {
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,
 } from '@n10/review-comments';
-import { buildReviewLaunchRequest } from './review-prompt.js';
+import {
+  BACKGROUND_REVIEW_TOOLS,
+  buildBackgroundReviewRequest,
+  buildReviewLaunchRequest,
+} from './review-prompt.js';
 
 const pr = {
   id: 42,
@@ -67,6 +71,42 @@ describe('buildReviewLaunchRequest', () => {
     it('says where thread ids come from', () => {
       expect(guidance()).toContain('--thread=<id>');
       expect(guidance()).toContain('(thread <id>)');
+    });
+  });
+
+  describe('buildBackgroundReviewRequest', () => {
+    const req = () => buildBackgroundReviewRequest(pr);
+
+    it('runs to completion instead of taking over a live session', () => {
+      expect(req().intent).toBe('headless');
+      expect(buildReviewLaunchRequest(pr).intent).toBe('continue-or-seed');
+    });
+
+    it('asks for the same review as the interactive one', () => {
+      expect(req().prompt).toBe(buildReviewLaunchRequest(pr).prompt);
+    });
+
+    it('keeps the add-comment guidance', () => {
+      expect(req().systemGuidance).toContain('n10 util add-comment');
+    });
+
+    it('allows reading and commenting, and nothing that writes the tree', () => {
+      const tools = req().allowedTools ?? [];
+      expect(tools).toEqual(BACKGROUND_REVIEW_TOOLS);
+      expect(tools).toContain('Bash(n10 util add-comment:*)');
+      expect(tools).toContain('Read');
+      for (const forbidden of ['Write', 'Edit', 'Bash(git add:*)']) {
+        expect(tools).not.toContain(forbidden);
+      }
+      // A bare `Bash` would readmit everything the list leaves out.
+      expect(tools).not.toContain('Bash');
+    });
+
+    it('says it is unattended and sharing the checkout', () => {
+      const guidance = req().systemGuidance ?? '';
+      expect(guidance).toMatch(/another agent may be editing/);
+      expect(guidance).toMatch(/do not ask one/i);
+      expect(guidance).toMatch(/Do not modify, create or delete any file/);
     });
   });
 });

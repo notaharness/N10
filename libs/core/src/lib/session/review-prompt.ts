@@ -71,3 +71,64 @@ export function buildReviewLaunchRequest(
 
   return { intent: 'continue-or-seed', prompt, systemGuidance };
 }
+
+/**
+ * What a background review may do, as an allowlist rather than as a
+ * request.
+ *
+ * A background review shares its worktree with whatever agent is
+ * working on the branch, so it must not touch the checkout. Claude
+ * takes this as `--allowedTools` and is held to it; an agent that
+ * cannot be told a tool allowlist gets the same rules as guidance and
+ * nothing more, which the PR description says plainly.
+ *
+ * Note what is *not* here: no write tool, no `git add`, `git commit`,
+ * `git checkout` or `git stash`. The review's one side effect is
+ * `n10 util add-comment`, which writes n10's own comment store rather
+ * than the working tree.
+ */
+export const BACKGROUND_REVIEW_TOOLS: readonly string[] = [
+  'Read',
+  'Grep',
+  'Glob',
+  'Bash(n10 util add-comment:*)',
+  'Bash(git diff:*)',
+  'Bash(git log:*)',
+  'Bash(git show:*)',
+  'Bash(git status:*)',
+];
+
+/**
+ * The same review, run to completion in a session of its own.
+ *
+ * The interactive request above takes over the worktree's session,
+ * which displaces whoever was working there. This one is launched into
+ * a separate tmux session against the same checkout, so the two run at
+ * once — see `launch-review.ts` for what that session is and how it is
+ * identified, and `docs/decisions.md` for what sharing a worktree
+ * costs.
+ */
+export function buildBackgroundReviewRequest(
+  pr: Parameters<typeof buildReviewLaunchRequest>[0],
+  additionalInstruction?: string
+): LaunchRequest {
+  const base = buildReviewLaunchRequest(pr, additionalInstruction);
+  return {
+    intent: 'headless',
+    prompt: base.prompt,
+    systemGuidance: `${base.systemGuidance ?? ''}\n\n${SHARED_WORKTREE_RULES}`,
+    allowedTools: BACKGROUND_REVIEW_TOOLS,
+  };
+}
+
+const SHARED_WORKTREE_RULES =
+  `You are running unattended, in your own session, in a worktree that ` +
+  `another agent may be editing at the same time. Nobody will answer a ` +
+  `question, so do not ask one — finish the review and exit.\n\n` +
+  `- Do not modify, create or delete any file in the checkout\n` +
+  `- Do not run any git command that writes: no add, commit, checkout, ` +
+  `switch, stash, reset, merge or rebase\n` +
+  `- The tree may change under you while you read it. Review what you ` +
+  `see; do not try to stop it changing\n` +
+  `- Your only output is the comments you post with n10 util add-comment. ` +
+  `Nothing reads your terminal, so anything you only print is lost`;

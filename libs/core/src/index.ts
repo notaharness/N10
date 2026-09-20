@@ -41,6 +41,8 @@ export * from './lib/session-identity.js';
 export * from './lib/session-resolver.js';
 export * from './lib/session/session-request.js';
 export * from './lib/session/open-session.js';
+export * from './lib/session/launch-review.js';
+export type { MachineEnvRequest } from './lib/session/machine-env.js';
 export type * from './lib/terminal/terminal-name.js';
 export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';

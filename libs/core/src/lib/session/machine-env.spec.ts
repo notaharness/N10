@@ -28,6 +28,19 @@ describe('machineEnvAdditions', () => {
     ).toEqual({ [CLAUDE_CONFIG_DIR_ENV]: `${homedir()}/.claude-work` });
   });
 
+  it('sends nothing to a machine that is not this one', () => {
+    // A remote host has its own home, credentials and registered
+    // directories. Forwarding this machine's answer is the bug; sending
+    // nothing and letting that host default is the intended behaviour.
+    expect(
+      machineEnvAdditions(
+        { configDir: '~/.claude-work', local: false },
+        '/tmp',
+        'claude'
+      )
+    ).toEqual({});
+  });
+
   it('leaves the variable alone for an agent that does not read it', () => {
     // CLAUDE_CONFIG_DIR means nothing to codex; setting it would be
     // noise crossing to whichever machine runs the session.

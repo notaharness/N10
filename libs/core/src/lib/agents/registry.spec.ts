@@ -179,6 +179,65 @@ describe('agent registry', () => {
     });
   });
 
+  describe('headless runs', () => {
+    const byId = (id: string) => AGENTS.find((a) => a.id === id)!;
+    const claude = byId('claude');
+    const copilot = byId('copilot');
+    const codex = byId('codex');
+    const gemini = byId('gemini');
+    const opencode = byId('opencode');
+
+    it('every selectable agent has a one-shot mode', () => {
+      // A review runs unattended. An agent with no way to run a prompt
+      // to completion would have to be launched interactively instead,
+      // which the launcher does as a fallback rather than as a plan.
+      const without = [claude, copilot, codex, gemini, opencode]
+        .filter((a) => typeof a.headless !== 'function')
+        .map((a) => a.id);
+      expect(without).toEqual([]);
+    });
+
+    it('claude prints, and takes the allowlist as a real restriction', () => {
+      expect(
+        claude.headless!('review it', {
+          appendSystemPrompt: 'how to comment',
+          allowedTools: ['Read', 'Bash(git diff:*)'],
+        })
+      ).toEqual({
+        cmd: 'claude',
+        args: [
+          '--print',
+          '--append-system-prompt',
+          'how to comment',
+          '--allowedTools',
+          'Read',
+          'Bash(git diff:*)',
+          'review it',
+        ],
+      });
+    });
+
+    it('passes the prompt as one argument, never a composed string', () => {
+      const specs = [copilot, codex, gemini, opencode].map((a) => ({
+        id: a.id,
+        ...a.headless!('a "quoted" prompt'),
+      }));
+      expect(specs.filter((s) => s.cmd === SHELL_CMD)).toEqual([]);
+      expect(
+        specs.filter((s) => !s.args.includes('a "quoted" prompt'))
+      ).toEqual([]);
+    });
+
+    it('omits the allowlist for agents that cannot be held to one', () => {
+      // Sending it as an argument they do not understand would fail the
+      // launch; pretending they honour it would be worse.
+      const leaking = [copilot, codex, gemini, opencode].filter((a) =>
+        a.headless!('p', { allowedTools: ['Read'] }).args.includes('Read')
+      );
+      expect(leaking).toEqual([]);
+    });
+  });
+
   describe('makeTestAgent', () => {
     it('runs the raw command and exposes the seed prompt via env', () => {
       const agent = makeTestAgent('cat');
