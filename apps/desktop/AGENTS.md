@@ -42,6 +42,11 @@ Every rule below has its reasoning in `docs/decisions.md`.
   the path is typed into the PTY.
 - Worktree removal shares core's sequence with the TUI. `stopSession` kills
   one held target or one resolved persisted target, never both.
+- A launched review is not a worktree launch (`services/review-launch.ts`):
+  it resolves the checkout and asks `terminals.ts` for a session of its own,
+  so the branch's agent keeps working. Being in that service's listing is
+  what makes it a tab. Launches coalesce per pull request — a second click
+  would otherwise end the first review's session while it was starting.
 
 ## Renderer
 
