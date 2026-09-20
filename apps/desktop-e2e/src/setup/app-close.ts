@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import type { ElectronApplication } from '@playwright/test';
 
 /**
@@ -51,6 +52,18 @@ function reap(pid: number | undefined): void {
   }
 }
 
+/** The launched process, while Playwright still has one. `process()`
+ *  reaches through the dispatcher, which is gone once the application has
+ *  closed — a test that quit the app itself arrives here with nothing left
+ *  to hold, and there is then nothing to reap either. */
+function launchedProcess(app: ElectronApplication): ChildProcess | undefined {
+  try {
+    return app.process() as ChildProcess | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Close the app. Resolves with `null` on a clean quit, or with a
  * description of what had to be done instead — the caller attaches that
@@ -59,9 +72,9 @@ function reap(pid: number | undefined): void {
 export async function closeDesktopApp(
   app: ElectronApplication
 ): Promise<string | null> {
-  const child = app.process();
+  const child = launchedProcess(app);
   const closed = new Promise<'closed'>((resolve) => {
-    child.once('close', () => resolve('closed'));
+    child?.once('close', () => resolve('closed'));
   });
   // Both are the same signal seen from two sides, and either one alone
   // can be the one that arrives: `close` fires only for a process that
@@ -73,8 +86,10 @@ export async function closeDesktopApp(
   );
 
   if (
+    !child ||
     (await Promise.race([closed, quit, after(QUIT_TIMEOUT_MS)])) === 'closed'
   ) {
+    await quit;
     return null;
   }
 
