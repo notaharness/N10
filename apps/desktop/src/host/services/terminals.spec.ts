@@ -121,7 +121,8 @@ vi.mock('@n10/core', () => ({
   }) => {
     await Promise.resolve();
     state.nextId += 1;
-    const name = `n10-${spec.branch}-review-${state.nextId}`;
+    const name =
+      state.allocatedName ?? `n10-${spec.branch}-review-${state.nextId}`;
     state.reviews.push({
       repo: spec.repo,
       branch: spec.branch,
@@ -706,6 +707,21 @@ describe('launchReviewTerminal', () => {
       'found a bug'
     );
     expect(state.released).toEqual([]);
+  });
+
+  it('carries the relay sequence across a replacement', async () => {
+    // The replacement reuses the ended review's label, so a mounted
+    // pane keeps its watermark. Restarting the numbering would make it
+    // drop every chunk the new review produced.
+    const first = await review();
+    state.onData.get(first.name)?.('first run\r\n');
+    const before = terminals.terminalBuffer(first.name)?.seq ?? 0;
+    expect(before).toBeGreaterThan(0);
+
+    state.allocatedName = first.name;
+    const second = await review();
+    state.onData.get(second.name)?.('second run\r\n');
+    expect(terminals.terminalBuffer(second.name)?.seq).toBeGreaterThan(before);
   });
 
   it('asks core to review the pull request in the worktree', async () => {

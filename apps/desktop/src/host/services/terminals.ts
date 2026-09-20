@@ -203,7 +203,12 @@ export async function launchReviewTerminal(
     cols: clampDim(params.cols, DEFAULT_COLS),
     rows: clampDim(params.rows, DEFAULT_ROWS),
   });
-  const name = adoptLaunched(undefined, launched.name, 'agent', params.cwd);
+  // Adopted under its own name so the relay sequence carries forward.
+  // A review replaces the previous review of the same pull request and
+  // reuses its label, so a tab still mounted on the old one holds a
+  // watermark: numbering the replacement's output from 1 again would
+  // have the pane discard every chunk of it.
+  const name = adoptLaunched(launched.name, launched.name, 'agent', params.cwd);
   noteRepository(params.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Review ${name} ended during launch`);
