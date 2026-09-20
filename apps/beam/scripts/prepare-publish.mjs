@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Rewrites apps/cli/dist/package.json into a minimal, publish-safe package.
+// Rewrites apps/beam/dist/package.json into a minimal, publish-safe package.
 // The build copies the source package.json into dist/ (via the build's
-// `assets` config) for local use (e.g. `npm install -g ./apps/cli/dist`),
-// but that file carries workspace `@n10/*` deps that don't exist on the
-// npm registry, plus dev deps and nx config bloat. This strips all of it.
+// `assets` config) for local use (e.g. `npm install -g ./apps/beam/dist`),
+// but that file carries nx target config, and the dist directory also
+// accumulates declaration output and `prune` artifacts. A `files` allowlist
+// plus a stripped manifest keeps the tarball to the bundle and its one
+// native dependency.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,18 +16,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const distPkgPath = resolve(__dirname, '../dist/package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 
-// The TUI, the desktop app and beam ship as one release under one version.
+// beam ships in the same release as the TUI and the desktop app.
 assertVersionsMatch();
 
-// @cwasm/webp is bundled but loads its wasm from disk at runtime — it
-// has to sit next to main.js and ship in the tarball.
-execFileSync(process.execPath, [resolve(__dirname, 'copy-webp-wasm.mjs')], {
-  stdio: 'inherit',
-});
-
 // node-pty is the only runtime dep kept external by esbuild (native module).
-// Everything else — ink, react, @n10/*, @inkjs/ui, @mishieck/ink-titled-box
-// — is bundled into dist/main.js.
+// Everything else — @n10/beam included — is bundled into dist/main.js, and a
+// private workspace package named in `dependencies` makes the tarball
+// uninstallable because npm cannot resolve it from the registry.
 const nodePtyVersion = src.dependencies?.['node-pty'];
 if (!nodePtyVersion) {
   throw new Error('node-pty missing from source dependencies');
@@ -40,7 +36,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js', 'webp.wasm'],
+  files: ['main.js'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,
