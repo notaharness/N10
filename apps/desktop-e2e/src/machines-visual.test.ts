@@ -16,7 +16,7 @@ import {
   UNREACHABLE_ENDPOINT,
   type PeerSeeds,
 } from './setup/beam-peer.js';
-import { shot } from './setup/visual.js';
+import { pinMaskedBox, settleToasts, shot } from './setup/visual.js';
 
 /**
  * The machines feature added a lot of UI with no visual coverage — see
@@ -37,6 +37,12 @@ import { shot } from './setup/visual.js';
  * mailbox relay against a session already in a specific retained state,
  * not a file dropped on disk before launch.
  */
+
+/** Wide enough for the longest `http://127.0.0.1:<port>` and the
+ *  longest `expires in <m>:<ss>` these panels can render, so the box
+ *  each draws is the same one on every machine — see `pinMaskedBox`. */
+const ENDPOINT_BOX = '9rem';
+const COUNTDOWN_BOX = '8rem';
 
 const UNREACHABLE_PEER: PeerSeeds = {
   a1b2c3d4e5f60001: {
@@ -115,9 +121,15 @@ test.describe('Machines visual @visual', () => {
 
         // The paired row's secondary text is `machine.endpoints[0]` —
         // a loopback URL on an OS-assigned port, the only part of this
-        // panel that is not fixed.
-        const endpoint = page.getByText(PEER_ENDPOINT_TEXT);
-        await expect(endpoint).toBeVisible();
+        // panel that is not fixed. Its box is pinned before it is
+        // masked: the port is what sizes that box, so a mask over the
+        // text alone is a different width on a run that draws a
+        // shorter one.
+        const endpoint = await pinMaskedBox(
+          page.getByText(PEER_ENDPOINT_TEXT),
+          ENDPOINT_BOX
+        );
+        await settleToasts(page);
         await expect(page).toHaveScreenshot('settings-machines-peers.png', {
           ...shot,
           mask: [endpoint],
@@ -147,12 +159,17 @@ test.describe('Machines visual @visual', () => {
         dialog.getByText(peerHostFingerprint('workbox'))
       ).toBeVisible();
 
-      const endpoint = dialog.getByText(PEER_ENDPOINT_TEXT);
-      await expect(endpoint).toBeVisible();
+      const endpoint = await pinMaskedBox(
+        dialog.getByText(PEER_ENDPOINT_TEXT),
+        ENDPOINT_BOX
+      );
       // The field still holds what was pasted into it: an OS-assigned
-      // port and a single-use token, both fresh every run.
+      // port and a single-use token, both fresh every run. An `input`
+      // is sized by its CSS and not by its value, so this box needs no
+      // pinning — only the mask.
       const pasted = dialog.getByPlaceholder(/pair#token=/);
       await expect(pasted).toBeVisible();
+      await settleToasts(page);
       await expect(dialog).toHaveScreenshot('dialog-pair-machine-confirm.png', {
         ...shot,
         mask: [endpoint, pasted],
@@ -169,22 +186,31 @@ test.describe('Machines visual @visual', () => {
     await openMachinesSettings(app, page);
     await page.getByRole('switch', { name: 'Accept connections' }).click();
 
-    const boundTo = page.getByText(/^Bound to /);
-    const pairingUrl = page.getByText(/^http:\/\//);
-    const countdown = page.getByText(/^expires in \d/);
-    await expect(boundTo).toBeVisible();
-    await expect(pairingUrl).toBeVisible();
-    await expect(countdown).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
-
     // The bound port, the pairing token and the countdown are freshly
     // random every run — masked rather than pinned, since nothing here
     // exposes a fixed port or a seeded clock. Each is asserted visible
-    // above: a mask whose locator stops matching silently stops
-    // applying, and a random port then lands in the baseline as an
-    // intermittent pixel diff instead of a clear failure. What is left unmasked
-    // (the switch, the panel layout, the copy button, what pairing
-    // grants) is exactly what a regression would actually break.
+    // by `pinMaskedBox`: a mask whose locator stops matching silently
+    // stops applying, and a random port then lands in the baseline as
+    // an intermittent pixel diff instead of a clear failure. What is
+    // left unmasked (the switch, the panel layout, the copy button,
+    // what pairing grants) is exactly what a regression would actually
+    // break.
+    //
+    // Each box is pinned before it is masked. These three are the only
+    // boxes on the panel sized by text that changes between runs: the
+    // URL is a whole line of the card and decides where everything
+    // under it sits, and the countdown is one character wider at
+    // `10:00` than at `9:59`. A mask covers a box; it does not hold it
+    // still.
+    const boundTo = await pinMaskedBox(page.getByText(/^Bound to /));
+    const pairingUrl = await pinMaskedBox(page.getByText(/^http:\/\//));
+    const countdown = await pinMaskedBox(
+      page.getByText(/^expires in \d/),
+      COUNTDOWN_BOX
+    );
+    await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await settleToasts(page);
+
     await expect(page).toHaveScreenshot('settings-machines-accepting.png', {
       ...shot,
       mask: [boundTo, pairingUrl, countdown],
@@ -216,10 +242,12 @@ test.describe('Machines visual @visual', () => {
         // the full page is what actually shows both rows, and that
         // includes the machines panel (and its paired row's ephemeral
         // endpoint) behind the dialog.
-        const endpoint = page.getByText(PEER_ENDPOINT_TEXT);
-        await expect(endpoint).toBeVisible();
-        const cwd = currentRepoChoice(page);
-        await expect(cwd).toBeVisible();
+        const endpoint = await pinMaskedBox(
+          page.getByText(PEER_ENDPOINT_TEXT),
+          ENDPOINT_BOX
+        );
+        const cwd = await pinMaskedBox(currentRepoChoice(page));
+        await settleToasts(page);
         await expect(page).toHaveScreenshot(
           'dialog-new-terminal-machine-select.png',
           { ...shot, mask: [endpoint, cwd] }
@@ -265,6 +293,7 @@ test.describe('Machines visual @visual', () => {
         // change that kept it mounted would silently reintroduce a
         // random port into this baseline.
         await expect(page.getByText(PEER_ENDPOINT_TEXT)).toHaveCount(0);
+        await settleToasts(page);
         await expect(page).toHaveScreenshot(
           'dialog-launch-agent-machine-select.png',
           shot
@@ -297,8 +326,8 @@ test.describe('Machines visual @visual', () => {
       await expect(
         dialog.getByRole('combobox', { name: 'Machine' })
       ).toHaveCount(0);
-      const cwd = currentRepoChoice(dialog);
-      await expect(cwd).toBeVisible();
+      const cwd = await pinMaskedBox(currentRepoChoice(dialog));
+      await settleToasts(page);
       await expect(dialog).toHaveScreenshot(
         'dialog-new-terminal-local-only.png',
         { ...shot, mask: [cwd] }
@@ -320,6 +349,7 @@ test.describe('Machines visual @visual', () => {
       await expect(menu.getByRole('combobox', { name: 'Machine' })).toHaveCount(
         0
       );
+      await settleToasts(page);
       await expect(menu).toHaveScreenshot(
         'dialog-launch-agent-local-only.png',
         shot
