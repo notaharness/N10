@@ -6,11 +6,18 @@ import {
   tmuxKillSession,
   tmuxPaneStateAsync,
   type TmuxPaneRead,
+  type TmuxPaneState,
 } from './tmux-cli.js';
 import { prepareTmuxSession, type TmuxLaunchPlan } from './tmux-launch.js';
 export type { TmuxLaunchPlan } from './tmux-launch.js';
 
 type ExitCallback = (code: number, signal?: number) => void;
+
+/** Polls to allow a dead pane before reporting its exit without a status.
+ *  Six ticks of the 500ms poll — long enough for tmux to reap a process on
+ *  a loaded machine, short enough that a pane whose status never arrives is
+ *  still reported. */
+const UNSETTLED_READ_LIMIT = 6;
 
 export type TmuxSessionPreparer = (
   spec: SessionSpec,
@@ -57,6 +64,9 @@ class TmuxBackend implements SessionBackend {
    *  it — a read already in flight when the client exits may have been
    *  dispatched before the hosted process was, and so answer stale. */
   private inspecting: Promise<void> | null = null;
+  /** Consecutive reads that found the pane dead before tmux published how
+   *  it died — see {@link settled}. */
+  private unsettledReads = 0;
   private state = {
     running: true,
     exitCode: undefined as number | undefined,
@@ -167,15 +177,22 @@ class TmuxBackend implements SessionBackend {
     return promise;
   }
 
+  /** Whether this read ends the hosted process. A failed read (non-zero
+   *  exit, spawn error) says nothing about the pane — n10 simply could not
+   *  talk to tmux this tick — so the poll tries again; a vanished target is
+   *  an end whatever else is true; a live pane is one tmux has finished
+   *  with, see {@link settled}. */
+  private readsAsExit(read: TmuxPaneRead): boolean {
+    if (read.status === 'failed') return false;
+    if (read.status === 'gone') return true;
+    return read.state.paneDead && this.settled(read.state);
+  }
+
   private handlePaneState(read: TmuxPaneRead): void {
     // Disposal (or the process having already been marked exited by an
     // earlier poll) can land between the read starting and resolving.
     if (this.disposed || !this.state.running) return;
-    // A failed read (non-zero exit, spawn error) says nothing about the
-    // pane — n10 simply could not talk to tmux this tick. Leave
-    // `state.running` and the timer untouched; the next tick tries again.
-    if (read.status === 'failed') return;
-    if (read.status === 'ok' && !read.state.paneDead) return;
+    if (!this.readsAsExit(read)) return;
     if (read.status === 'ok') this.replayFinalFrame();
     this.state = {
       running: false,
@@ -187,6 +204,26 @@ class TmuxBackend implements SessionBackend {
     clearTimeout(this.stableTimer);
     for (const cb of [...this.exits])
       cb(this.state.exitCode ?? 0, this.state.signal);
+  }
+
+  /**
+   * Whether tmux has finished with this pane, not merely closed its
+   * descriptor.
+   *
+   * `pane_dead` flips when the pane's file descriptor closes, which is
+   * before tmux reaps the process; until it has, it publishes neither an
+   * exit status nor a signal, and it has not written the retained "Pane is
+   * dead" frame either. Concluding in that window captures a final frame
+   * the notice has not reached, and stops the poll that would have seen
+   * it. Wait for tmux to say how the process died — but only for a few
+   * ticks, because a status that never arrives must not leave a dead
+   * session reported as running.
+   */
+  private settled(state: TmuxPaneState): boolean {
+    if (state.exitCode !== undefined || state.exitSignal !== undefined)
+      return true;
+    this.unsettledReads += 1;
+    return this.unsettledReads > UNSETTLED_READ_LIMIT;
   }
 
   private replayFinalFrame(): void {
