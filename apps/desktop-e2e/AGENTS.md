@@ -22,6 +22,9 @@ you are testing the previous bundle. Full notes: `docs/testing.md`.
 - Always headless (xvfb even with `DISPLAY` set); `N10_E2E_HEADED=1` to watch.
 - `@visual` runs in the pinned Playwright container at **zero** pixel
   tolerance. `node run-visual.mjs --update-snapshots`, then review the diff.
+- Each target keeps its own results directory — `test-output/playwright` for
+  `e2e`, `test-output/visual` for `e2e:visual` (`N10_E2E_OUTPUT_BASE`).
+  Playwright empties the directory it is given at the start of every run.
 - `@integration` reads the fixture PRs through the real provider and needs
   `GH_TOKEN` handed in explicitly; the isolated HOME hides `gh` credentials.
 - The fake agent's `--print-size` reports the PTY grid with its pid, which

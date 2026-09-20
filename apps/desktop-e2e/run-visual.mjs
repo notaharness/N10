@@ -30,6 +30,10 @@ const IMAGE = 'n10-playwright:1.59.1-noble-tmux';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = resolve(HERE, '..', '..');
 
+/** Relative to this project, and matched by the `e2e:visual` target's
+ *  nx `outputs` — see playwright.config.ts. */
+const OUTPUT_BASE = './test-output/visual';
+
 if (spawnSync('docker', ['info'], { stdio: 'ignore' }).status !== 0) {
   console.error(
     '[desktop-e2e] Docker is required for the visual suite, and is not usable here.\n' +
@@ -75,6 +79,12 @@ const res = spawnSync(
     '/workspace/apps/desktop-e2e',
     '-e',
     'HOME=/tmp',
+    // Its own results directory. Playwright empties the one it is given
+    // at the start of a run, and `nx e2e` runs over the same checkout —
+    // sharing one means whichever target finishes last deletes the
+    // other's traces and screenshot diffs before CI collects them.
+    '-e',
+    `N10_E2E_OUTPUT_BASE=${OUTPUT_BASE}`,
     IMAGE,
     'bash',
     '-lc',
