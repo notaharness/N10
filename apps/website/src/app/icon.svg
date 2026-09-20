@@ -1,23 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 238 238">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 193 193">
   <!-- Flattened from src/components/logo.tsx (same geometry). Favicon
        rasterisers can't be trusted with mix-blend-mode, so the overlap is
        drawn explicitly: the 1, clipped to the N, in the multiply product
        of the two pane colours (#9caf88 × #e3c16f = #8b843b). -->
   <clipPath id="n">
-    <rect x="9" y="69" width="28" height="100" />
-    <polygon points="9,69 43,69 101,169 67,169" />
-    <rect x="73" y="69" width="28" height="100" />
+    <rect x="9" y="46.5" width="25" height="100" />
+    <polygon points="9,46.5 34,46.5 84,146.5 59,146.5" />
+    <rect x="59" y="46.5" width="25" height="100" />
   </clipPath>
   <g fill="#9caf88">
-    <rect x="9" y="69" width="28" height="100" />
-    <polygon points="9,69 43,69 101,169 67,169" />
-    <rect x="73" y="69" width="28" height="100" />
+    <rect x="9" y="46.5" width="25" height="100" />
+    <polygon points="9,46.5 34,46.5 84,146.5 59,146.5" />
+    <rect x="59" y="46.5" width="25" height="100" />
   </g>
-  <g transform="translate(87 69)" fill="#e3c16f">
-    <rect x="0" y="0" width="28" height="100" />
-    <ellipse cx="94" cy="50" rx="34" ry="36" fill="none" stroke="#e3c16f" stroke-width="28" />
+  <g transform="translate(71.5 46.5)" fill="#e3c16f">
+    <rect x="0" y="0" width="25" height="100" />
+    <rect x="50" y="12.5" width="50" height="75" rx="25" fill="none" stroke="#e3c16f" stroke-width="25" />
   </g>
   <g clip-path="url(#n)">
-    <rect x="87" y="69" width="28" height="100" fill="#8b843b" />
+    <rect x="71.5" y="46.5" width="25" height="100" fill="#8b843b" />
   </g>
 </svg>

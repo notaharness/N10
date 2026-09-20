@@ -22,6 +22,12 @@
 :root {
   --radius: 0.375rem;
 
+  /* The grid module: a cell of the hero backdrop, and one stroke of the
+   * hero's mark. The mark is 7 cells wide and centred, and reaches 2
+   * further right when split, so a cell has to stay under 1/11 of the
+   * viewport. Whole pixels only, or the grid lines blur. */
+  --n10-cell: 30px;
+
   --n10-sage: #9caf88;
   --n10-sand: #e3c16f;
   --n10-mix: #8b843b;
@@ -41,6 +47,18 @@
   --color-fd-ring: #8a9a78;
 }
 
+@media (min-width: 25rem) {
+  :root {
+    --n10-cell: 36px;
+  }
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --n10-cell: 48px;
+  }
+}
+
 .dark {
   --color-fd-background: #0e0f0c;
   --color-fd-foreground: #ecebe4;
@@ -58,9 +76,10 @@
 }
 
 /* The n10 mark (src/components/logo.tsx). Only the 10 pane moves, by
- * --n10-logo-split, which the component sets from its overlap. Inside an
- * SVG, CSS transform px are user units, so this scales with however
- * large the mark is.
+ * --n10-logo-split, which the component sets from its overlap; the 0
+ * moves a little further within it, by --n10-logo-zero-split, so both
+ * gaps open to a full module. Inside an SVG, CSS transform px are user
+ * units, so this scales with however large the mark is.
  *
  * Two different motions, on purpose:
  *
@@ -91,23 +110,39 @@
   --n10-logo-intro-delay: 800ms;
 }
 
+/* Sized in grid cells rather than by height, for sitting on the hero
+ * backdrop's grid: the mark is 7 × 4 modules (LOGO_MODULES). */
+.n10-logo--grid {
+  width: calc(var(--n10-cell) * 7);
+  height: calc(var(--n10-cell) * 4);
+}
+
 .n10-logo-ten {
+  --n10-logo-shift: var(--n10-logo-split);
+}
+
+.n10-logo-zero {
+  --n10-logo-shift: var(--n10-logo-zero-split);
+}
+
+.n10-logo-ten,
+.n10-logo-zero {
   transition: transform var(--n10-logo-hover-duration)
     var(--n10-logo-hover-ease);
 }
 
-.n10-logo--hover:hover .n10-logo-ten {
-  transform: translateX(var(--n10-logo-split));
+.n10-logo--hover:hover :is(.n10-logo-ten, .n10-logo-zero) {
+  transform: translateX(var(--n10-logo-shift));
 }
 
-.n10-logo--intro .n10-logo-ten {
+.n10-logo--intro :is(.n10-logo-ten, .n10-logo-zero) {
   animation: n10-logo-mix var(--n10-logo-intro-duration)
     var(--n10-logo-intro-ease) var(--n10-logo-intro-delay) backwards;
 }
 
 @keyframes n10-logo-mix {
   from {
-    transform: translateX(var(--n10-logo-split));
+    transform: translateX(var(--n10-logo-shift));
   }
   to {
     transform: translateX(0);
@@ -120,7 +155,7 @@
  * the same mark. Note GNOME's "Animation Effects" toggle sets this
  * query in every browser, so it's on for more people than you'd think. */
 @media (prefers-reduced-motion: reduce) {
-  .n10-logo--intro .n10-logo-ten {
+  .n10-logo--intro :is(.n10-logo-ten, .n10-logo-zero) {
     animation: none;
   }
 }
@@ -133,7 +168,6 @@
  * page. The whole thing fades out downwards with a mask rather than a
  * gradient to the background colour, so it holds on any ground. */
 .n10-backdrop {
-  --n10-backdrop-cell: 56px;
   mask-image: linear-gradient(to bottom, black 45%, transparent);
 }
 
@@ -169,9 +203,31 @@
   left: calc(50% - 40px);
 }
 
+/* Lines are drawn in the pixel just before each cell boundary, and the
+ * tile is centred, so boundaries fall at 50% plus or minus a half cell
+ * — where the cells below, and the hero's mark, put their edges. */
+.n10-backdrop-grid {
+  background-image: linear-gradient(
+      to right,
+      var(--color-fd-border) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--color-fd-border) 1px, transparent 1px);
+  background-size: var(--n10-cell) var(--n10-cell);
+  background-position: calc(50% - 1px) -1px;
+  mask-image: radial-gradient(
+    ellipse 75% 90% at 50% 0%,
+    black 25%,
+    transparent 78%
+  );
+}
+
 .n10-backdrop-cell {
   position: absolute;
-  width: var(--n10-backdrop-cell);
+  left: calc(50% + (var(--col) - 0.5) * var(--n10-cell));
+  top: calc(var(--row) * var(--n10-cell));
+  width: var(--n10-cell);
+  height: var(--n10-cell);
   opacity: 0.34;
 }
 
@@ -190,7 +246,7 @@
 /* A sand cell half a column over a sage one: thirds, like the N's
  * shared stave. Hard stops, because the panes have hard edges. */
 .n10-backdrop-cell--pair {
-  width: calc(var(--n10-backdrop-cell) * 1.5);
+  width: calc(var(--n10-cell) * 1.5);
   background: linear-gradient(
     to right,
     var(--n10-sage) 33.34%,

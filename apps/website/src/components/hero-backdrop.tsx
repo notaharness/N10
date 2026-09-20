@@ -9,15 +9,15 @@ import { cn } from '@/lib/cn';
  * panes, and pairs where a sand cell sits half a column over a sage one
  * and splits into the same three stripes as the N's shared stave.
  *
+ * The grid's cell is `--n10-cell` (global.css), which is also the module
+ * the hero sizes its mark by, so the mark's strokes are grid cells.
  * Everything is positioned from the horizontal centre (`50%` plus a
  * whole number of cells), so the composition is the same at every
  * viewport width and just gets cropped by narrower ones. Rows and
  * columns are cell indices: column 0 straddles the centre line, row 0
- * touches the top edge. The middle columns stay empty below row 0 —
- * that's where the hero's copy goes.
+ * touches the top edge. Columns -3 to 4 stay empty below row 0 — that
+ * is where the mark sits and where it splits to.
  */
-const CELL = 56;
-
 type Tone = 'sage' | 'sand' | 'pair';
 
 interface Cell {
@@ -43,21 +43,11 @@ const cells: Cell[] = [
 
 function cellStyle({ col, row }: Cell, i: number): CSSProperties {
   return {
-    left: `calc(50% - ${CELL / 2}px + ${col * CELL}px)`,
-    top: row * CELL,
-    height: CELL,
+    '--col': col,
+    '--row': row,
     animationDelay: `${i * -1.3}s`,
-  };
+  } as CSSProperties;
 }
-
-const grid: CSSProperties = {
-  backgroundImage:
-    'linear-gradient(to right, var(--color-fd-border) 1px, transparent 1px), linear-gradient(to bottom, var(--color-fd-border) 1px, transparent 1px)',
-  backgroundSize: `${CELL}px ${CELL}px`,
-  backgroundPosition: 'calc(50% + 0.5px) -1px',
-  maskImage:
-    'radial-gradient(ellipse 75% 90% at 50% 0%, black 25%, transparent 78%)',
-};
 
 export function HeroBackdrop({
   cells: showCells = true,
@@ -77,7 +67,7 @@ export function HeroBackdrop({
     >
       <div className="n10-backdrop-glow n10-backdrop-glow--sage" />
       <div className="n10-backdrop-glow n10-backdrop-glow--sand" />
-      <div className="absolute inset-0" style={grid} />
+      <div className="n10-backdrop-grid absolute inset-0" />
       {showCells && (
         <div className="absolute inset-0 max-sm:hidden">
           {cells.map((cell, i) => (

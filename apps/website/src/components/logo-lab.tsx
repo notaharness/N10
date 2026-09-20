@@ -207,7 +207,7 @@ export function LogoLab() {
               <span className="text-fd-muted-foreground text-xs">nav size</span>
             </div>
             <p className="text-fd-muted-foreground text-sm">
-              A 45° slab, one stroke deep, reaching left by the same 14 units
+              A 45° slab, one stroke deep, reaching left by the same half stroke
               the bar sits off the stave so its flat end sits flush on the
               stave&apos;s edge.
             </p>

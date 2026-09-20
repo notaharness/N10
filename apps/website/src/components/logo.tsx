@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn';
  * another, and the 10 sits shifted left so the 1 — a plain bar, the
  * same width as the N's staves — overlaps the N's right stave by half.
  * Half, not all: it splits the shared stave into three equal stripes
- * (blue, green, yellow), so the static mark shows the mixing itself
+ * (sage, olive, sand), so the static mark shows the mixing itself
  * rather than leaning on the animation, and the 1 stays its own glyph.
  *
  * The panes use `mix-blend-mode: multiply` inside an isolated group.
@@ -23,9 +23,20 @@ import { cn } from '@/lib/cn';
  * keeps the page background out of the blend, so the mark is identical
  * on light and dark.
  *
- * Letterforms are bars and an ellipse rather than text, so nothing
- * depends on a font. Units: 100 = cap height, 28 = stroke; at the
- * default overlap the merged mark is 220 wide. The same geometry is
+ * The mark is drawn on a square module, one stroke to a side, so it can
+ * sit on a grid of that module with every edge on a line (the hero does
+ * this — see hero-backdrop.tsx). The N is 3 × 4 modules with a diagonal
+ * that runs corner to corner of its counter; the 1 is 1 × 4; the 0 is a
+ * 3 × 4 stadium with a 1 × 2 hole, which reads as a digit where a
+ * circle reads as the letter O. The 1–0 gap is half a module, and so is
+ * the 1's step over the stave, so the merged mark is exactly 7 modules
+ * wide with the N and the 0 each filling whole modules. Splitting
+ * opens both gaps to a full module: the 1 slides a module and a half
+ * and the 0 half a module further, so in the split pose all three
+ * glyphs fill whole modules — N, gap, 1, gap, 0 across 9.
+ *
+ * Nothing depends on a font. Units: 100 = cap height, 25 = stroke =
+ * one module; the merged mark is 175 × 100. The same geometry is
  * flattened into src/app/icon.svg for the favicon.
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
@@ -42,17 +53,22 @@ export const LOGO_MIX = '#8b843b';
 /** Fraction of the N's right stave the 1 covers. */
 export const LOGO_OVERLAP = 0.5;
 
-/** Stroke width; the N is 92 wide, the 10 is 142 wide. */
-const STROKE = 28;
-const N_RIGHT_STAVE = 64;
-const TEN_WIDTH = 142;
+/** Stroke width, and the side of the module the mark is drawn on. */
+const STROKE = 25;
+/** Merged width and height in modules, for sizing the mark to a grid. */
+export const LOGO_MODULES = { width: 7, height: 4 } as const;
+const N_WIDTH = STROKE * 3;
+const N_RIGHT_STAVE = N_WIDTH - STROKE;
+const ZERO_WIDTH = STROKE * 3;
 /**
- * Gap between N and 1 when split, matching the fixed gap between 1 and
- * 0 — the mark's one unit of "whitespace", useful anywhere something
- * needs to visually match the mark's own spacing (e.g. tiling it).
+ * Gap between the 1 and the 0 in the merged mark — its one unit of
+ * "whitespace", useful anywhere something needs to visually match the
+ * mark's own spacing (e.g. tiling it). Split, every gap is a full STROKE.
  */
-export const LOGO_GAP = 18;
-const SPLIT_GAP = LOGO_GAP;
+export const LOGO_GAP = STROKE / 2;
+const TEN_WIDTH = STROKE + LOGO_GAP + ZERO_WIDTH;
+/** One module wide at top and bottom, so it crosses the counter corner to corner. */
+const N_DIAGONAL = `0,0 ${STROKE},0 ${N_WIDTH},100 ${N_WIDTH - STROKE},100`;
 
 /**
  * A flag for the 1: a 45° slab from the top of the stem, one stroke
@@ -91,7 +107,7 @@ function logoGeometry(overlap: number, flag = false) {
   return {
     tenX,
     width: tenX + TEN_WIDTH,
-    split: N_RIGHT_STAVE + STROKE + SPLIT_GAP - tenX,
+    split: N_WIDTH + STROKE - tenX,
     flagPts: flag && reach > 0 ? flagPoints(reach) : null,
   };
 }
@@ -111,9 +127,9 @@ function BlendedMark({
   return (
     <>
       <g fill={n} style={{ mixBlendMode: 'multiply' }}>
-        <rect x="0" y="0" width="28" height="100" />
-        <polygon points="0,0 34,0 92,100 58,100" />
-        <rect x="64" y="0" width="28" height="100" />
+        <rect x="0" y="0" width={STROKE} height="100" />
+        <polygon points={N_DIAGONAL} />
+        <rect x={N_RIGHT_STAVE} y="0" width={STROKE} height="100" />
       </g>
       {/* The outer group positions the 1 on the N's right stave; the
           inner group is what the CSS animates, so its transform never
@@ -124,16 +140,20 @@ function BlendedMark({
           fill={ten}
           style={{ mixBlendMode: 'multiply' }}
         >
-          <rect x="0" y="0" width="28" height="100" />
+          <rect x="0" y="0" width={STROKE} height="100" />
           {flagPts && <polygon points={flagPts} />}
-          <ellipse
-            cx="94"
-            cy="50"
-            rx="34"
-            ry="36"
+          {/* Stroked along its centre line, so the rect is inset by half
+              a stroke; rx of one stroke rounds the outside fully. */}
+          <rect
+            className="n10-logo-zero"
+            x={STROKE + LOGO_GAP + STROKE / 2}
+            y={STROKE / 2}
+            width={ZERO_WIDTH - STROKE}
+            height={100 - STROKE}
+            rx={STROKE}
             fill="none"
             stroke={ten}
-            strokeWidth="28"
+            strokeWidth={STROKE}
           />
         </g>
       </g>
@@ -165,7 +185,10 @@ export function Logo({
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   const { n, ten } = colors ?? BRAND;
   const { tenX, width, split, flagPts } = logoGeometry(overlap, flag);
-  const vars = { '--n10-logo-split': `${split}px` } as CSSProperties;
+  const vars = {
+    '--n10-logo-split': `${split}px`,
+    '--n10-logo-zero-split': `${STROKE - LOGO_GAP}px`,
+  } as CSSProperties;
   return (
     <svg
       viewBox={`0 0 ${width} 100`}
