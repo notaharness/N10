@@ -9,8 +9,10 @@ import {
   hasPersistedTerminalSession,
   killSession as killSessionEntry,
   launchTerminalSession,
+  launchReviewSession,
   releaseExitedSession,
   type DiscoveredTerminal,
+  type ReviewSessionParams,
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
 import type {
@@ -152,7 +154,21 @@ async function performStart(
     mode,
     fresh: size.fresh,
   });
-  const name = launched.name;
+  return adoptLaunched(requestedName, launched.name, kind, cwd);
+}
+
+/**
+ * Take ownership of a session core just spawned: remember it, watch
+ * for its end, and start relaying its output to the renderer. Shared
+ * by every kind of terminal this service starts, so a background
+ * review is listed, relayed and closed exactly like the rest.
+ */
+function adoptLaunched(
+  requestedName: string | undefined,
+  name: string,
+  kind: TerminalKind,
+  cwd: string
+): string {
   const prev = requestedName ? known.get(requestedName) : undefined;
   if (requestedName && name !== requestedName) known.delete(requestedName);
   const entry: KnownTerminal = {
@@ -164,6 +180,34 @@ async function performStart(
   watchForEnd(name, entry);
   attachRelay(name, entry);
   return name;
+}
+
+/**
+ * Start a background review of a pull request.
+ *
+ * It is a terminal of this service's own making rather than the
+ * worktree's session, which is what lets it run beside the agent
+ * working on the branch. Registering it here is also how it surfaces:
+ * the listing the tab strip reconciles against is this service's, so
+ * the review appears as its own tab — with the retained pane holding
+ * its transcript — without anything having to watch it, and without
+ * taking the user off the diff where its comments are landing.
+ */
+export async function launchReviewTerminal(
+  params: ReviewSessionParams,
+  home: string = homedir()
+): Promise<TerminalSummary> {
+  assertLaunchableCwd(params.cwd);
+  const launched = await launchReviewSession({
+    ...params,
+    cols: clampDim(params.cols, DEFAULT_COLS),
+    rows: clampDim(params.rows, DEFAULT_ROWS),
+  });
+  const name = adoptLaunched(undefined, launched.name, 'agent', params.cwd);
+  noteRepository(params.cwd);
+  const entry = known.get(name);
+  if (!entry) throw new Error(`Review ${name} ended during launch`);
+  return summarize(name, entry, home);
 }
 
 /** Exited agents retain their pane and tab; shells close when their process ends. */
