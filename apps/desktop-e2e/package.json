@@ -65,7 +65,8 @@
           }
         ],
         "outputs": [
-          "{projectRoot}/test-output/playwright/output"
+          "{projectRoot}/test-output/visual/output",
+          "{projectRoot}/test-output/visual/report"
         ],
         "options": {
           "command": "node run-visual.mjs",
