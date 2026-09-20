@@ -77,7 +77,12 @@ See `libs/terminal-tmux/AGENTS.md`.
 Failures retain traces, screenshots and video in `test-output/`.
 `error-context.md` is useful for text inspection. Open a trace with
 `npx playwright show-trace <trace.zip>`. Keep Playwright `outputDir` aligned with
-Nx target outputs so cached artifacts are valid.
+Nx target outputs so cached artifacts are valid. Each target owns a separate
+subdirectory — `desktop-e2e` writes `test-output/playwright` for `e2e` and
+`test-output/visual` for `e2e:visual` (`N10_E2E_OUTPUT_BASE`, set by
+`run-visual.mjs`). Playwright empties the directory it is given at the start of
+a run, so two targets sharing one lose the first one's results, including a
+failing screenshot's expected/actual/diff PNGs.
 
 ## Interactive QA
 
