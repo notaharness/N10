@@ -152,15 +152,10 @@ vi.mock('@n10/core', async (importOriginal) => {
       },
       { name: 'Codex', agent: { id: 'codex' } },
     ],
-    buildBackgroundReviewRequest: (
-      pr: { id: number },
-      instruction?: string
-    ) => ({
-      intent: 'headless',
-      prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
-      systemGuidance: 'guidance',
-      allowedTools: ['Read'],
-    }),
+    // The real one, not a double: it is pure string building, and a
+    // hand-written stand-in is not typechecked against it — one here
+    // went on describing a shape production had stopped returning.
+    buildBackgroundReviewRequest: actual.buildBackgroundReviewRequest,
     launchSession: async (spec: {
       name: string;
       cwd: string;
@@ -594,12 +589,19 @@ describe('launchReviewAgent', () => {
       branch: 'feature/review',
       pullRequest: '42',
       cwd: '/repo-a/.claude/worktrees/feature/review',
-      request: {
-        intent: 'headless',
-        prompt: 'review #42: focus on error handling',
-        systemGuidance: 'guidance',
-      },
     });
+    // Asserted against what the real builder returns: a fresh
+    // conversation (never `--continue`, which in a shared worktree
+    // resumes the working agent), carrying the user's instruction.
+    const request = state.reviews[0].request as {
+      intent: string;
+      prompt: string;
+      systemGuidance?: string;
+    };
+    expect(request.intent).toBe('seed');
+    expect(request.prompt).toContain('#42');
+    expect(request.prompt).toContain('focus on error handling');
+    expect(request.systemGuidance).toContain('n10 util add-comment');
   });
 
   it('reads config from the repo root, not the worktree', async () => {

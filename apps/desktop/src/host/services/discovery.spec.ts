@@ -106,7 +106,6 @@ vi.mock('@n10/core', async (importOriginal) => {
       state.alive.delete(name);
     },
     checkoutPlan: () => Promise.resolve('spawned'),
-    buildReviewLaunchRequest: () => ({ intent: 'blank' }),
     getSpawnedAt: () => 1000,
     noteInput: () => undefined,
     noteResize: () => undefined,
