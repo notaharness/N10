@@ -124,3 +124,119 @@
     animation: none;
   }
 }
+
+/* The hero backdrop (src/components/hero-backdrop.tsx). The glows are
+ * plain blurred discs; what makes them read as the mark is only where
+ * they sit. They are kept off the centre in light mode, where a tinted
+ * haze directly behind the mark would eat its contrast, and allowed to
+ * meet in dark mode, where the same haze reads as the mark lighting the
+ * page. The whole thing fades out downwards with a mask rather than a
+ * gradient to the background colour, so it holds on any ground. */
+.n10-backdrop {
+  --n10-backdrop-cell: 56px;
+  mask-image: linear-gradient(to bottom, black 45%, transparent);
+}
+
+.n10-backdrop-glow {
+  position: absolute;
+  top: -260px;
+  width: 640px;
+  height: 520px;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.42;
+}
+
+.n10-backdrop-glow--sage {
+  right: calc(50% + 120px);
+  background: var(--n10-sage);
+}
+
+.n10-backdrop-glow--sand {
+  left: calc(50% + 120px);
+  background: var(--n10-sand);
+}
+
+.dark .n10-backdrop-glow {
+  opacity: 0.26;
+}
+
+.dark .n10-backdrop-glow--sage {
+  right: calc(50% - 40px);
+}
+
+.dark .n10-backdrop-glow--sand {
+  left: calc(50% - 40px);
+}
+
+.n10-backdrop-cell {
+  position: absolute;
+  width: var(--n10-backdrop-cell);
+  opacity: 0.34;
+}
+
+.dark .n10-backdrop-cell {
+  opacity: 0.2;
+}
+
+.n10-backdrop-cell--sage {
+  background: var(--n10-sage);
+}
+
+.n10-backdrop-cell--sand {
+  background: var(--n10-sand);
+}
+
+/* A sand cell half a column over a sage one: thirds, like the N's
+ * shared stave. Hard stops, because the panes have hard edges. */
+.n10-backdrop-cell--pair {
+  width: calc(var(--n10-backdrop-cell) * 1.5);
+  background: linear-gradient(
+    to right,
+    var(--n10-sage) 33.34%,
+    var(--n10-mix) 33.34% 66.67%,
+    var(--n10-sand) 66.67%
+  );
+}
+
+.n10-backdrop-cell--pulse {
+  animation: n10-backdrop-breathe 7s ease-in-out infinite;
+}
+
+@keyframes n10-backdrop-breathe {
+  50% {
+    opacity: 0.08;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .n10-backdrop-cell--pulse {
+    animation: none;
+  }
+}
+
+/* Product media. A frame is a hairline plus a two-part shadow — a tight
+ * one that seats the edge and a wide soft one that lifts it — which is
+ * what makes a screenshot look like a window rather than a pasted
+ * image. The stage glow is the mark's two colours thrown up from behind
+ * the hero shot. */
+.n10-frame {
+  border: 1px solid var(--color-fd-border);
+  box-shadow: 0 1px 2px rgb(40 35 20 / 0.06),
+    0 24px 60px -18px rgb(40 35 20 / 0.28);
+}
+
+.dark .n10-frame {
+  box-shadow: 0 0 0 1px rgb(255 250 230 / 0.03),
+    0 30px 80px -20px rgb(0 0 0 / 0.8);
+}
+
+.n10-stage-glow {
+  background: linear-gradient(to right, var(--n10-sage), var(--n10-sand));
+  filter: blur(70px);
+  opacity: 0.35;
+}
+
+.dark .n10-stage-glow {
+  opacity: 0.22;
+}

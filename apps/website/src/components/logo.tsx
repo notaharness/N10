@@ -84,12 +84,8 @@ export function multiplyColors(a: string, b: string): string {
   return `#${hex}`;
 }
 
-/**
- * Where the 10 pane sits, how far it slides, and the 1's flag if any —
- * exported so a caller can position the mark's pieces without going
- * through the `<Logo>` component itself (see `FlatMark` below).
- */
-export function logoGeometry(overlap: number, flag = false) {
+/** Where the 10 pane sits, how far it slides, and the 1's flag if any. */
+function logoGeometry(overlap: number, flag = false) {
   const tenX = N_RIGHT_STAVE + STROKE * (1 - overlap);
   const reach = tenX - N_RIGHT_STAVE;
   return {
@@ -98,14 +94,6 @@ export function logoGeometry(overlap: number, flag = false) {
     split: N_RIGHT_STAVE + STROKE + SPLIT_GAP - tenX,
     flagPts: flag && reach > 0 ? flagPoints(reach) : null,
   };
-}
-
-/**
- * The mark's width-to-height ratio at a given overlap (no flag) — for
- * laying it out without rendering it, e.g. sizing tiles in a pattern.
- */
-export function logoAspectRatio(overlap: number): number {
-  return logoGeometry(overlap, false).width / 100;
 }
 
 /** The two panes, blended with `mix-blend-mode` — the normal, animatable mark. */
@@ -153,90 +141,12 @@ function BlendedMark({
   );
 }
 
-/**
- * The two panes as solid fills, the overlap painted as its precomputed
- * product and clipped to the N — no blending, so it's static (nothing
- * to reveal by sliding), the same reason the favicon (icon.svg) doesn't
- * use blending either. Exported (rather than only reachable through
- * `<Logo flat>`) for logo-tile-pattern.tsx, which needs these shapes
- * with no wrapping `<svg>` at all — nesting one inside an SVG `<pattern>`
- * is its own, separate reliability problem at scale, unrelated to
- * blending; see that file.
- */
-export function FlatMark({
-  n,
-  ten,
-  tenX,
-  flagPts = null,
-  clipId,
-}: {
-  n: string;
-  ten: string;
-  tenX: number;
-  flagPts?: string | null;
-  clipId: string;
-}) {
-  return (
-    <>
-      <clipPath id={clipId}>
-        <rect x="0" y="0" width="28" height="100" />
-        <polygon points="0,0 34,0 92,100 58,100" />
-        <rect x="64" y="0" width="28" height="100" />
-      </clipPath>
-      <g fill={n}>
-        <rect x="0" y="0" width="28" height="100" />
-        <polygon points="0,0 34,0 92,100 58,100" />
-        <rect x="64" y="0" width="28" height="100" />
-      </g>
-      <g transform={`translate(${tenX} 0)`} fill={ten}>
-        <rect x="0" y="0" width="28" height="100" />
-        {flagPts && <polygon points={flagPts} />}
-        <ellipse
-          cx="94"
-          cy="50"
-          rx="34"
-          ry="36"
-          fill="none"
-          stroke={ten}
-          strokeWidth="28"
-        />
-      </g>
-      <g clipPath={`url(#${clipId})`}>
-        <rect
-          x={tenX}
-          y="0"
-          width="28"
-          height="100"
-          fill={multiplyColors(n, ten)}
-        />
-      </g>
-    </>
-  );
-}
-
-/** `flat` mode has no CSS animation, so it skips the intro/hover classes. */
-function logoClassName(
-  flat: boolean,
-  intro: boolean,
-  hover: boolean,
-  className: string | undefined
-): string {
-  return cn(
-    'n10-logo',
-    !flat && intro && 'n10-logo--intro',
-    !flat && hover && 'n10-logo--hover',
-    className
-  );
-}
-
 export function Logo({
   intro = false,
   hover = false,
   colors,
   overlap = LOGO_OVERLAP,
   flag = false,
-  flat = false,
-  clipId = 'n10-logo-clip',
   className,
   style,
   ...props
@@ -252,10 +162,6 @@ export function Logo({
    * the stave, so its end sits flush on the stave's left edge.
    */
   flag?: boolean;
-  /** Paint the overlap as a solid colour instead of blending; see FlatMark. */
-  flat?: boolean;
-  /** clipPath id when `flat`; must be unique if more than one is on the page. */
-  clipId?: string;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   const { n, ten } = colors ?? BRAND;
   const { tenX, width, split, flagPts } = logoGeometry(overlap, flag);
@@ -266,22 +172,17 @@ export function Logo({
       role="img"
       aria-label="n10"
       overflow="visible"
-      className={logoClassName(flat, intro, hover, className)}
+      className={cn(
+        'n10-logo',
+        intro && 'n10-logo--intro',
+        hover && 'n10-logo--hover',
+        className
+      )}
       style={{ isolation: 'isolate', ...vars, ...style }}
       {...props}
     >
       <title>n10</title>
-      {flat ? (
-        <FlatMark
-          n={n}
-          ten={ten}
-          tenX={tenX}
-          flagPts={flagPts}
-          clipId={clipId}
-        />
-      ) : (
-        <BlendedMark n={n} ten={ten} tenX={tenX} flagPts={flagPts} />
-      )}
+      <BlendedMark n={n} ten={ten} tenX={tenX} flagPts={flagPts} />
     </svg>
   );
 }
