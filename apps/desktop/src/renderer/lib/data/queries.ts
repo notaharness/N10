@@ -258,6 +258,33 @@ export function useAgentOptions(cwd: string) {
 }
 
 /**
+ * Registered Claude configuration directories, default first — see
+ * `configDir` on `LaunchDialog`. Machine-global rather than
+ * repo-scoped (its query key carries no `cwd`), so switching
+ * repositories does not re-ask for it.
+ */
+export function useAgentConfigDirs() {
+  return useQuery({
+    queryKey: keys.agentConfigDirs,
+    queryFn: () => window.n10.listAgentConfigDirs(),
+  });
+}
+
+/**
+ * The repository's worktrees — used to resolve a branch's checkout
+ * directory (e.g. to open a plain terminal in it). Polled on the same
+ * cadence as the sidebar, which is where a worktree first appears.
+ */
+export function useWorktrees(cwd: string) {
+  return useQuery({
+    queryKey: keys.worktrees(cwd),
+    queryFn: () => window.n10.listWorktrees(),
+    refetchInterval: 4_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/**
  * Sessions the host has actually launched this run — running, or ended
  * with their final frame kept. This is the "does a PTY exist?" signal:
  * the sidebar names a would-be session for every worktree, so a name

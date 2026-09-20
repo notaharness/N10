@@ -7,7 +7,6 @@
  * file is a catalogue already.
  */
 
-import type { SessionIncarnation } from '@n10/core';
 import type {
   AgentId,
   PullRequestInfo,
@@ -26,13 +25,19 @@ export interface ResolveRequest {
   resolved: boolean;
 }
 
-/** Start a fresh AI review of a PR in its worktree session. */
+/**
+ * Start an AI review of a PR in a background session of its own,
+ * against the PR's worktree. It carries no incarnation guard because
+ * it replaces no running session: the branch's agent is left alone.
+ */
 export interface ReviewLaunchRequest {
   agentId?: AgentId;
-  expected?: SessionIncarnation;
   pr: PullRequestInfo;
   /** Extra user instruction appended to the review task prompt. */
   instruction?: string;
+  /** The registered token for the Claude configuration directory this
+   *  launch uses; absent leaves the host's own default in force. */
+  configDir?: string;
   cols?: number;
   rows?: number;
 }

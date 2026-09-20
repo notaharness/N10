@@ -8,6 +8,7 @@ import {
 import { cn } from '../../lib/utils.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { AppearanceRows } from './AppearanceRows.js';
+import { ClaudeConfigDirRows } from './ClaudeConfigDirRows.js';
 import { FieldRow } from './FieldRow.js';
 
 /**
@@ -82,13 +83,16 @@ export function SettingsView() {
                 {g.key === 'appearance' ? (
                   <AppearanceRows />
                 ) : (
-                  g.fields.map((f) => (
-                    <FieldRow
-                      key={`${f.key}:${f.label}`}
-                      field={f}
-                      updatedAt={view.dataUpdatedAt}
-                    />
-                  ))
+                  <>
+                    {g.fields.map((f) => (
+                      <FieldRow
+                        key={`${f.key}:${f.label}`}
+                        field={f}
+                        updatedAt={view.dataUpdatedAt}
+                      />
+                    ))}
+                    {g.key === 'agent' && <ClaudeConfigDirRows />}
+                  </>
                 )}
               </div>
             </section>

@@ -63,6 +63,11 @@ const api: N10HostApi = {
   getSessionLaunchContext: (branch) =>
     ipcRenderer.invoke(IPC.getSessionLaunchContext, branch),
   listAgentOptions: () => ipcRenderer.invoke(IPC.listAgentOptions),
+  listAgentConfigDirs: () => ipcRenderer.invoke(IPC.listAgentConfigDirs),
+  registerAgentConfigDir: (dir) =>
+    ipcRenderer.invoke(IPC.registerAgentConfigDir, dir),
+  forgetAgentConfigDir: (dir) =>
+    ipcRenderer.invoke(IPC.forgetAgentConfigDir, dir),
   checkoutPlan: (req) => ipcRenderer.invoke(IPC.checkoutPlan, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   listForeignSessions: () => ipcRenderer.invoke(IPC.listForeignSessions),

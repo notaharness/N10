@@ -109,6 +109,9 @@ export interface SessionLaunchRequest {
   prompt?: string;
   /** Delivered as a native system prompt for agents that support it. */
   systemGuidance?: string;
+  /** The registered token for the Claude configuration directory this
+   *  launch uses; absent leaves the host's own default in force. */
+  configDir?: string;
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
@@ -337,6 +340,24 @@ export interface N10HostApi {
   launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
   /** The agents the session menu offers, configured default first. */
   listAgentOptions(): Promise<AgentOptionView[]>;
+  /**
+   * Registered Claude configuration directories on this machine,
+   * default first — see `configDir` on {@link SessionLaunchRequest}.
+   * Machine-global, not repository-scoped: the same list whichever
+   * repository is open. Every entry is a *token* (`~/.claude-work`),
+   * never an expanded path — a token means the same directory on
+   * whichever machine reads it, and a machine-local one is only ever
+   * meaningful on this machine, so neither is a path this renderer
+   * could show or send onward as one.
+   */
+  listAgentConfigDirs(): Promise<string[]>;
+  /** Register a new configuration directory, typed as an absolute
+   *  path or one under home; returns the updated token list. Rejects
+   *  input that is neither. */
+  registerAgentConfigDir(dir: string): Promise<string[]>;
+  /** Remove a registered directory (not the default); returns the
+   *  updated token list. */
+  forgetAgentConfigDir(dir: string): Promise<string[]>;
   getSessionLaunchContext(branch: string): Promise<SessionLaunchView>;
   /** Send a composed plan to the PR's agent, creating the worktree and
    *  starting one when there is none. Rejects with the reason on
@@ -474,6 +495,9 @@ export const IPC = {
   postDraftComments: 'n10/drafts/post',
   launchReviewAgent: 'n10/session/launch-review',
   listAgentOptions: 'n10/session/agent-options',
+  listAgentConfigDirs: 'n10/agent-config-dirs/list',
+  registerAgentConfigDir: 'n10/agent-config-dirs/register',
+  forgetAgentConfigDir: 'n10/agent-config-dirs/forget',
   getSessionLaunchContext: 'n10/session/launch-context',
   checkoutPlan: 'n10/session/checkout-plan',
   fetchDiffText: 'n10/diff/text',

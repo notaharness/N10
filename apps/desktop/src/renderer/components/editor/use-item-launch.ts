@@ -43,7 +43,8 @@ export function useItemLaunch(
   const startSession = async (
     fresh: boolean,
     expected?: SessionIncarnation,
-    agentId?: AgentId
+    agentId?: AgentId,
+    configDir?: string
   ) => {
     if (!hasWorktree) {
       const id = toast.loading(`Checking out ${branch}…`);
@@ -62,6 +63,7 @@ export function useItemLaunch(
         fresh,
         expected,
         agentId,
+        configDir,
         ...estimateGrid(),
       },
       { onError: (e) => toast.error(errorMessage(e)) }
@@ -70,8 +72,8 @@ export function useItemLaunch(
 
   const startReview = (
     instruction?: string,
-    expected?: SessionIncarnation,
-    agentId?: AgentId
+    agentId?: AgentId,
+    configDir?: string
   ) => {
     if (!pr) return;
     const id = toast.loading(
@@ -80,9 +82,13 @@ export function useItemLaunch(
         : `Checking out ${branch} and starting review…`
     );
     launchReview.mutate(
-      { pr, instruction, expected, agentId, ...estimateGrid() },
+      { pr, instruction, agentId, configDir, ...estimateGrid() },
       {
-        onSuccess: () => toast.success('Review agent started', { id }),
+        onSuccess: () =>
+          toast.success('Review running in its own session', {
+            id,
+            description: 'Comments appear in the diff as it posts them.',
+          }),
         onError: (e) => toast.error(errorMessage(e), { id }),
       }
     );
@@ -90,8 +96,13 @@ export function useItemLaunch(
 
   const choose = (choice: LaunchChoice) => {
     if (choice.kind === 'session')
-      void startSession(choice.fresh, choice.expected, choice.agentId);
-    else startReview(choice.instruction, choice.expected, choice.agentId);
+      void startSession(
+        choice.fresh,
+        choice.expected,
+        choice.agentId,
+        choice.configDir
+      );
+    else startReview(choice.instruction, choice.agentId, choice.configDir);
   };
 
   const stop = () =>
