@@ -5,7 +5,12 @@ import { test, expect } from './fixtures/desktop.js';
 import { sessionMenu, sidebarRow, startSessionFromMenu } from './setup/app.js';
 import { armContextMenuChoice } from './setup/menu.js';
 import type { ElectronApplication } from '@playwright/test';
-import { findN10SessionFor, socketEnv, tagTmuxSession } from './setup/tmux.js';
+import {
+  findN10SessionFor,
+  listTaggedSessions,
+  socketEnv,
+  tagTmuxSession,
+} from './setup/tmux.js';
 
 const BRANCH = 'launch-dialog';
 const TITLE = `Launch ${'a-very-long-unbroken-title-'.repeat(18)}`;
@@ -160,7 +165,7 @@ test('a stopped unknown agent has no Continue action; a recorded resumable agent
   await expect(menu.getByText('Stopped · ready to continue')).toBeVisible();
 });
 
-test('Review sends its selected agent and instructions to the same guarded worktree session', async ({
+test('Review sends its selected agent and instructions to a session of its own, leaving the guarded worktree session alone', async ({
   desktop,
 }) => {
   const { app, page, homeDir } = desktop;
@@ -182,6 +187,8 @@ test('Review sends its selected agent and instructions to the same guarded workt
   await startSessionFromMenu(page);
   await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
   const name = findN10SessionFor(BRANCH, homeDir)!;
+  // An Orchestra player: spawned by an orchestrator, carrying the state
+  // that orchestrator reads back off the session.
   tagTmuxSession(
     name,
     {
@@ -191,6 +198,7 @@ test('Review sends its selected agent and instructions to the same guarded workt
     },
     homeDir
   );
+  const playerAgent = await pane(homeDir, name, '#{@orchestra-agent}');
   const menu = await openMenu(page, app);
   await menu.getByRole('radio', { name: 'Review', exact: true }).click();
   const picker = menu.getByRole('combobox', { name: 'Agent' });
@@ -208,22 +216,64 @@ test('Review sends its selected agent and instructions to the same guarded workt
   await menu
     .getByLabel('Additional instructions')
     .fill('Check module boundaries.');
-  await expect(menu.getByRole('note')).toContainText(
-    'stops the running Custom session'
-  );
-  await menu
-    .getByRole('button', { name: 'Stop and start review', exact: true })
-    .click();
+  // A review stops nothing, so the dialog offers no replacement warning
+  // and the action does not read as one.
+  await expect(menu.getByRole('note')).toHaveCount(0);
+  await menu.getByRole('button', { name: 'Start review', exact: true }).click();
+
+  // The reviewer is a row of its own in the rail, beside the branch
+  // agent, and the pane stays on the agent until asked to move. The
+  // review's output is reached by switching to it.
+  const rail = page.getByRole('button', { name: /^(Agent|Review #42)/ });
+  await expect(rail).toHaveText([
+    /^Agent\s*running$/,
+    /^Review #42\s*running$/,
+  ]);
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+  await page.getByRole('button', { name: /^Review #42/ }).click();
   await expect(page.getByText('selected-codex-ready').first()).toBeVisible();
+  // …and back, without having cost the agent its pane.
+  await page.getByRole('button', { name: /^Agent/ }).click();
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+
   const args: string[] = JSON.parse(readFileSync(capture, 'utf8'));
   expect(args.join('\n')).toContain('Check module boundaries.');
   expect(args.join('\n')).toContain('n10 util add-comment');
   expect(args.join('\n')).toContain('42');
+  // Seeded, never resumed. The reviewer shares the branch agent's
+  // worktree, so a resume flag would pick up that agent's conversation.
   expect(args).not.toContain('resume');
+
+  // The player is untouched: same session, still running, still wearing
+  // the identity and report state its orchestrator wrote. Taking the
+  // worktree session over used to mean rewriting these; a review that
+  // runs beside the agent must not write them at all.
   expect(findN10SessionFor(BRANCH, homeDir)).toBe(name);
-  expect(await pane(homeDir, name, '#{@orchestra-agent}')).toBe('codex');
+  expect(await pane(homeDir, name, '#{pane_dead}')).toBe('0');
+  expect(await pane(homeDir, name, '#{@orchestra-agent}')).toBe(playerAgent);
   expect(await pane(homeDir, name, '#{@orchestra-spawner}')).toBe('orchestra');
-  expect(await pane(homeDir, name, '#{@orchestra-orchestrator}')).toBe('');
-  expect(await pane(homeDir, name, '#{@orchestra-last-report}')).toBe('');
+  expect(await pane(homeDir, name, '#{@orchestra-orchestrator}')).toBe(
+    'planning'
+  );
+  expect(await pane(homeDir, name, '#{@orchestra-last-report}')).toBe(
+    `DONE ${REPORT_TIME}`
+  );
+
+  // Two sessions now, and only one of them is a player. `worktree` is
+  // the type Orchestra reads as "the agent that owns this branch", so a
+  // review typed that way would be picked up as a second one.
+  const tagged = listTaggedSessions(homeDir).filter((s) => s.spawner);
+  expect(tagged.map((s) => s.name).sort()).toHaveLength(2);
+  expect(
+    tagged.filter((s) => s.type === 'worktree').map((s) => s.name)
+  ).toEqual([name]);
+  const review = tagged.find((s) => s.name !== name)!;
+  expect(review.type).toBe('agent');
+  expect(review.branch).toBe(BRANCH);
+  expect(await pane(homeDir, review.name, '#{@orchestra-review}')).toBe('42');
+  // The bridge agrees: still one worktree session, with the review in
+  // the terminal listing instead.
   expect(await page.evaluate(() => window.n10.listSessions())).toHaveLength(1);
+  const terminals = await page.evaluate(() => window.n10.listTerminals());
+  expect(terminals.map((t) => t.review)).toEqual(['42']);
 });
