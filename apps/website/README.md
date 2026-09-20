@@ -34,13 +34,19 @@ a dependency of `dev`, `build` and `typecheck`.
   rewritten by Next itself** on `dev`/`build`/`typegen`. Don't hand-edit them
   back to something Next will just overwrite.
 
-## The palette
+## The palette and type
 
-`src/app/global.css` maps a few `--color-fd-*` variables (Fumadocs' own
-token namespace) onto the same hex values as
-`apps/desktop/src/renderer/styles.css`, so the site's accent matches the
-desktop app. It's a copy, not a shared import — see the comment in that file
-for why, and the note there about when to extract a shared `libs/design-tokens`.
+`src/app/global.css` sets Fumadocs' `--color-fd-*` tokens from the two
+colours of the mark (`src/components/logo.tsx`): the accent is sage taken
+dark enough to carry white text, and the neutrals are warm greys leaning
+toward sand. The raw brand colours are also exposed as `--n10-sage`,
+`--n10-sand` and `--n10-mix` for decoration. The desktop app keeps its own
+IDE palette; only `--radius` matches.
+
+Type is Geist and Geist Mono through `next/font/google` (`src/app/layout.tsx`),
+which downloads the files at build time and self-hosts them — the build
+needs network access, the deployed site makes no request to Google.
+
 Only two files are copied from the desktop app: `src/lib/cn.ts` and
 `src/components/ui/button.tsx`. Fumadocs ships its own accordion, tabs,
 callout, code block and search dialog — don't duplicate those.

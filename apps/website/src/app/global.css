@@ -2,25 +2,59 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
-/* n10 brand palette.
+/* n10 palette.
  *
- * Source of truth: apps/desktop/src/renderer/styles.css. These values
- * are copied, not imported: the desktop ships an IDE chrome palette
- * (sidebar/titlebar/tab/diff tokens) that a marketing page has no use
- * for, and Fumadocs reads its own --color-fd-* namespace rather than
- * shadcn's. What transfers is the accent and the radius; retune the
- * blue there, retune it here too.
+ * Everything hangs off the two panes of the mark (src/components/logo.tsx):
+ * sage and sand, and the olive they multiply to. The accent is sage
+ * taken dark enough to carry white text (6:1), and the neutrals are
+ * Fumadocs' greys nudged a few degrees toward sand, so the page reads as
+ * paper rather than as a grey UI with a coloured logo on it. Fumadocs
+ * reads its own --color-fd-* namespace, so that is what gets set.
  *
- * If a third consumer ever needs this palette, extract it into a
- * CSS-only libs/design-tokens package rather than adding another copy.
+ * The desktop app still ships its own IDE palette
+ * (apps/desktop/src/renderer/styles.css); only --radius is shared.
  */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 :root {
-  --color-fd-primary: #005fb8;
   --radius: 0.375rem;
+
+  --n10-sage: #9caf88;
+  --n10-sand: #e3c16f;
+  --n10-mix: #8b843b;
+
+  --color-fd-background: #faf9f5;
+  --color-fd-foreground: #15160f;
+  --color-fd-muted: #f3f1ea;
+  --color-fd-muted-foreground: #65645c;
+  --color-fd-popover: #fdfcf9;
+  --color-fd-card: #f4f2eb;
+  --color-fd-card-foreground: #15160f;
+  --color-fd-border: rgb(110 100 70 / 0.18);
+  --color-fd-primary: #4d6139;
+  --color-fd-primary-foreground: #fbfbf7;
+  --color-fd-secondary: #efede5;
+  --color-fd-accent: rgb(140 130 90 / 0.14);
+  --color-fd-ring: #8a9a78;
 }
 
 .dark {
-  --color-fd-primary: #0078d4;
+  --color-fd-background: #0e0f0c;
+  --color-fd-foreground: #ecebe4;
+  --color-fd-muted: #1a1b17;
+  --color-fd-muted-foreground: #a3a294;
+  --color-fd-popover: #181915;
+  --color-fd-card: #151612;
+  --color-fd-card-foreground: #f4f3ec;
+  --color-fd-border: rgb(220 210 170 / 0.11);
+  --color-fd-primary: #b7c9a4;
+  --color-fd-primary-foreground: #10130d;
+  --color-fd-secondary: #1a1b17;
+  --color-fd-accent: rgb(220 210 170 / 0.1);
+  --color-fd-ring: #7d8c6c;
 }
 
 /* The n10 mark (src/components/logo.tsx). Only the 10 pane moves, by
