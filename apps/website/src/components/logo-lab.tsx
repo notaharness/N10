@@ -1,11 +1,29 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { Logo, type LogoColors } from '@/components/logo';
+import { Logo, type LogoColors, type LogoNShape } from '@/components/logo';
 import { buttonVariants } from '@/components/ui/button';
 import { LogoLabInteractive } from '@/components/logo-lab-interactive';
 import { LogoLabTiled } from '@/components/logo-lab-tiled';
 import { PALETTES, Swatch, multiply } from '@/components/logo-lab-shared';
+
+const N_SHAPES: { shape: LogoNShape; name: string; note: string }[] = [
+  {
+    shape: 'lower',
+    name: 'Lowercase, x-height',
+    note: 'Three modules tall on the baseline, so the 1 stands a module above it the way a numeral stands above lowercase text.',
+  },
+  {
+    shape: 'lowerTall',
+    name: 'Lowercase, full height',
+    note: 'The same n stretched to all four modules: level with the 1 and the 0, and its arch lines up with the top of the 0.',
+  },
+  {
+    shape: 'upper',
+    name: 'Capital (current)',
+    note: 'The mark as it ships.',
+  },
+];
 
 /** Timing variants, applied through the logo's CSS custom properties. */
 const MOTIONS: { name: string; note: string; vars: Record<string, string> }[] =
@@ -194,6 +212,57 @@ export function LogoLab() {
             overlap={overlap}
             className="h-6 w-auto"
           />
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-6">
+        <h2 className="text-lg font-medium">Lowercase n</h2>
+        <p className="text-fd-muted-foreground -mt-4 text-sm">
+          The n borrows the 0&apos;s arch, so the two round forms match. Shown
+          against the current capital for comparison; hover to split.
+        </p>
+        <div className="grid gap-6 sm:grid-cols-3">
+          {N_SHAPES.map(({ shape, name, note }) => (
+            <div
+              key={shape}
+              className="flex flex-col gap-4 rounded-lg border border-fd-border p-5"
+            >
+              <Logo
+                key={run}
+                intro
+                hover
+                nShape={shape}
+                className="h-20 w-auto self-start"
+              />
+              <div className="flex items-center gap-3">
+                <Logo hover nShape={shape} className="h-6 w-auto" />
+                <span className="text-fd-muted-foreground text-xs">
+                  nav size
+                </span>
+              </div>
+              <div className="font-medium">{name}</div>
+              <p className="text-fd-muted-foreground text-sm">{note}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-fd-muted-foreground text-sm">
+          On the hero&apos;s grid, one stroke to a cell. Hover to split.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-fd-border">
+          <div className="n10-lab-grid">
+            {N_SHAPES.map(({ shape }, i) => (
+              <Logo
+                key={shape}
+                hover
+                nShape={shape}
+                className="n10-logo--grid absolute"
+                style={{
+                  left: `calc(var(--n10-cell) * ${1 + i * 10})`,
+                  top: 'var(--n10-cell)',
+                }}
+              />
+            ))}
+          </div>
         </div>
       </section>
 

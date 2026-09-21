@@ -71,6 +71,49 @@ const TEN_WIDTH = STROKE + LOGO_GAP + ZERO_WIDTH;
 const N_DIAGONAL = `0,0 ${STROKE},0 ${N_WIDTH},100 ${N_WIDTH - STROKE},100`;
 
 /**
+ * How the N is drawn. `upper` is the mark; the lowercase forms are
+ * trials for /logo-lab. Both reuse the 0's arch — a stroke-wide ring
+ * with a half-module inner radius — so the n and the 0 rhyme, and both
+ * keep the stem's square top-left corner, which is what makes the shape
+ * an n rather than an arch. `lower` stops at a three-module x-height
+ * and lets the 1 stand a module taller; `lowerTall` fills all four.
+ */
+export type LogoNShape = 'upper' | 'lower' | 'lowerTall';
+
+/** The arch and both legs, from `top` down to the baseline, as one outline. */
+function lowerNArch(top: number): string {
+  const outer = N_WIDTH / 2;
+  const inner = outer - STROKE;
+  const cy = top + outer;
+  return [
+    `M0,100 V${cy}`,
+    `A${outer},${outer} 0 0 1 ${N_WIDTH},${cy}`,
+    `V100 H${N_RIGHT_STAVE} V${cy}`,
+    `A${inner},${inner} 0 0 0 ${STROKE},${cy}`,
+    'V100 Z',
+  ].join(' ');
+}
+
+function NGlyph({ shape }: { shape: LogoNShape }) {
+  if (shape === 'upper') {
+    return (
+      <>
+        <rect x="0" y="0" width={STROKE} height="100" />
+        <polygon points={N_DIAGONAL} />
+        <rect x={N_RIGHT_STAVE} y="0" width={STROKE} height="100" />
+      </>
+    );
+  }
+  const top = shape === 'lower' ? STROKE : 0;
+  return (
+    <>
+      <rect x="0" y={top} width={STROKE} height={100 - top} />
+      <path d={lowerNArch(top)} />
+    </>
+  );
+}
+
+/**
  * A flag for the 1: a 45° slab from the top of the stem, one stroke
  * deep, reaching `reach` units left and cut vertically at the end. With
  * the bar half on the N's stave that cut sits flush on the stave's
@@ -118,18 +161,18 @@ function BlendedMark({
   ten,
   tenX,
   flagPts,
+  nShape,
 }: {
   n: string;
   ten: string;
   tenX: number;
   flagPts: string | null;
+  nShape: LogoNShape;
 }) {
   return (
     <>
       <g fill={n} style={{ mixBlendMode: 'multiply' }}>
-        <rect x="0" y="0" width={STROKE} height="100" />
-        <polygon points={N_DIAGONAL} />
-        <rect x={N_RIGHT_STAVE} y="0" width={STROKE} height="100" />
+        <NGlyph shape={nShape} />
       </g>
       {/* The outer group positions the 1 on the N's right stave; the
           inner group is what the CSS animates, so its transform never
@@ -167,6 +210,7 @@ export function Logo({
   colors,
   overlap = LOGO_OVERLAP,
   flag = false,
+  nShape = 'upper',
   className,
   style,
   ...props
@@ -182,6 +226,8 @@ export function Logo({
    * the stave, so its end sits flush on the stave's left edge.
    */
   flag?: boolean;
+  /** Letterform for the N; anything but `upper` is a lab trial. */
+  nShape?: LogoNShape;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   const { n, ten } = colors ?? BRAND;
   const { tenX, width, split, flagPts } = logoGeometry(overlap, flag);
@@ -205,7 +251,13 @@ export function Logo({
       {...props}
     >
       <title>n10</title>
-      <BlendedMark n={n} ten={ten} tenX={tenX} flagPts={flagPts} />
+      <BlendedMark
+        n={n}
+        ten={ten}
+        tenX={tenX}
+        flagPts={flagPts}
+        nShape={nShape}
+      />
     </svg>
   );
 }

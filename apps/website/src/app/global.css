@@ -314,3 +314,19 @@
 .n10-pane--sand {
   background: var(--n10-sand);
 }
+
+/* /logo-lab: a plain, unmasked patch of the hero grid, 30 × 6 cells,
+ * for seating trial marks on it. */
+.n10-lab-grid {
+  position: relative;
+  width: calc(var(--n10-cell) * 30);
+  height: calc(var(--n10-cell) * 6);
+  background-image: linear-gradient(
+      to right,
+      var(--color-fd-border) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--color-fd-border) 1px, transparent 1px);
+  background-size: var(--n10-cell) var(--n10-cell);
+  background-position: -1px -1px;
+}
