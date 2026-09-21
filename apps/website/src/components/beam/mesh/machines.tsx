@@ -8,9 +8,6 @@ import {
   type Vec3,
 } from './geometry';
 
-const PAD = 3.6;
-const PAD_H = 0.14;
-
 function Faces({ box, className }: { box: Box; className?: string }) {
   return (
     <g className={className}>
@@ -25,12 +22,18 @@ function Faces({ box, className }: { box: Box; className?: string }) {
   );
 }
 
-/** The plate every machine stands on, and where its beams end. */
-export function Pad({ cx, cy }: { cx: number; cy: number }) {
+/** A soft patch of shade under a machine, a little larger than its footprint. */
+function Shadow({ box }: { box: Box }) {
+  const grow = 0.18;
   return (
-    <Faces
-      className="n10-iso-pad"
-      box={{ x: cx - PAD / 2, y: cy - PAD / 2, z: 0, w: PAD, d: PAD, h: PAD_H }}
+    <polygon
+      className="n10-iso-shadow"
+      points={toPoints([
+        [box.x - grow, box.y - grow, 0],
+        [box.x + box.w + grow, box.y - grow, 0],
+        [box.x + box.w + grow, box.y + box.d + grow, 0],
+        [box.x - grow, box.y + box.d + grow, 0],
+      ])}
     />
   );
 }
@@ -41,7 +44,7 @@ export function Rack({ cx, cy }: { cx: number; cy: number }) {
     (k): Box => ({
       x: cx - 1.3,
       y: cy - 1.3,
-      z: PAD_H + k * 0.62,
+      z: k * 0.62,
       w: 2.6,
       d: 2.6,
       h: 0.5,
@@ -49,6 +52,7 @@ export function Rack({ cx, cy }: { cx: number; cy: number }) {
   );
   return (
     <g>
+      <Shadow box={units[0] as Box} />
       {units.map((unit, k) => (
         <g key={unit.z}>
           <Faces box={unit} />
@@ -81,13 +85,14 @@ export function Tower({ cx, cy }: { cx: number; cy: number }) {
   const body: Box = {
     x: cx - 0.75,
     y: cy - 1.3,
-    z: PAD_H,
+    z: 0,
     w: 1.5,
     d: 2.6,
     h: 3,
   };
   return (
     <g>
+      <Shadow box={body} />
       <Faces box={body} />
       <polygon
         points={onRight(body, 0.1, 0.12, 0.9, 0.88)}
@@ -137,7 +142,7 @@ export function Laptop({ cx, cy }: { cx: number; cy: number }) {
   const base: Box = {
     x: cx - 1.5,
     y: cy - 0.8,
-    z: PAD_H,
+    z: 0,
     w: 3,
     d: 2,
     h: 0.14,
@@ -157,6 +162,7 @@ export function Laptop({ cx, cy }: { cx: number; cy: number }) {
   ];
   return (
     <g>
+      <Shadow box={base} />
       <Faces box={base} />
       <polygon
         points={toPoints([
@@ -188,13 +194,14 @@ export function Mini({ cx, cy }: { cx: number; cy: number }) {
   const body: Box = {
     x: cx - 0.95,
     y: cy - 0.95,
-    z: PAD_H,
+    z: 0,
     w: 1.9,
     d: 1.9,
     h: 0.6,
   };
   return (
     <g>
+      <Shadow box={body} />
       <Faces box={body} />
       <polygon
         points={onLeft(body, 0.1, 0.35, 0.18, 0.6)}

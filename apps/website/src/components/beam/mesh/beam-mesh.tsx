@@ -4,7 +4,7 @@ import { Pause, Play } from 'lucide-react';
 import { useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { lane, project, ribbon, type Vec2, type Vec3 } from './geometry';
 import { Ground } from './ground';
-import { Laptop, Mini, Pad, Rack, Tower } from './machines';
+import { Laptop, Mini, Rack, Tower } from './machines';
 import { BEAM_COLORS } from './palette';
 
 /**
@@ -24,10 +24,10 @@ const machines = [
 
 /** Where each label hangs: the highest, rearmost point of its machine. */
 const labelAnchors: Record<(typeof machines)[number]['id'], Vec3> = {
-  rack: [1.7, 1.7, 2.5],
-  tower: [9.25, 1.7, 3.14],
-  laptop: [3, 8.65, 2.13],
-  mini: [9.05, 9.05, 0.74],
+  rack: [1.7, 1.7, 2.36],
+  tower: [9.25, 1.7, 3],
+  laptop: [3, 8.65, 1.99],
+  mini: [9.05, 9.05, 0.6],
 };
 
 interface Beam {
@@ -62,8 +62,8 @@ const beams: Beam[] = [
     id: 'laptop-mini',
     color: BEAM_COLORS.clay,
     path: [
-      [3, 10],
-      [10, 10],
+      [3, 10.5],
+      [10, 10.5],
     ],
     seconds: 3.8,
   },
@@ -80,8 +80,8 @@ const beams: Beam[] = [
     id: 'laptop-tower',
     color: BEAM_COLORS.mauve,
     path: [
-      [3, 9],
-      [6.5, 9],
+      [3, 9.5],
+      [6.5, 9.5],
       [6.5, 4],
       [10, 4],
     ],
@@ -150,7 +150,6 @@ export function BeamMesh({ className }: { className?: string }) {
             const [lx, ly] = project(labelAnchors[id]);
             return (
               <g key={id}>
-                <Pad cx={cx} cy={cy} />
                 <Shape cx={cx} cy={cy} />
                 <text x={lx} y={ly - 9} className="n10-mesh-label">
                   {label}

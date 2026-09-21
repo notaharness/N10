@@ -370,8 +370,13 @@
   fill: var(--n10-iso-right);
 }
 
-.n10-iso-pad .n10-iso-face--top {
-  fill: var(--color-fd-card);
+.n10-iso-shadow {
+  fill: rgb(30 25 10 / 0.22);
+  filter: blur(3px);
+}
+
+.dark .n10-iso-shadow {
+  fill: rgb(0 0 0 / 0.55);
 }
 
 .n10-iso-inset {

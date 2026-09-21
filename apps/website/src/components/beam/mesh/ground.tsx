@@ -12,8 +12,6 @@ import { BEAM_COLORS } from './palette';
 const REACH = 32;
 const CENTRE = 6.5;
 const RAY_LENGTH = 30;
-/** Half a pad: rays start where a machine's plate ends. */
-const EDGE = 1.8;
 
 const gridLines = Array.from({ length: REACH * 2 + 1 }, (_, n) => {
   const i = CENTRE - REACH + n;
@@ -44,7 +42,7 @@ const rays: Ray[] = [
   {
     id: 'sand-a',
     color: BEAM_COLORS.sand,
-    from: [3 - EDGE, 3],
+    from: [3, 3],
     dir: [-1, 0],
     seconds: 11,
     inbound: true,
@@ -52,21 +50,21 @@ const rays: Ray[] = [
   {
     id: 'sand-b',
     color: BEAM_COLORS.sand,
-    from: [10 + EDGE, 3],
+    from: [10, 3],
     dir: [1, 0],
     seconds: 9,
   },
   {
     id: 'sage-a',
     color: BEAM_COLORS.sage,
-    from: [3, 3 - EDGE],
+    from: [3, 3],
     dir: [0, -1],
     seconds: 12,
   },
   {
     id: 'sage-b',
     color: BEAM_COLORS.sage,
-    from: [3, 10 + EDGE],
+    from: [3, 10],
     dir: [0, 1],
     seconds: 10,
     inbound: true,
@@ -74,7 +72,7 @@ const rays: Ray[] = [
   {
     id: 'blue-a',
     color: BEAM_COLORS.blue,
-    from: [10, 3 - EDGE],
+    from: [10, 3],
     dir: [0, -1],
     seconds: 13,
     inbound: true,
@@ -82,21 +80,21 @@ const rays: Ray[] = [
   {
     id: 'blue-b',
     color: BEAM_COLORS.blue,
-    from: [10, 10 + EDGE],
+    from: [10, 10],
     dir: [0, 1],
     seconds: 9.5,
   },
   {
     id: 'clay-a',
     color: BEAM_COLORS.clay,
-    from: [3 - EDGE, 10],
+    from: [3, 10.5],
     dir: [-1, 0],
     seconds: 10.5,
   },
   {
     id: 'clay-b',
     color: BEAM_COLORS.clay,
-    from: [10 + EDGE, 10],
+    from: [10, 10.5],
     dir: [1, 0],
     seconds: 12.5,
     inbound: true,
