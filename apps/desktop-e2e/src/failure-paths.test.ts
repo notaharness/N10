@@ -11,6 +11,7 @@ import {
   openPalette,
   sidebarRow,
   tabs,
+  visibleText,
 } from './setup/app.js';
 import { armContextMenuChoice } from './setup/menu.js';
 
@@ -28,34 +29,43 @@ import { armContextMenuChoice } from './setup/menu.js';
  */
 
 /**
- * Wait for tmux's retained dead-pane notice.
+ * Wait for the app to offer the agent's pane back for relaunching.
  *
- * The agent exits in milliseconds, but the notice is several hops away:
- * the session is created in a utility process, the backend polls the
- * pane every 500ms, and only then is the retained frame replayed into
- * the renderer. On a loaded two-core runner that chain routinely takes
- * longer than the suite's default expect timeout, so every test that
- * waits for it waits on the same budget.
+ * This is the exit as a user meets it, and it is deliberately not
+ * tmux's retained "Pane is dead" notice. That notice is written only
+ * once tmux has reaped the pane's process, while `pane_dead` flips
+ * earlier and independently, when the pane's file descriptor closes.
+ * Short of CPU — a two-core runner, a loaded laptop — the two come
+ * apart for good: the pane reads dead with the process left unreaped,
+ * `pane_dead_status`, `pane_dead_signal` and `pane_dead_time` stay
+ * empty, and the notice is never written into the pane at all. No
+ * capture and no repaint can produce text tmux did not write, so a test
+ * that waits for it waits forever. The agent exits in milliseconds, but
+ * the app hears about it several hops away — the session is created in
+ * a utility process and the backend polls the pane every 500ms — so the
+ * wait still carries its own budget.
  */
-function expectPaneDead(page: Page): Promise<void> {
-  return expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
-    timeout: 30_000,
-  });
+function expectAgentExited(page: Page): Promise<void> {
+  return expect(
+    page.getByRole('button', { name: 'Relaunch agent', exact: true })
+  ).toBeVisible({ timeout: 30_000 });
 }
 
 test.describe('An agent that exits immediately', () => {
   test.use({ n10Config: { aiCommand: fakeAgent({ exitAfterMs: 300 }) } });
 
-  test('says so in the terminal and stops reporting as running', async ({
+  test('keeps its last output on screen and stops reporting as running', async ({
     desktop,
   }) => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
+    await expectAgentExited(page);
 
-    // tmux retains the final frame and its dead-pane notice, even when
-    // the process exits before the renderer subscribes.
-    await expectPaneDead(page);
+    // The exit swaps the pane for tmux's retained frame, so what the
+    // agent printed has to survive that swap. A capture that came back
+    // empty would clear the terminal and leave the user with nothing.
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
 
     await expect
       .poll(
@@ -69,9 +79,6 @@ test.describe('An agent that exits immediately', () => {
         { timeout: 20_000 }
       )
       .toBe(false);
-    await expect(
-      page.getByRole('button', { name: 'Relaunch agent', exact: true })
-    ).toBeVisible();
   });
 
   test('typing into an exited agent reports the failed delivery without a renderer exception', async ({
@@ -80,10 +87,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expectPaneDead(page);
-    await expect(
-      page.getByRole('button', { name: 'Relaunch agent', exact: true })
-    ).toBeVisible();
+    await expectAgentExited(page);
 
     await focusTerminal(page);
     await page.keyboard.type('hello');
@@ -98,10 +102,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expectPaneDead(page);
-    await expect(
-      page.getByRole('button', { name: 'Relaunch agent', exact: true })
-    ).toBeVisible();
+    await expectAgentExited(page);
     // Wait for the application to agree that the retained agent exited.
     // The activity map used by the close path is polled once a second.
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });

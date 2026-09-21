@@ -176,6 +176,11 @@ class TmuxBackend implements SessionBackend {
     // `state.running` and the timer untouched; the next tick tries again.
     if (read.status === 'failed') return;
     if (read.status === 'ok' && !read.state.paneDead) return;
+    // `paneDead` alone, deliberately. An exit status arrives only once
+    // tmux has reaped the process, and a machine short of CPU can leave
+    // it unreaped for good — the status then never comes, nor does the
+    // retained "Pane is dead" notice this frame would otherwise carry.
+    // Waiting for either strands a finished agent as running.
     if (read.status === 'ok') this.replayFinalFrame();
     this.state = {
       running: false,
