@@ -72,27 +72,31 @@ const N_DIAGONAL = `0,0 ${STROKE},0 ${N_WIDTH},100 ${N_WIDTH - STROKE},100`;
 
 /**
  * How the N is drawn. `upper` is the mark; the lowercase forms are
- * trials for /logo-lab. Both reuse the 0's arch — a stroke-wide ring
- * with a half-module inner radius — so the n and the 0 rhyme, and both
- * keep the stem's square top-left corner, which is what makes the shape
- * an n rather than an arch. `lower` stops at a three-module x-height
- * and lets the 1 stand a module taller; `lowerTall` fills all four.
+ * trials for /logo-lab, both three modules tall so the 1 stands a
+ * module above them the way a numeral stands above lowercase text.
+ *
+ * A lowercase n is not a stem plus a semicircle, which is what pure
+ * geometry gives you and why that reads as an arch on a block. In a
+ * drawn typeface the shoulder branches out of the stem and leaves a
+ * notch where it does, the arch is thinner than the stems (horizontals
+ * always are, or they look heavier), the shoulder turns down on a tight
+ * radius rather than a half circle, and the counter's top is small and
+ * slightly off-centre. `lower` draws that structure on the module, so
+ * both stems still fill whole grid cells and the 1 still splits the
+ * right one into thirds. `lowerGeist` is the n of Geist Black itself
+ * (the site's typeface, SIL OFL), scaled so its x-height is three
+ * modules and set flush right: its stems are a touch wider than a
+ * module and unequal, so it is the reference, not something that sits
+ * on the grid.
  */
-export type LogoNShape = 'upper' | 'lower' | 'lowerTall';
+export type LogoNShape = 'upper' | 'lower' | 'lowerGeist';
 
-/** The arch and both legs, from `top` down to the baseline, as one outline. */
-function lowerNArch(top: number): string {
-  const outer = N_WIDTH / 2;
-  const inner = outer - STROKE;
-  const cy = top + outer;
-  return [
-    `M0,100 V${cy}`,
-    `A${outer},${outer} 0 0 1 ${N_WIDTH},${cy}`,
-    `V100 H${N_RIGHT_STAVE} V${cy}`,
-    `A${inner},${inner} 0 0 0 ${STROKE},${cy}`,
-    'V100 Z',
-  ].join(' ');
-}
+const LOWER_N =
+  'M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z';
+
+/** Geist Black (wght 900) `n`, 1000 upm, x-height 540 → 75. Self-overlapping, so it needs the default nonzero fill. */
+const LOWER_N_GEIST =
+  'M2.92,100L2.92,25L27.08,25L28.19,48.89L24.86,48.61Q25.69,39.03 29.1,33.54Q32.5,28.06 37.71,25.69Q42.92,23.33 49.31,23.33Q57.08,23.33 62.85,26.67Q68.61,30 71.81,36.32Q75,42.64 75,51.81L75,100L48.06,100L48.06,61.11Q48.06,55.69 47.43,51.88Q46.81,48.06 44.93,46.04Q43.06,44.03 39.44,44.03Q34.31,44.03 32.08,48.47Q29.86,52.92 29.86,61.11L29.86,100Z';
 
 function NGlyph({ shape }: { shape: LogoNShape }) {
   if (shape === 'upper') {
@@ -104,13 +108,7 @@ function NGlyph({ shape }: { shape: LogoNShape }) {
       </>
     );
   }
-  const top = shape === 'lower' ? STROKE : 0;
-  return (
-    <>
-      <rect x="0" y={top} width={STROKE} height={100 - top} />
-      <path d={lowerNArch(top)} />
-    </>
-  );
+  return <path d={shape === 'lower' ? LOWER_N : LOWER_N_GEIST} />;
 }
 
 /**

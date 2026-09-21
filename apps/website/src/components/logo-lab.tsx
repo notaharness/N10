@@ -10,13 +10,13 @@ import { PALETTES, Swatch, multiply } from '@/components/logo-lab-shared';
 const N_SHAPES: { shape: LogoNShape; name: string; note: string }[] = [
   {
     shape: 'lower',
-    name: 'Lowercase, x-height',
-    note: 'Three modules tall on the baseline, so the 1 stands a module above it the way a numeral stands above lowercase text.',
+    name: 'Lowercase, drawn on the module',
+    note: 'Built the way a type designer builds an n — notched where the shoulder leaves the stem, a thinner arch, a tight shoulder — with both stems still exactly one module wide.',
   },
   {
-    shape: 'lowerTall',
-    name: 'Lowercase, full height',
-    note: 'The same n stretched to all four modules: level with the 1 and the 0, and its arch lines up with the top of the 0.',
+    shape: 'lowerGeist',
+    name: 'Lowercase, Geist Black',
+    note: 'The n from the site’s own typeface, untouched. The model for the one beside it; its stems are slightly wider than a module, so it sits near the grid rather than on it.',
   },
   {
     shape: 'upper',
@@ -218,8 +218,9 @@ export function LogoLab() {
       <section className="flex flex-col gap-6">
         <h2 className="text-lg font-medium">Lowercase n</h2>
         <p className="text-fd-muted-foreground -mt-4 text-sm">
-          The n borrows the 0&apos;s arch, so the two round forms match. Shown
-          against the current capital for comparison; hover to split.
+          A lowercase n at a three-module x-height, with the 1 and the 0
+          standing a module taller. Shown against the current capital; hover to
+          split.
         </p>
         <div className="grid gap-6 sm:grid-cols-3">
           {N_SHAPES.map(({ shape, name, note }) => (
