@@ -330,3 +330,179 @@
   background-size: var(--n10-cell) var(--n10-cell);
   background-position: -1px -1px;
 }
+
+/* The /beam mesh (src/components/beam/mesh). Box faces are three tones
+ * of one surface, lit from the top left; the theme swaps the surface,
+ * not the lighting. */
+:root {
+  --n10-iso-top: #fefdfa;
+  --n10-iso-left: #ebe8dd;
+  --n10-iso-right: #d9d5c6;
+  --n10-iso-line: rgb(80 72 45 / 0.4);
+  --n10-iso-inset: rgb(60 55 35 / 0.2);
+  --n10-iso-screen: #23251f;
+}
+
+.dark {
+  --n10-iso-top: #34362e;
+  --n10-iso-left: #24261f;
+  --n10-iso-right: #191a15;
+  --n10-iso-line: rgb(235 228 195 / 0.22);
+  --n10-iso-inset: rgb(0 0 0 / 0.4);
+  --n10-iso-screen: #0b0c09;
+}
+
+.n10-iso-face {
+  stroke: var(--n10-iso-line);
+  stroke-width: 0.75;
+  stroke-linejoin: round;
+}
+
+.n10-iso-face--top {
+  fill: var(--n10-iso-top);
+}
+
+.n10-iso-face--left {
+  fill: var(--n10-iso-left);
+}
+
+.n10-iso-face--right {
+  fill: var(--n10-iso-right);
+}
+
+.n10-iso-pad .n10-iso-face--top {
+  fill: var(--color-fd-card);
+}
+
+.n10-iso-inset {
+  fill: var(--n10-iso-inset);
+}
+
+.n10-iso-screen {
+  fill: var(--n10-iso-screen);
+}
+
+.n10-iso-glass {
+  fill: var(--n10-iso-screen);
+  opacity: 0.85;
+}
+
+.n10-iso-glow {
+  fill: var(--n10-sand);
+  filter: drop-shadow(0 0 4px var(--n10-sand));
+}
+
+.n10-iso-code {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke: rgb(255 255 255 / 0.35);
+}
+
+.n10-iso-code--sage {
+  stroke: var(--n10-sage);
+}
+
+.n10-iso-code--sand {
+  stroke: var(--n10-sand);
+}
+
+.n10-iso-led {
+  fill: var(--n10-sage);
+  animation: n10-iso-blink 2.8s steps(1, end) infinite;
+  animation-play-state: var(--n10-mesh-play);
+}
+
+.n10-iso-led--sand {
+  fill: var(--n10-sand);
+}
+
+@keyframes n10-iso-blink {
+  60% {
+    opacity: 0.25;
+  }
+  75% {
+    opacity: 1;
+  }
+}
+
+.n10-mesh-grid {
+  fill: none;
+  stroke: var(--color-fd-border);
+  stroke-width: 1;
+}
+
+.n10-mesh-label {
+  fill: var(--color-fd-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-anchor: middle;
+  /* A halo in the page colour, so a label stays legible over the grid. */
+  paint-order: stroke;
+  stroke: var(--color-fd-background);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* A beam is a translucent track with packets running along it in two
+ * lanes: long ones out, short ones back. The dash pattern repeats every
+ * quarter of the (normalised, 100-long) path, so sliding it by one
+ * whole path length loops without a seam. */
+.n10-mesh-ribbon {
+  fill: var(--n10-mesh-color);
+  opacity: 0.32;
+}
+
+.n10-mesh-packet {
+  fill: none;
+  stroke: var(--n10-mesh-color);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-dasharray: 4 21;
+  animation: n10-mesh-flow var(--n10-mesh-seconds) linear infinite;
+  animation-play-state: var(--n10-mesh-play);
+}
+
+.n10-mesh-packet--back {
+  stroke-width: 3;
+  stroke-dasharray: 1.5 23.5;
+  stroke-dashoffset: 12;
+  animation-name: n10-mesh-flow-back;
+  animation-duration: calc(var(--n10-mesh-seconds) * 1.35);
+}
+
+.dark .n10-mesh-packet {
+  filter: drop-shadow(0 0 3px var(--n10-mesh-color));
+}
+
+@keyframes n10-mesh-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@keyframes n10-mesh-flow-back {
+  to {
+    stroke-dashoffset: 112;
+  }
+}
+
+/* Runs by default, holds still under reduced motion, and the figure's
+ * button overrides either through data-playing. */
+.n10-mesh {
+  --n10-mesh-play: running;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .n10-mesh {
+    --n10-mesh-play: paused;
+  }
+}
+
+.n10-mesh[data-playing='true'] {
+  --n10-mesh-play: running;
+}
+
+.n10-mesh[data-playing='false'] {
+  --n10-mesh-play: paused;
+}
