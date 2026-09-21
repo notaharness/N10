@@ -2,24 +2,19 @@
 
 import { Pause, Play } from 'lucide-react';
 import { useState, useSyncExternalStore, type CSSProperties } from 'react';
-import {
-  lane,
-  project,
-  ribbon,
-  toPoints,
-  type Vec2,
-  type Vec3,
-} from './geometry';
+import { lane, project, ribbon, type Vec2, type Vec3 } from './geometry';
+import { Ground } from './ground';
 import { Laptop, Mini, Pad, Rack, Tower } from './machines';
+import { BEAM_COLORS } from './palette';
 
 /**
  * Several paired machines on one ground plane, each pair joined by its
  * own beam with traffic running both ways. Drawn in a 30° isometric
  * projection (see geometry.ts); machines are listed back to front,
- * which is also the order they have to be painted in.
+ * which is also the order they have to be painted in. The svg
+ * overflows its box on purpose: ground.tsx draws the plane out across
+ * the whole hero.
  */
-const GROUND = 13;
-
 const machines = [
   { id: 'rack', label: 'build box', cx: 3, cy: 3, Shape: Rack },
   { id: 'tower', label: 'workstation', cx: 10, cy: 3, Shape: Tower },
@@ -47,7 +42,7 @@ interface Beam {
 const beams: Beam[] = [
   {
     id: 'rack-tower',
-    color: '#e3c16f',
+    color: BEAM_COLORS.sand,
     path: [
       [3, 3],
       [10, 3],
@@ -56,7 +51,7 @@ const beams: Beam[] = [
   },
   {
     id: 'rack-laptop',
-    color: '#9caf88',
+    color: BEAM_COLORS.sage,
     path: [
       [3, 3],
       [3, 10],
@@ -65,7 +60,7 @@ const beams: Beam[] = [
   },
   {
     id: 'laptop-mini',
-    color: '#d4896a',
+    color: BEAM_COLORS.clay,
     path: [
       [3, 10],
       [10, 10],
@@ -74,7 +69,7 @@ const beams: Beam[] = [
   },
   {
     id: 'tower-mini',
-    color: '#7da3c0',
+    color: BEAM_COLORS.blue,
     path: [
       [10, 3],
       [10, 10],
@@ -83,7 +78,7 @@ const beams: Beam[] = [
   },
   {
     id: 'laptop-tower',
-    color: '#a98fc4',
+    color: BEAM_COLORS.mauve,
     path: [
       [3, 9],
       [6.5, 9],
@@ -93,17 +88,6 @@ const beams: Beam[] = [
     seconds: 4.4,
   },
 ];
-
-const gridLines = Array.from({ length: GROUND + 1 }, (_, i) => [
-  toPoints([
-    [i, 0, 0],
-    [i, GROUND, 0],
-  ]),
-  toPoints([
-    [0, i, 0],
-    [GROUND, i, 0],
-  ]),
-]).flat();
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
 
@@ -147,44 +131,18 @@ export function BeamMesh({ className }: { className?: string }) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const playing = choice ?? !reduced;
   const Icon = playing ? Pause : Play;
-  const [fadeX, fadeY] = project([GROUND / 2, GROUND / 2, 0]);
 
   return (
     <figure className={className}>
       <div className="relative">
         <svg
           viewBox="-285 -48 570 350"
-          className="n10-mesh h-auto w-full"
+          className="n10-mesh h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
           aria-label="Four machines — a laptop, a workstation, a build box and a home server — each connected to the others by its own beam, with data moving along every beam in both directions."
         >
-          <defs>
-            <radialGradient
-              id="n10-mesh-fade"
-              gradientUnits="userSpaceOnUse"
-              cx={fadeX}
-              cy={fadeY}
-              r="270"
-            >
-              <stop offset="0.45" stopColor="white" />
-              <stop offset="1" stopColor="black" />
-            </radialGradient>
-            <mask id="n10-mesh-mask">
-              <rect
-                x="-285"
-                y="-48"
-                width="570"
-                height="350"
-                fill="url(#n10-mesh-fade)"
-              />
-            </mask>
-          </defs>
-          <g mask="url(#n10-mesh-mask)" className="n10-mesh-grid">
-            {gridLines.map((points) => (
-              <polyline key={points} points={points} />
-            ))}
-          </g>
+          <Ground />
           {beams.map((beam) => (
             <BeamTrack key={beam.id} beam={beam} />
           ))}

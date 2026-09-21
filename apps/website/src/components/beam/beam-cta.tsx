@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { CopyButton } from '@/components/copy-button';
-import { HeroBackdrop } from '@/components/hero-backdrop';
 import { buttonVariants } from '@/components/ui/button';
 
 const INSTALL = 'npm install -g @notaharness/beam';
@@ -9,7 +8,11 @@ export function BeamCta() {
   return (
     <section className="mx-auto w-full max-w-5xl px-4 pt-8 pb-24">
       <div className="border-fd-border bg-fd-card relative overflow-hidden rounded-2xl border px-6 py-16 text-center">
-        <HeroBackdrop cells={false} className="h-full" />
+        <div
+          aria-hidden
+          className="n10-beam-panel-spectrum absolute inset-x-[10%] -top-16 h-32"
+        />
+        <div aria-hidden className="n10-beam-panel-grid absolute inset-0" />
         <div className="relative">
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Try Beam

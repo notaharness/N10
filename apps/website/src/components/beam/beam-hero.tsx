@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import { BeamMesh } from '@/components/beam/mesh/beam-mesh';
-import { HeroBackdrop } from '@/components/hero-backdrop';
 import { buttonVariants } from '@/components/ui/button';
 
 export function BeamHero() {
   return (
     <section className="relative overflow-hidden">
-      <HeroBackdrop cells={false} className="h-[640px]" />
-      <div className="relative mx-auto grid w-full max-w-6xl items-center gap-x-10 gap-y-12 px-4 pt-16 pb-12 sm:pt-24 lg:grid-cols-[1fr_1.2fr]">
-        <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
+      <div className="relative mx-auto grid w-full max-w-6xl items-center gap-x-10 gap-y-12 px-4 pt-16 pb-24 sm:pt-24 lg:grid-cols-[1fr_1.2fr]">
+        <div className="relative z-10 flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
           <span className="border-fd-border bg-fd-card text-fd-muted-foreground rounded-full border px-3 py-1 font-mono text-xs">
             @notaharness/beam
           </span>
@@ -35,6 +33,13 @@ export function BeamHero() {
         </div>
         <BeamMesh className="mx-auto w-full max-w-xl lg:max-w-none" />
       </div>
+      {/* The mesh draws its ground out past its own box; this lets the
+          rays sink into the page instead of stopping at the section's
+          edge. */}
+      <div
+        aria-hidden
+        className="to-fd-background pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent"
+      />
     </section>
   );
 }

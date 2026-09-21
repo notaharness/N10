@@ -432,6 +432,34 @@
   stroke-width: 1;
 }
 
+.n10-mesh-pool {
+  opacity: 0.55;
+}
+
+.dark .n10-mesh-pool {
+  opacity: 0.3;
+}
+
+/* A beam carrying on past its machine: a thin track and one slow
+ * packet, both painted with a gradient that runs out along the ray, so
+ * a packet dims as it leaves and brightens as it arrives. */
+.n10-mesh-ray {
+  opacity: 0.4;
+}
+
+.n10-mesh-ray-packet {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1.4 48.6;
+  animation: n10-mesh-flow var(--n10-mesh-seconds) linear infinite;
+  animation-play-state: var(--n10-mesh-play);
+}
+
+.n10-mesh-ray-packet--inbound {
+  animation-direction: reverse;
+}
+
 .n10-mesh-label {
   fill: var(--color-fd-muted-foreground);
   font-family: var(--font-mono);
@@ -505,4 +533,43 @@
 
 .n10-mesh[data-playing='false'] {
   --n10-mesh-play: paused;
+}
+
+/* The beam page's closing panel: the same isometric ground as its hero,
+ * as a CSS pattern (nothing here needs to line up with a drawing), under
+ * the five beam colours thrown along the top edge. 150° and 210° are the
+ * gradient directions whose stripes run at ∓30° to the horizontal. */
+.n10-beam-panel-grid {
+  background-image: repeating-linear-gradient(
+      150deg,
+      var(--color-fd-border) 0 1px,
+      transparent 1px 26px
+    ),
+    repeating-linear-gradient(
+      210deg,
+      var(--color-fd-border) 0 1px,
+      transparent 1px 26px
+    );
+  mask-image: radial-gradient(
+    ellipse 70% 110% at 50% 0%,
+    black 15%,
+    transparent 75%
+  );
+}
+
+.n10-beam-panel-spectrum {
+  background: linear-gradient(
+    to right,
+    #9caf88,
+    #e3c16f,
+    #d4896a,
+    #a98fc4,
+    #7da3c0
+  );
+  filter: blur(60px);
+  opacity: 0.4;
+}
+
+.dark .n10-beam-panel-spectrum {
+  opacity: 0.28;
 }
