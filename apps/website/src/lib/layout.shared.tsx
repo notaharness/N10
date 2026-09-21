@@ -5,7 +5,7 @@ import { Logo } from '@/components/logo';
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
-      // Hovering the mark slides the 10 out of the N to show its own
+      // Hovering the mark slides the 10 out of the n to show its own
       // colour; see src/components/logo.tsx.
       title: <Logo hover className="h-6 w-auto" />,
     },

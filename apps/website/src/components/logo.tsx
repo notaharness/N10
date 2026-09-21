@@ -2,9 +2,9 @@ import type { CSSProperties, SVGProps } from 'react';
 import { cn } from '@/lib/cn';
 
 /**
- * The n10 mark: two coloured glass panes. The N is one pane, the 10 is
+ * The n10 mark: two coloured glass panes. The n is one pane, the 10 is
  * another, and the 10 sits shifted left so the 1 — a plain bar, the
- * same width as the N's staves — overlaps the N's right stave by half.
+ * same width as the n's stems — overlaps the n's right stem by half.
  * Half, not all: it splits the shared stave into three equal stripes
  * (sage, olive, sand), so the static mark shows the mixing itself
  * rather than leaning on the animation, and the 1 stays its own glyph.
@@ -25,22 +25,24 @@ import { cn } from '@/lib/cn';
  *
  * The mark is drawn on a square module, one stroke to a side, so it can
  * sit on a grid of that module with every edge on a line (the hero does
- * this — see hero-backdrop.tsx). The N is 3 × 4 modules with a diagonal
- * that runs corner to corner of its counter; the 1 is 1 × 4; the 0 is a
- * 3 × 4 stadium with a 1 × 2 hole, which reads as a digit where a
- * circle reads as the letter O. The 1–0 gap is half a module, and so is
- * the 1's step over the stave, so the merged mark is exactly 7 modules
- * wide with the N and the 0 each filling whole modules. Splitting
+ * this — see hero-backdrop.tsx). The n is lowercase, 3 × 3 modules on
+ * the baseline with both stems a module wide; the 1 is 1 × 4 and
+ * stands a module above it, the way a numeral stands above lowercase
+ * text; the 0 is a 3 × 4 stadium with a 1 × 2 hole, which reads as a
+ * digit where a circle reads as the letter O. The 1–0 gap is half a
+ * module, and so is the 1's step over the stem, so the merged mark is
+ * exactly 7 modules wide with the n and the 0 each filling whole
+ * modules. Splitting
  * opens both gaps to a full module: the 1 slides a module and a half
  * and the 0 half a module further, so in the split pose all three
- * glyphs fill whole modules — N, gap, 1, gap, 0 across 9.
+ * glyphs fill whole modules — n, gap, 1, gap, 0 across 9.
  *
  * Nothing depends on a font. Units: 100 = cap height, 25 = stroke =
  * one module; the merged mark is 175 × 100. The same geometry is
  * flattened into src/app/icon.svg for the favicon.
  *
  * `intro` plays the mix once on mount (holds split, then the 10 slides
- * into the N); `hover` slides the 10 back out on hover to reveal its own
+ * into the n); `hover` slides the 10 back out on hover to reveal its own
  * colour. Both are pure CSS — see the `.n10-logo` rules in global.css;
  * the `--n10-logo-*` custom properties there can be overridden per
  * instance through `style` to tune timing. The slide distance follows
@@ -50,7 +52,7 @@ export const LOGO_N_COLOR = '#9caf88';
 export const LOGO_TEN_COLOR = '#e3c16f';
 /** LOGO_N_COLOR × LOGO_TEN_COLOR, for contexts that can't blend (the favicon). */
 export const LOGO_MIX = '#8b843b';
-/** Fraction of the N's right stave the 1 covers. */
+/** Fraction of the n's right stem the 1 covers. */
 export const LOGO_OVERLAP = 0.5;
 
 /** Stroke width, and the side of the module the mark is drawn on. */
@@ -71,9 +73,9 @@ const TEN_WIDTH = STROKE + LOGO_GAP + ZERO_WIDTH;
 const N_DIAGONAL = `0,0 ${STROKE},0 ${N_WIDTH},100 ${N_WIDTH - STROKE},100`;
 
 /**
- * How the N is drawn. `upper` is the mark; the lowercase forms are
- * trials for /logo-lab, both three modules tall so the 1 stands a
- * module above them the way a numeral stands above lowercase text.
+ * How the n is drawn. `lower` is the mark; `upper` (the capital it
+ * replaced, 3 × 4 with a diagonal running corner to corner of its
+ * counter) and `lowerGeist` are kept for /logo-lab.
  *
  * A lowercase n is not a stem plus a semicircle, which is what pure
  * geometry gives you and why that reads as an arch on a block. In a
@@ -82,12 +84,11 @@ const N_DIAGONAL = `0,0 ${STROKE},0 ${N_WIDTH},100 ${N_WIDTH - STROKE},100`;
  * always are, or they look heavier), the shoulder turns down on a tight
  * radius rather than a half circle, and the counter's top is small and
  * slightly off-centre. `lower` draws that structure on the module, so
- * both stems still fill whole grid cells and the 1 still splits the
- * right one into thirds. `lowerGeist` is the n of Geist Black itself
- * (the site's typeface, SIL OFL), scaled so its x-height is three
- * modules and set flush right: its stems are a touch wider than a
- * module and unequal, so it is the reference, not something that sits
- * on the grid.
+ * both stems fill whole grid cells and the 1 splits the right one into
+ * thirds. `lowerGeist` is the n of Geist Black itself (the site's
+ * typeface, SIL OFL) — the model for `lower` — scaled so its x-height
+ * is three modules and set flush right: its stems are a touch wider
+ * than a module and unequal, so it sits near the grid, not on it.
  */
 export type LogoNShape = 'upper' | 'lower' | 'lowerGeist';
 
@@ -114,7 +115,7 @@ function NGlyph({ shape }: { shape: LogoNShape }) {
 /**
  * A flag for the 1: a 45° slab from the top of the stem, one stroke
  * deep, reaching `reach` units left and cut vertically at the end. With
- * the bar half on the N's stave that cut sits flush on the stave's
+ * the bar half on the n's stem that cut sits flush on the stem's
  * left edge. Local to the 10 pane.
  */
 function flagPoints(reach: number): string {
@@ -172,7 +173,7 @@ function BlendedMark({
       <g fill={n} style={{ mixBlendMode: 'multiply' }}>
         <NGlyph shape={nShape} />
       </g>
-      {/* The outer group positions the 1 on the N's right stave; the
+      {/* The outer group positions the 1 on the n's right stem; the
           inner group is what the CSS animates, so its transform never
           collides with this one. */}
       <g transform={`translate(${tenX} 0)`}>
@@ -208,7 +209,7 @@ export function Logo({
   colors,
   overlap = LOGO_OVERLAP,
   flag = false,
-  nShape = 'upper',
+  nShape = 'lower',
   className,
   style,
   ...props
@@ -217,14 +218,14 @@ export function Logo({
   hover?: boolean;
   /** Pane colours; defaults to the brand pair. */
   colors?: LogoColors;
-  /** Fraction of the N's right stave the 1 covers, 0–1. */
+  /** Fraction of the n's right stem the 1 covers, 0–1. */
   overlap?: number;
   /**
    * Give the 1 a flag. It reaches left exactly as far as the bar is off
    * the stave, so its end sits flush on the stave's left edge.
    */
   flag?: boolean;
-  /** Letterform for the N; anything but `upper` is a lab trial. */
+  /** Letterform for the n; anything but `lower` is a lab comparison. */
   nShape?: LogoNShape;
 } & Omit<SVGProps<SVGSVGElement>, 'children'>) {
   const { n, ten } = colors ?? BRAND;

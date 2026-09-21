@@ -243,8 +243,8 @@
   background: var(--n10-sand);
 }
 
-/* A sand cell half a column over a sage one: thirds, like the N's
- * shared stave. Hard stops, because the panes have hard edges. */
+/* A sand cell half a column over a sage one: thirds, like the n's
+ * shared stem. Hard stops, because the panes have hard edges. */
 .n10-backdrop-cell--pair {
   width: calc(var(--n10-cell) * 1.5);
   background: linear-gradient(

@@ -10,7 +10,7 @@ import { PALETTES, Swatch, multiply } from '@/components/logo-lab-shared';
 const N_SHAPES: { shape: LogoNShape; name: string; note: string }[] = [
   {
     shape: 'lower',
-    name: 'Lowercase, drawn on the module',
+    name: 'Lowercase, drawn on the module (current)',
     note: 'Built the way a type designer builds an n — notched where the shoulder leaves the stem, a thinner arch, a tight shoulder — with both stems still exactly one module wide.',
   },
   {
@@ -20,8 +20,8 @@ const N_SHAPES: { shape: LogoNShape; name: string; note: string }[] = [
   },
   {
     shape: 'upper',
-    name: 'Capital (current)',
-    note: 'The mark as it ships.',
+    name: 'Capital (previous)',
+    note: 'The capital N the mark used before: 3 × 4 modules, level with the 1 and the 0.',
   },
 ];
 

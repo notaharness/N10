@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn';
  * the left, sand from the right, and they meet behind the hero's mark.
  * Over that, a fine grid carries a handful of tinted cells — single
  * panes, and pairs where a sand cell sits half a column over a sage one
- * and splits into the same three stripes as the N's shared stave.
+ * and splits into the same three stripes as the n's shared stem.
  *
  * The grid's cell is `--n10-cell` (global.css), which is also the module
  * the hero sizes its mark by, so the mark's strokes are grid cells.
