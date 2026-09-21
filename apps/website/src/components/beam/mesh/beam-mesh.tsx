@@ -2,15 +2,7 @@
 
 import { Pause, Play } from 'lucide-react';
 import { useState, useSyncExternalStore, type CSSProperties } from 'react';
-import {
-  centreLine,
-  project,
-  ribbon,
-  shift,
-  TRACK_WIDTH,
-  type Vec2,
-  type Vec3,
-} from './geometry';
+import { centreLine, ribbon, shift, TRACK_WIDTH, type Vec2 } from './geometry';
 import { Ground } from './ground';
 import { Laptop, Mini, Rack, Tower } from './machines';
 import { BEAM_COLORS } from './palette';
@@ -24,19 +16,11 @@ import { BEAM_COLORS } from './palette';
  * the whole hero.
  */
 const machines = [
-  { id: 'rack', label: 'build box', cx: 3, cy: 3, Shape: Rack },
-  { id: 'tower', label: 'workstation', cx: 10, cy: 3, Shape: Tower },
-  { id: 'laptop', label: 'your laptop', cx: 3, cy: 10, Shape: Laptop },
-  { id: 'mini', label: 'home server', cx: 10, cy: 10, Shape: Mini },
+  { id: 'rack', cx: 3, cy: 3, Shape: Rack },
+  { id: 'tower', cx: 10, cy: 3, Shape: Tower },
+  { id: 'laptop', cx: 3, cy: 10, Shape: Laptop },
+  { id: 'mini', cx: 10, cy: 10, Shape: Mini },
 ] as const;
-
-/** Where each label hangs: the highest, rearmost point of its machine. */
-const labelAnchors: Record<(typeof machines)[number]['id'], Vec3> = {
-  rack: [1.7, 1.7, 2.36],
-  tower: [9.25, 1.7, 3],
-  laptop: [3, 8.65, 1.99],
-  mini: [9.05, 9.05, 0.6],
-};
 
 interface Beam {
   id: string;
@@ -158,7 +142,7 @@ export function BeamMesh({ className }: { className?: string }) {
     <figure className={className}>
       <div className="relative">
         <svg
-          viewBox="-285 -48 570 350"
+          viewBox="-285 -30 570 332"
           className="n10-mesh h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
@@ -168,17 +152,9 @@ export function BeamMesh({ className }: { className?: string }) {
           {beams.map((beam) => (
             <BeamTrack key={beam.id} beam={beam} />
           ))}
-          {machines.map(({ id, label, cx, cy, Shape }) => {
-            const [lx, ly] = project(labelAnchors[id]);
-            return (
-              <g key={id}>
-                <Shape cx={cx} cy={cy} />
-                <text x={lx} y={ly - 9} className="n10-mesh-label">
-                  {label}
-                </text>
-              </g>
-            );
-          })}
+          {machines.map(({ id, cx, cy, Shape }) => (
+            <Shape key={id} cx={cx} cy={cy} />
+          ))}
         </svg>
         <button
           type="button"

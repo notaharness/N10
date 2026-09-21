@@ -465,18 +465,6 @@
   animation-direction: reverse;
 }
 
-.n10-mesh-label {
-  fill: var(--color-fd-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-anchor: middle;
-  /* A halo in the page colour, so a label stays legible over the grid. */
-  paint-order: stroke;
-  stroke: var(--color-fd-background);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-}
-
 /* A beam is two thin translucent tracks, one per direction, each as
  * wide as a ray: long packets out on one, short ones back on the other.
  * The dash pattern repeats every quarter of the (normalised, 100-long)
