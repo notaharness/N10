@@ -12,7 +12,7 @@ const notes = [
   {
     title: 'More than an n10 dependency',
     description:
-      'Beam ships as a standalone package with its own CLI. It knows nothing about git or tmux, so you can build on it directly from a plain shell script.',
+      'Beam ships as a standalone package with its own CLI. It knows nothing about Git or tmux, so you can build on it directly from a plain shell script.',
   },
 ];
 

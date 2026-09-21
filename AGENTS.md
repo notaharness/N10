@@ -26,7 +26,7 @@
 
 n10 was formerly named Kirby; the repository is `notaharness/n10`.
 
-n10 runs coding agents in git worktrees and reviews their pull requests.
+n10 runs coding agents in Git worktrees and reviews their pull requests.
 Nx monorepo with npm workspaces and ESM: `apps/cli` is the Ink TUI,
 `apps/desktop` is Electron, `apps/website` is the Next.js/Fumadocs site at
 n10.is, `libs/core` owns shared operations, and `libs/app-core` supplies
@@ -71,7 +71,7 @@ Next.js requires otherwise).
 
 ## Boundaries
 
-- Put shared sequences of git, filesystem, PTY, config and provider operations
+- Put shared sequences of Git, filesystem, PTY, config and provider operations
   in `@n10/core`; both shells call them. When changing worktree removal,
   consolidate the duplicated TUI and desktop flows there.
 - Core cannot import React, Ink, Electron or `@n10/app-core`. The desktop

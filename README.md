@@ -1,6 +1,6 @@
 # N10
 
-Run AI coding agents across git worktrees, track pull requests, and review code from a desktop app or terminal UI.
+Run AI coding agents across Git worktrees, track pull requests, and review code from a desktop app or terminal UI.
 
 I built n10 to help with my daily work in a large monorepo. I usually have several features and reviews going at once, and wanted one place to manage their branches and agent sessions. I also wanted help reviewing pull requests while still understanding the code I was approving.
 
@@ -42,7 +42,7 @@ Run `n10` from your project directory to open the desktop app, or `n10 --tui` fo
 
 ### Work on several branches at once
 
-Each branch gets its own git worktree and agent session. You can keep several features in progress without stashing changes or disturbing your main checkout.
+Each branch gets its own Git worktree and agent session. You can keep several features in progress without stashing changes or disturbing your main checkout.
 
 The sidebar shows each worktree's pull request state, CI results, review status, and conflict count. The status indicator turns red when a build fails or a reviewer rejects the changes. It turns solid green when CI passes and all reviewers approve.
 
@@ -92,7 +92,7 @@ You can check pull request status, read diffs and review threads, and send plans
 
 ## Configuration
 
-Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop. From there, you can choose your version control provider and AI agent, set sync intervals, and configure automatic rebasing and cleanup of merged branches. Auto-detect can fill in project settings from your git remote.
+Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop. From there, you can choose your version control provider and AI agent, set sync intervals, and configure automatic rebasing and cleanup of merged branches. Auto-detect can fill in project settings from your Git remote.
 
 For keyboard shortcuts, open the **Controls** panel. Choose the Normie or Vim preset, or remap individual actions.
 

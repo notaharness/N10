@@ -4,7 +4,7 @@ description: A directory map of every app and library in the n10 monorepo.
 ---
 
 Both shells sit on the same core: the TUI and desktop app share
-`libs/app-core` for React state and `libs/core` for git, PTY and provider
+`libs/app-core` for React state and `libs/core` for Git, PTY and provider
 operations, with dependencies flowing one way (`@nx/enforce-module-boundaries`
 enforces this — an app may depend on libs, never on another app).
 `apps/website` is intentionally standalone.

@@ -12,7 +12,7 @@ export function Hero() {
             of the mark is a cell of the backdrop's grid in both poses. */}
         <Logo intro hover className="n10-logo--grid" />
         <h1 className="mt-10 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-          Run coding agents across git worktrees
+          Run coding agents across Git worktrees
         </h1>
         <p className="text-fd-muted-foreground mt-6 max-w-2xl text-lg text-pretty">
           Track pull requests and review code from a desktop app or terminal UI.

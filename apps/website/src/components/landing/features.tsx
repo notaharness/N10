@@ -7,7 +7,7 @@ const features: Feature[] = [
     href: '/docs/guides/worktrees',
     title: 'Work on several branches at once',
     description:
-      "Each branch gets its own git worktree and agent session. The sidebar shows each worktree's pull request state, CI results, review status and conflict count, so you can keep several features in progress without stashing changes.",
+      "Each branch gets its own Git worktree and agent session. The sidebar shows each worktree's pull request state, CI results, review status and conflict count, so you can keep several features in progress without stashing changes.",
   },
   {
     media: 'review',

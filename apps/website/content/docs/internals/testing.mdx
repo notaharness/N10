@@ -24,7 +24,7 @@ appearing exactly once.
 The `desktop-e2e` targets build Electron before testing. Directly invoking
 `run-e2e.mjs` or `run-visual.mjs` does not; run `npx nx build desktop` first.
 
-`src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional git
+`src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional Git
 states, supplies a scriptable fake agent and fails on renderer exceptions.
 Every test uses a private tmux socket inside its fixture HOME and kills only
 that fixture's sessions at teardown. It drops `N10_VITE_URL` to ensure tests

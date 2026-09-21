@@ -1,6 +1,6 @@
 # libs/core — @n10/core
 
-The shell-agnostic half: git, worktrees, PTY and session infrastructure,
+The shell-agnostic half: Git, worktrees, PTY and session infrastructure,
 config, providers, keybindings, the plan store, pure helpers. No react, ink,
 electron or `@n10/app-core` (lint-enforced). `src/plan.ts` is the
 browser-safe entry (`@n10/core/plan`); nothing under it may touch `node:`.
@@ -68,7 +68,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
   was last seen. Send after ten minutes of quiet or thirty at most, only while
   the agent has been idle thirty seconds (`idleFor`). Spawn only through
   `checkoutWorktree` (existing branch) with `seed`, never `continue-or-seed`.
-  Every git call takes `cwd`; ask `live()` after each await. Fetches go through
+  Every Git call takes `cwd`; ask `live()` after each await. Fetches go through
   `sync/fetch-queue.ts`; the merge check is `sync/conflicts.ts` so badge and
   briefing agree. `onStatus` fires on transitions only. Timing overrides:
   `babysitTimingFromEnv`.
@@ -76,7 +76,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
   commits; a credentials change clears all. `lookupPullRequest` distinguishes
   `gone` from `unknown`, and one absence is not an answer.
 - **Git output streams** (`utils/git-run.ts`): `runGit` spawns, returns what
-  arrived plus `truncated`, rejects only when git failed. `execFile` discards
+  arrived plus `truncated`, rejects only when `git` failed. `execFile` discards
   everything on overflow. `fetchWorktreeDiffText` (`utils/worktree-diff.ts`)
   bounds per file before diffing (`lstat` bytes, churn lines, a rename
   excludes both paths) and trims overruns at a file boundary; the PR path
