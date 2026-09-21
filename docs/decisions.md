@@ -70,6 +70,17 @@ PATH and the agent adapter's environment additions; do not copy the entire
 process environment into command-line `-e` flags. `list-sessions -F` output is
 tab-separated; `tmux -u` preserves separators under non-UTF-8 locales.
 
+A dead pane carries less than it looks. `pane_dead` flips when the pane's file
+descriptor closes; `pane_dead_status`, `pane_dead_signal`, `pane_dead_time` and
+the retained `Pane is dead` notice arrive only once tmux has reaped the process,
+which is a separate event. Short of CPU — a two-core CI runner, a loaded
+laptop — tmux can leave the process unreaped indefinitely, so a pane reads dead
+with an empty status and no notice written into it, permanently. The notice is
+therefore not something a capture or a repaint can recover, and a missing exit
+status is reported as code 0. Do not gate exit reporting on the status arriving,
+and do not assert on the notice: an agent's own final output and the
+application's own exited state are the signals that always exist.
+
 Tests isolate HOME and the tmux socket, unset inherited TMUX, and validate that
 the socket belongs to the fixture before cleanup. Kill fixture sessions
 individually; never use `tmux kill-server` or the user's default server.
