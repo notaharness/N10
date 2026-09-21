@@ -8,6 +8,9 @@
 const UNIT = 24;
 const COS = Math.cos(Math.PI / 6);
 
+/** Width of one track — a ray, or one direction of a beam — in ground units. */
+export const TRACK_WIDTH = 0.2;
+
 export type Vec3 = readonly [x: number, y: number, z: number];
 export type Vec2 = readonly [x: number, y: number];
 export type Tone = 'top' | 'left' | 'right';
@@ -131,7 +134,16 @@ export function ribbon(path: readonly Vec2[], width: number): string[] {
   });
 }
 
-/** The path as an SVG polyline, shifted sideways into a lane. */
-export function lane(path: readonly Vec2[], offset: number): string {
-  return toPoints(path.map(([x, y]) => [x + offset, y + offset, 0.02]));
+/**
+ * An axis-aligned path moved sideways into a lane. Adding the same
+ * offset to x and y moves every segment square to its own direction,
+ * bends included, so two lanes stay the same distance apart throughout.
+ */
+export function shift(path: readonly Vec2[], offset: number): Vec2[] {
+  return path.map(([x, y]) => [x + offset, y + offset]);
+}
+
+/** The path's centre line as SVG polyline points, just above the ground. */
+export function centreLine(path: readonly Vec2[]): string {
+  return toPoints(path.map(([x, y]) => [x, y, 0.02]));
 }

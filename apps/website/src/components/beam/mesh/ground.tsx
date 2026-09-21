@@ -1,5 +1,12 @@
 import type { CSSProperties } from 'react';
-import { lane, project, ribbon, toPoints, type Vec2 } from './geometry';
+import {
+  centreLine,
+  project,
+  ribbon,
+  toPoints,
+  TRACK_WIDTH,
+  type Vec2,
+} from './geometry';
 import { BEAM_COLORS } from './palette';
 
 /**
@@ -124,7 +131,7 @@ function RayTrack({ ray }: { ray: Ray }) {
         <stop offset="0.3" stopColor={ray.color} stopOpacity="0.4" />
         <stop offset="1" stopColor={ray.color} stopOpacity="0" />
       </linearGradient>
-      {ribbon([ray.from, to], 0.2).map((points) => (
+      {ribbon([ray.from, to], TRACK_WIDTH).map((points) => (
         <polygon
           key={points}
           points={points}
@@ -133,7 +140,7 @@ function RayTrack({ ray }: { ray: Ray }) {
         />
       ))}
       <polyline
-        points={lane([ray.from, to], 0)}
+        points={centreLine([ray.from, to])}
         pathLength={100}
         stroke={`url(#${fade})`}
         className={

@@ -2,7 +2,15 @@
 
 import { Pause, Play } from 'lucide-react';
 import { useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { lane, project, ribbon, type Vec2, type Vec3 } from './geometry';
+import {
+  centreLine,
+  project,
+  ribbon,
+  shift,
+  TRACK_WIDTH,
+  type Vec2,
+  type Vec3,
+} from './geometry';
 import { Ground } from './ground';
 import { Laptop, Mini, Rack, Tower } from './machines';
 import { BEAM_COLORS } from './palette';
@@ -97,6 +105,10 @@ function subscribeReduced(onChange: () => void) {
   return () => query.removeEventListener('change', onChange);
 }
 
+/** How far each direction's track sits from the beam's centre line. */
+const LANE = 0.18;
+
+/** One beam: a track out and a track back, each as wide as a ray. */
 function BeamTrack({ beam }: { beam: Beam }) {
   const vars = {
     '--n10-mesh-color': beam.color,
@@ -104,19 +116,29 @@ function BeamTrack({ beam }: { beam: Beam }) {
   } as CSSProperties;
   return (
     <g style={vars}>
-      {ribbon(beam.path, 0.56).map((points) => (
-        <polygon key={points} points={points} className="n10-mesh-ribbon" />
-      ))}
-      <polyline
-        points={lane(beam.path, -0.11)}
-        pathLength={100}
-        className="n10-mesh-packet"
-      />
-      <polyline
-        points={lane(beam.path, 0.11)}
-        pathLength={100}
-        className="n10-mesh-packet n10-mesh-packet--back"
-      />
+      {[-LANE, LANE].map((offset) => {
+        const path = shift(beam.path, offset);
+        return (
+          <g key={offset}>
+            {ribbon(path, TRACK_WIDTH).map((points) => (
+              <polygon
+                key={points}
+                points={points}
+                className="n10-mesh-ribbon"
+              />
+            ))}
+            <polyline
+              points={centreLine(path)}
+              pathLength={100}
+              className={
+                offset < 0
+                  ? 'n10-mesh-packet'
+                  : 'n10-mesh-packet n10-mesh-packet--back'
+              }
+            />
+          </g>
+        );
+      })}
     </g>
   );
 }

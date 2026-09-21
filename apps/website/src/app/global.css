@@ -477,19 +477,19 @@
   stroke-linejoin: round;
 }
 
-/* A beam is a translucent track with packets running along it in two
- * lanes: long ones out, short ones back. The dash pattern repeats every
- * quarter of the (normalised, 100-long) path, so sliding it by one
- * whole path length loops without a seam. */
+/* A beam is two thin translucent tracks, one per direction, each as
+ * wide as a ray: long packets out on one, short ones back on the other.
+ * The dash pattern repeats every quarter of the (normalised, 100-long)
+ * path, so sliding it by one whole path length loops without a seam. */
 .n10-mesh-ribbon {
   fill: var(--n10-mesh-color);
-  opacity: 0.32;
+  opacity: 0.42;
 }
 
 .n10-mesh-packet {
   fill: none;
   stroke: var(--n10-mesh-color);
-  stroke-width: 4.5;
+  stroke-width: 3;
   stroke-linecap: round;
   stroke-dasharray: 4 21;
   animation: n10-mesh-flow var(--n10-mesh-seconds) linear infinite;
@@ -497,7 +497,6 @@
 }
 
 .n10-mesh-packet--back {
-  stroke-width: 3;
   stroke-dasharray: 1.5 23.5;
   stroke-dashoffset: 12;
   animation-name: n10-mesh-flow-back;
