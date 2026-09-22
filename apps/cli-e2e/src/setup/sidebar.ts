@@ -171,6 +171,59 @@ export function sidebarWalkBound(rowCount: number): number {
 }
 
 /**
+ * Is the selection sitting on the first row the sidebar renders?
+ *
+ * The first `.term-row` carrying any item icon is the top of the list
+ * once the scroll window has been pulled all the way up, so the top is
+ * reached exactly when that row is also a selected row.
+ */
+async function selectionAtTop(page: Page): Promise<boolean> {
+  const first = page
+    .locator('.term-row', { hasText: new RegExp(`[${ANY}]`) })
+    .first();
+  if ((await first.count()) === 0) return false;
+  const text = (await first.textContent()) ?? '';
+  return new RegExp(`[${SELECTED}]`).test(text);
+}
+
+/**
+ * Pull the selection back to the first row before walking down.
+ *
+ * The selection does not stay where the app started it. It begins at
+ * index 0, but `reconcileSelection` (SidebarContext.tsx) ADOPTS the row
+ * the cursor resolved onto as the new anchor key, and from then on the
+ * cursor follows that row rather than the index. The review list is
+ * served cache-first and refreshed in the background
+ * (`pull-request-cache.ts`), so the refresh can insert rows ABOVE the
+ * adopted row and carry the cursor down with them. A target that sat
+ * above the cursor is then unreachable: the walk travels one way and
+ * the selection clamps.
+ *
+ * Settling the list first does not help — it stops the list moving, but
+ * it cannot rewind a cursor that already drifted past the target.
+ *
+ * This is not "press N times and hope". Pressing up more times than
+ * there are rows saturates a clamp at a known boundary, so the
+ * postcondition is "the first row is selected" for ANY overshoot. The
+ * loop checks that postcondition before each press and stops the moment
+ * it holds, so an already-top selection costs one DOM read and no
+ * presses. Returns whether the top was actually reached, so a later
+ * failure can say the rewind fell short rather than blaming the target.
+ */
+async function rewindToTop(
+  term: N10Term,
+  rewindKey: string,
+  bound: number
+): Promise<boolean> {
+  const { page } = term;
+  for (let i = 0; i < bound; i++) {
+    if (await selectionAtTop(page)) return true;
+    await term.press(rewindKey);
+  }
+  return selectionAtTop(page);
+}
+
+/**
  * Move the sidebar selection onto the row matching `title`.
  *
  * The walk is bounded by `sidebarWalkBound` of the settled row count
@@ -187,24 +240,42 @@ export function sidebarWalkBound(rowCount: number): number {
  * readout, the one-way-walk hint) is `pressUntilSelected` in
  * `selection.ts` — see that function for why it must not be replaced
  * by a fixed number of presses.
+ *
+ * `rewindToTop` runs first so the walk starts from the top of the list
+ * rather than wherever the cursor drifted to while the list loaded —
+ * see that function for the drift. `key` and `rewindKey` are a pair: a
+ * caller that walks with something other than 'j' must give the
+ * matching opposite direction.
  */
 export async function selectSidebarRow(
   term: N10Term,
   title: string,
   opts: {
     key?: string;
+    rewindKey?: string;
     settleTimeout?: number;
     stepTimeout?: number;
     overallTimeout?: number;
   } = {}
 ): Promise<void> {
-  const { key, stepTimeout, settleTimeout, overallTimeout } = opts;
+  const {
+    key,
+    rewindKey = 'k',
+    stepTimeout,
+    settleTimeout,
+    overallTimeout,
+  } = opts;
   const { page } = term;
   const rowCount = await waitForSidebarSettled(page, {
     timeout: settleTimeout,
   });
   const bound = sidebarWalkBound(rowCount);
   const row = sidebarLocator(page, title);
+  const rewound = await rewindToTop(term, rewindKey, bound);
+  const scope = rewound
+    ? ` across ${rowCount} settled sidebar rows`
+    : ` across ${rowCount} settled sidebar rows, having failed to rewind` +
+      ` the selection to the first row first`;
 
   await pressUntilSelected(term, row.selected(), bound, {
     what: title,
@@ -212,6 +283,6 @@ export async function selectSidebarRow(
     key,
     stepTimeout,
     overallTimeout,
-    scope: ` across ${rowCount} settled sidebar rows`,
+    scope,
   });
 }

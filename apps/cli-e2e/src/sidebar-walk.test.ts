@@ -24,7 +24,9 @@ function errorMessage(caught: unknown): string {
 }
 
 test.describe('Sidebar bounded walk', () => {
-  test('walks the selection onto a named row', async ({ n10 }) => {
+  test('reaches a row above the starting selection, then one below', async ({
+    n10,
+  }) => {
     await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(n10.term.getByText('(no sessions)')).toBeVisible();
 
@@ -32,22 +34,22 @@ test.describe('Sidebar bounded walk', () => {
     await createSession(n10.term, 'walk-b');
     await createSession(n10.term, 'walk-c');
 
-    // Creation leaves the newest session selected, and 'walk-c' sorts
-    // last, so the selection starts at the bottom of the list. The walk
-    // travels one way and `moveSelection` clamps at both ends, so
-    // reaching 'walk-a' means walking UP. Doing it with an explicit key
-    // both proves the walk moves the selection rather than trivially
-    // finding an already-selected row, and covers the `key` option.
-    await selectSidebarRow(n10.term, 'walk-a', { key: 'k' });
+    // Creation leaves the newest session selected and 'walk-c' sorts
+    // last, so the cursor starts at the BOTTOM of the list — the same
+    // shape as a cursor that drifted downward while the review list
+    // loaded. Walking DOWN to 'walk-a' from there is impossible without
+    // the rewind, and this exact case did fail that way before
+    // `rewindToTop` existed: "exhausted its bound of 14 presses across
+    // 4 settled sidebar rows. Selected instead: walk-c". This is the
+    // regression test for that drift — do not "fix" it by walking up.
+    await selectSidebarRow(n10.term, 'walk-a');
 
     await expect(
       sidebarLocator(n10.term.page, 'walk-a').selected().first()
     ).toBeVisible();
 
-    // Now back down with the default 'j', so the default direction is
-    // covered end-to-end too. `waitForSidebarSettled` returning at all
-    // here is the other half of the check: an offline list never grows,
-    // so it must settle rather than poll until its deadline.
+    // Then back down to the last row, so the downward walk is doing
+    // real work rather than the rewind alone landing on row one.
     await selectSidebarRow(n10.term, 'walk-c');
 
     await expect(
