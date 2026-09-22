@@ -36,10 +36,20 @@ export interface RemoteOpsDeps {
   peers: PeerTable;
   connections: ConnectionRegistry;
   registry: StreamRegistry;
+  /** Overridable so a test can count dials and control when they
+   *  resolve; production always uses `@n10/beam`'s own `dial`. */
+  dial?: typeof beamDial;
 }
+
+/** How long a connection about to be reused for a reconnect has to
+ *  answer a ping. A round trip over a working link is milliseconds; this
+ *  only has to be short enough that verifying costs less than the
+ *  reconnect attempt it protects. */
+const VERIFY_TIMEOUT_MS = 2_000;
 
 export class RemoteOps {
   private readonly ptyStreams = new Map<string, BeamStream>();
+  private readonly dialing = new Map<string, Promise<PeerConnection>>();
   private readonly streamListeners = new Set<(event: StreamEvent) => void>();
   private nextStreamId = 1;
 
@@ -47,15 +57,53 @@ export class RemoteOps {
 
   /** Reuses a live connection when one is open; otherwise dials the
    *  peer's first known endpoint. Every remote-machine op goes through
-   *  this, never assuming a connection is already there. */
-  private async connectionFor(peerId: string): Promise<PeerConnection> {
+   *  this, never assuming a connection is already there.
+   *
+   *  `reconnect` says the caller has just watched a stream on this
+   *  connection die, which is the one case where "there is a connection"
+   *  is not good enough: a machine that vanished rather than closing
+   *  leaves a socket that stays ESTABLISHED, and reusing it spends every
+   *  retry — and the manual Reconnect after them — on a transport that
+   *  can never answer. So it is asked, and replaced when it does not
+   *  answer. Terminated, not closed: there is nobody there to finish a
+   *  close handshake. A connection that *does* answer is kept, because it
+   *  is shared with every other pane and with the mailbox on that
+   *  machine, and a pty stream can end for reasons of its own. */
+  async connectionFor(
+    peerId: string,
+    options?: { reconnect?: boolean }
+  ): Promise<PeerConnection> {
     const existing = this.deps.connections.get(peerId);
-    if (existing) return existing;
+    if (existing && !options?.reconnect) return existing;
+    if (existing) {
+      if (await existing.checkAlive(VERIFY_TIMEOUT_MS)) return existing;
+      existing.terminate('no answer before a reconnect');
+    }
+    return this.dialOnce(peerId);
+  }
+
+  /** One dial per peer at a time. Without this, a drop sets several
+   *  callers dialing at once — the ~1s session poller, the backend's
+   *  reconnect timer, and a mail flush that wants the peer back — and
+   *  `ConnectionRegistry.add` closes the loser of every race, so a
+   *  healthy machine can burn a backend's whole attempt budget on
+   *  connections that worked. Everyone waiting shares the winner. */
+  private dialOnce(peerId: string): Promise<PeerConnection> {
+    const inFlight = this.dialing.get(peerId);
+    if (inFlight) return inFlight;
+    const tracked = this.dialFresh(peerId).finally(() => {
+      if (this.dialing.get(peerId) === tracked) this.dialing.delete(peerId);
+    });
+    this.dialing.set(peerId, tracked);
+    return tracked;
+  }
+
+  private async dialFresh(peerId: string): Promise<PeerConnection> {
     const record = this.deps.peers.list().find((p) => p.peerId === peerId);
     const endpoint = record?.endpoints[0];
     if (!record || !endpoint)
       throw new Error(`no endpoint to dial for machine ${peerId}`);
-    await beamDial(endpoint, peerId, {
+    await (this.deps.dial ?? beamDial)(endpoint, peerId, {
       identity: this.deps.getIdentity(),
       peers: this.deps.peers,
       registry: this.deps.registry,
@@ -125,9 +173,16 @@ export class RemoteOps {
       env?: Record<string, string>;
       cols?: number;
       rows?: number;
+      /** This attach is replacing a stream that just died
+       *  (`RemotePtyOpenParams.reconnect` in `@n10/terminal-tmux`).
+       *  Consumed here, never put on the wire: it is about which
+       *  transport carries the open, not about the pty. */
+      reconnect?: boolean;
     }
   ): Promise<{ streamId: string }> {
-    const connection = await this.connectionFor(peerId);
+    const connection = await this.connectionFor(peerId, {
+      reconnect: params.reconnect,
+    });
     const stream = await connection.openStream('pty', params);
     const streamId = `pty-${this.nextStreamId++}`;
     this.ptyStreams.set(streamId, stream);
@@ -178,5 +233,6 @@ export class RemoteOps {
     for (const stream of this.ptyStreams.values()) stream.close();
     this.ptyStreams.clear();
     this.streamListeners.clear();
+    this.dialing.clear();
   }
 }

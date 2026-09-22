@@ -35,6 +35,9 @@ export interface RemoteMachinePort {
       env?: Record<string, string>;
       cols?: number;
       rows?: number;
+      /** This attach replaces a stream that just died, so the pooled
+       *  connection to that machine is suspect (`RemotePtyOpenParams`). */
+      reconnect?: boolean;
     }
   ): Promise<{ streamId: string }>;
   ptyWrite(streamId: string, data: string): void;

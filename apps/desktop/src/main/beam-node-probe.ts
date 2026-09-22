@@ -26,6 +26,19 @@ export interface ReachabilityProberOptions {
   timeoutMs: number;
   /** Called after a probe changes what a peer's state would be. */
   onChange: () => void;
+  /**
+   * Called for every peer a probe just found reachable — including one
+   * that was already reachable at the last tick, because a caller that
+   * acts on this (dialing a peer with mail waiting) may have failed to
+   * and needs the next chance, and a peer that got connected is not a
+   * probe target any more anyway.
+   *
+   * Reachability is the only moment the desktop learns anything about a
+   * peer it is not connected to: nothing here ever dials, so without
+   * this a node with queued mail and a peer showing "Reachable" waits
+   * for a connection nobody is going to make.
+   */
+  onReachable?: (peerId: string) => void;
 }
 
 export class ReachabilityProber {
@@ -91,14 +104,17 @@ export class ReachabilityProber {
 
   private async probe(peers: readonly PeerRecord[]): Promise<void> {
     let changed = false;
+    const reachable: string[] = [];
     await Promise.all(
       peers.map(async (peer) => {
         const result = await this.probeOne(peer);
         if (this.results.get(peer.peerId) !== result) changed = true;
         this.results.set(peer.peerId, result);
+        if (result === 'reachable') reachable.push(peer.peerId);
       })
     );
     if (changed) this.options.onChange();
+    for (const peerId of reachable) this.options.onReachable?.(peerId);
   }
 
   private async probeOne(

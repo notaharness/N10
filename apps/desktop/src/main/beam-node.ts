@@ -33,7 +33,6 @@ import {
   StreamRegistry,
   type Identity,
   type NodeEnvContext,
-  type PeerRecord,
 } from '@n10/beam';
 import type {
   AcceptingStatus,
@@ -42,8 +41,9 @@ import type {
   PairPreviewResult,
 } from '../host/contract-machines.js';
 import { classifyPairError, withTimeout } from './beam-node-errors.js';
+import { dialIfMailIsWaiting } from './beam-node-mail-dial.js';
 import { ReachabilityProber } from './beam-node-probe.js';
-import { localMachineView, peerMachineView } from './beam-node-view.js';
+import { machineList } from './beam-node-view.js';
 import { RemoteOps } from './beam-node-remote-ops.js';
 import { InboundMailSubscriber } from './beam-node-mail.js';
 export type { StreamEvent } from './beam-node-remote-ops.js';
@@ -125,17 +125,32 @@ export class BeamNode {
       intervalMs: options.probeIntervalMs ?? DEFAULT_PROBE_INTERVAL_MS,
       timeoutMs: options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
       onChange: () => this.notify(),
+      onReachable: (peerId) => this.onPeerReachable(peerId),
     });
     this.connections.onConnect(() => this.notify());
     this.connections.onDisconnect(() => this.notify());
-    this.prober.sync();
+    // Before the first `sync()`: its probes can call back into
+    // `dialForQueuedMail`, which dials through `remote`.
     this.remote = new RemoteOps({
       getIdentity: () => this.identity,
       peers: this.peers,
       connections: this.connections,
       registry: this.registry,
     });
+    this.prober.sync();
     this.mail = new InboundMailSubscriber(this.mailbox, this.peers);
+  }
+
+  /** A peer just answered a probe: send it whatever has been waiting
+   *  for it (`beam-node-mail-dial.ts`). */
+  private onPeerReachable(peerId: string): void {
+    if (this.disposed) return;
+    dialIfMailIsWaiting(peerId, {
+      connections: this.connections,
+      status: () => this.mailbox.status(),
+      connect: (id) => this.remote.connectionFor(id),
+      log: this.log,
+    });
   }
 
   private envContext(): NodeEnvContext {
@@ -165,30 +180,15 @@ export class BeamNode {
   }
 
   listMachines(): MachineView[] {
-    const local = localMachineView(
-      this.identity.peerId,
-      this.identity.label,
-      this.advertisedEndpoints()
-    );
-    const records = new Map<string, PeerRecord>(
-      this.peers.list().map((p) => [p.peerId, p])
-    );
-    const peers = this.mailbox
-      .status()
-      .map((status): MachineView | null => {
-        const record = records.get(status.peerId);
-        if (!record) return null;
-        const connection = this.connections.get(status.peerId);
-        return peerMachineView(
-          status,
-          record,
-          connection !== undefined,
-          this.prober.get(status.peerId)
-        );
-      })
-      .filter((m): m is MachineView => m !== null)
-      .sort((a, b) => a.label.localeCompare(b.label));
-    return [local, ...peers];
+    return machineList({
+      localPeerId: this.identity.peerId,
+      localLabel: this.identity.label,
+      localEndpoints: this.advertisedEndpoints(),
+      statuses: this.mailbox.status(),
+      records: this.peers.list(),
+      isConnected: (peerId) => this.connections.get(peerId) !== undefined,
+      probeResult: (peerId) => this.prober.get(peerId),
+    });
   }
 
   getAcceptingStatus(): AcceptingStatus {
@@ -320,16 +320,26 @@ export class BeamNode {
     return this.requireMachine(peerId);
   }
 
+  /** Revocation terminates the live connection rather than closing it
+   *  politely — the rule docs/beam.md states for every revocation path,
+   *  and the same one `Host.revoke` follows over the peer table and
+   *  connection registry this node shares with it. A graceful close is a
+   *  request, and the peer that has just lost access is the one with a
+   *  reason to decline it: `ws` would then hold the socket open for its
+   *  30s close timeout, still delivering that peer's frames and still
+   *  letting it open shells. */
   revokeMachine(peerId: string): MachineView {
     this.peers.revoke(peerId);
-    this.connections.get(peerId)?.close();
+    this.connections.get(peerId)?.terminate('peer revoked');
     this.prober.sync();
     this.notify();
     return this.requireMachine(peerId);
   }
 
+  /** Forgetting is revocation plus amnesia — the peer loses access at
+   *  the same instant, for the same reason. */
   forgetMachine(peerId: string): void {
-    this.connections.get(peerId)?.close();
+    this.connections.get(peerId)?.terminate('peer forgotten');
     this.peers.remove(peerId);
     this.prober.forget(peerId);
     this.prober.sync();

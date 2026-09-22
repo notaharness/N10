@@ -120,6 +120,7 @@ function buildOps(
         env?: Record<string, string>;
         cols?: number;
         rows?: number;
+        reconnect?: boolean;
       };
       return node.remote.ptyOpen(p.peerId, {
         argv: p.argv,
@@ -127,6 +128,7 @@ function buildOps(
         env: p.env,
         cols: p.cols,
         rows: p.rows,
+        reconnect: p.reconnect,
       });
     },
     ptyWrite: (payload) => {

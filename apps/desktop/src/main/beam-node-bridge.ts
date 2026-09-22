@@ -331,6 +331,7 @@ export class BeamNodeBridge
       env?: Record<string, string>;
       cols?: number;
       rows?: number;
+      reconnect?: boolean;
     }
   ): Promise<{ streamId: string }> {
     const { streamId } = await this.request<{ streamId: string }>('ptyOpen', {

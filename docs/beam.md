@@ -381,6 +381,14 @@ transport destroyed within the ping timeout, the drain loop then finds no connec
 stops, and the envelope stays queued for the next one. No timers are needed for offline
 peers — there is nothing to try.
 
+Nothing in the library dials on its own: a trigger needs a connection, and a connection needs
+something to open one. The desktop is what closes that loop for a peer it can reach —
+when its reachability prober finds a peer reachable and that peer's outbound queue is not
+empty, it dials (`apps/desktop/src/main/beam-node-mail-dial.ts`), which fires the connect
+trigger and drains the queue. That is what makes `send()`'s "the next time it comes online"
+true rather than a hope. A reachable peer with nothing queued is left alone, so the common
+case costs no connection.
+
 **A lost counter with an empty backlog is the one hole left.** `SeqCounter` reconciles every
 `next()` against the highest seq already on that peer's own disk, so a counter file that is
 lost while messages are still queued cannot reissue a number this node already wrote down.
@@ -485,7 +493,10 @@ to refuse: `ws` would then hold the socket open for its 30s close timeout, deliv
 peer's frames the whole time. Terminating destroys the transport on the spot. An ordinary
 shutdown — `Host.close()`, or a peer's new connection superseding its old one — still closes
 politely. A CLI command prefers
-this socket and falls back to writing `peers.json` directly only when no node answers.
+this socket and falls back to writing `peers.json` directly only when no node answers. The
+desktop's own `revokeMachine` and `forgetMachine` (`apps/desktop/src/main/beam-node.ts`)
+terminate as well, over the peer table and connection registry they share with that node's
+`Host` — the rule is about every path a user can revoke through, not only the library's own.
 
 #### Acknowledging a subscription
 

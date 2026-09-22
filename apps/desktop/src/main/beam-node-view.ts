@@ -4,7 +4,7 @@
  * five states plus `revoked`) is independently testable without a real
  * node, connection or timer.
  */
-import { derivePeerState, type PeerRecord } from '@n10/beam';
+import { derivePeerState, type PeerRecord, type PeerStatus } from '@n10/beam';
 import type { MachineState, MachineView } from '../host/contract-machines.js';
 
 export function localMachineView(
@@ -62,4 +62,40 @@ export function peerMachineView(
     inboundWaiting: [],
     inboundRefused: [],
   };
+}
+
+export interface MachineListInput {
+  localPeerId: string;
+  localLabel: string;
+  localEndpoints: string[];
+  /** One entry per known peer, including its outbound queue depth. */
+  statuses: PeerStatus[];
+  records: PeerRecord[];
+  isConnected: (peerId: string) => boolean;
+  probeResult: (peerId: string) => 'reachable' | 'unreachable' | undefined;
+}
+
+/** This machine first, then its peers by label. A status with no peer
+ *  record behind it is dropped rather than rendered half-known: the
+ *  record is where a row's endpoints, pairing time and revocation
+ *  stamp come from. */
+export function machineList(input: MachineListInput): MachineView[] {
+  const records = new Map(input.records.map((r) => [r.peerId, r]));
+  const peers = input.statuses
+    .map((status): MachineView | null => {
+      const record = records.get(status.peerId);
+      if (!record) return null;
+      return peerMachineView(
+        status,
+        record,
+        input.isConnected(status.peerId),
+        input.probeResult(status.peerId)
+      );
+    })
+    .filter((view): view is MachineView => view !== null)
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return [
+    localMachineView(input.localPeerId, input.localLabel, input.localEndpoints),
+    ...peers,
+  ];
 }

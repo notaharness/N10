@@ -23,6 +23,19 @@ Every rule below has its reasoning in `docs/decisions.md`.
   exists here. Only a successful delivery acks; a refusal or a target with
   no live connection leaves the envelope unacked and durable
   (`docs/beam.md`, `libs/core/AGENTS.md`'s relay-targeting rule).
+- The beam node is the only thing here that can make a connection happen, so
+  it owns the two decisions the library cannot: a peer a probe finds
+  reachable with mail queued for it is dialed (`main/beam-node-mail-dial.ts`
+  — otherwise `send()`'s "delivered the next time it comes online" never
+  comes true), and revoking or forgetting a machine terminates its live
+  connection rather than closing it politely, the rule `docs/beam.md` states
+  for every revocation path. An op that is replacing a stream that just died
+  passes `reconnect`, and `RemoteOps.connectionFor` then pings the pooled
+  connection and replaces it only if it does not answer — a pty stream can
+  end for its own reasons, and that connection is shared with every other
+  pane on the machine and with the mailbox. One dial per peer is in flight at
+  a time; without that the session poller, the reconnect timer and a mail
+  flush race, and `ConnectionRegistry.add` closes the loser.
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo
