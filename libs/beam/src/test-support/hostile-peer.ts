@@ -26,6 +26,9 @@
  * nothing: the bug is that a real half-open socket looks identical to a
  * healthy one, and a fake is only ever as silent as its author remembered
  * to make it.
+ *
+ * A third failure — a peer that is healthy while the *link* is not — is
+ * neither of these, and lives in `slow-link.ts`.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -56,8 +59,10 @@ interface PeerOptions {
    * as a frozen machine's while its socket stays open. */
   autoPong: boolean;
   /** Echo application frames back. A peer that accepts data and never
-   * reads it (`false`) is a different failure from one that cannot
-   * answer a ping at all, and the two must not be conflated. */
+   * answers it (`false`) is a different failure from one that cannot
+   * answer a ping at all, and the two must not be conflated. An echo is
+   * an answer in its own right — `liveness.ts` counts any inbound frame
+   * — so only a peer meant to look alive should have one. */
   echo: boolean;
 }
 
@@ -98,9 +103,13 @@ function startPeer(options: PeerOptions): Promise<HostilePeer> {
   });
 }
 
-/** Accepts, echoes what it is sent, and never answers a ping. */
+/** Accepts, reads what it is sent, and answers nothing at all — no pong,
+ * and no frames of its own either. Both halves matter: an inbound frame
+ * counts as evidence of life (`liveness.ts`), so a peer that echoed would
+ * be answering the question by another route, and "never answers a ping"
+ * would no longer be what the test was varying. */
 export function startSilentPeer(): Promise<HostilePeer> {
-  return startPeer({ autoPong: false, echo: true });
+  return startPeer({ autoPong: false, echo: false });
 }
 
 /** Accepts, echoes, and answers pings — the control every "it dropped the
