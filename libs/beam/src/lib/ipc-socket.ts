@@ -42,6 +42,15 @@ interface Subscriber {
    * skips a non-matching envelope for the next subscriber instead of
    * blocking on it). Absent means "any sender". */
   from?: string[];
+  /** This subscriber's own cursor: the one envelope it has been handed and
+   * not yet acked. One slot per subscriber, never one for the node —
+   * sequential delivery is a promise to each consumer about its own
+   * stream, not a global lock. A single shared slot let one connected
+   * subscriber that simply never acks hold up delivery to every other
+   * subscriber, including ones filtered to a topic it does not even
+   * receive. Its disconnect was handled; its silence was not, and silence
+   * is what a wedged consumer looks like. */
+  inFlight: PendingEnvelope | null;
 }
 
 /** One envelope still waiting on a subscriber ack, paired with the
@@ -118,8 +127,6 @@ export class IpcSocket {
    * first. An envelope leaves this list only once acked — a subscriber
    * that disconnects mid-message puts it straight back. */
   private readonly pending: PendingEnvelope[] = [];
-  private current: { pending: PendingEnvelope; subscriber: Subscriber } | null =
-    null;
   private unsubscribeMailbox: (() => void) | null = null;
 
   constructor(options: IpcSocketOptions) {
@@ -211,14 +218,14 @@ export class IpcSocket {
 
   private handleSocketClosed(socket: Socket): void {
     const index = this.subscribers.findIndex((s) => s.socket === socket);
-    if (index >= 0) this.subscribers.splice(index, 1);
-    if (this.current?.subscriber.socket === socket) {
-      // The consumer dropped mid-message: it stays unacknowledged and goes
-      // back to the front of the line for whoever subscribes next.
-      this.pending.unshift(this.current.pending);
-      this.current = null;
-      this.pump();
-    }
+    if (index < 0) return;
+    const [gone] = this.subscribers.splice(index, 1);
+    if (!gone?.inFlight) return;
+    // The consumer dropped mid-message: it stays unacknowledged and goes
+    // back to the front of the line for whoever subscribes next.
+    this.pending.unshift(gone.inFlight);
+    gone.inFlight = null;
+    this.pump();
   }
 
   /** Op name → handler, looked up rather than switched on — a dispatch
@@ -316,15 +323,20 @@ export class IpcSocket {
     const topic =
       typeof record['topic'] === 'string' ? record['topic'] : undefined;
     const from = isStringArray(record['from']) ? record['from'] : undefined;
-    this.subscribers.push({ socket, topic, from });
+    this.subscribers.push({ socket, topic, from, inFlight: null });
     this.pump();
   }
 
   private handleAck(socket: Socket, record: Record<string, unknown>): void {
-    if (!this.current || this.current.subscriber.socket !== socket) return;
-    if (record['id'] !== this.current.pending.envelope.id) return;
-    this.current.pending.acknowledge();
-    this.current = null;
+    const subscriber = this.subscribers.find((s) => s.socket === socket);
+    const inFlight = subscriber?.inFlight;
+    if (!subscriber || !inFlight) return;
+    // Its own cursor, so an ack can only ever settle the envelope this
+    // subscriber was actually handed — a stale or invented id is ignored
+    // rather than crediting somebody else's message.
+    if (record['id'] !== inFlight.envelope.id) return;
+    inFlight.acknowledge();
+    subscriber.inFlight = null;
     this.pump();
   }
 
@@ -336,27 +348,30 @@ export class IpcSocket {
     return true;
   }
 
-  /** Hand the oldest pending envelope a matching subscriber can take to
-   * that subscriber, one at a time — the next one waits for this one's ack
-   * (or its consumer's disconnect) before anything else moves. An envelope
-   * no subscriber currently wants (wrong topic, or a `from` filter that
-   * excludes its sender) is simply skipped, left for whichever subscriber
-   * does want it — it never blocks the ones that do. */
+  /** Give every idle subscriber the oldest pending envelope it will take.
+   *
+   * Sequential per subscriber, concurrent across them: a subscriber holds
+   * one envelope until it acks it or its consumer disconnects, and that
+   * holds up nothing but its own stream. A subscriber that stays connected
+   * and never acks is the ordinary shape of a wedged consumer, and it must
+   * not be able to stop the rest of the node's mail — least of all mail on
+   * topics it does not even subscribe to.
+   *
+   * An envelope no *idle* subscriber wants stays in `pending`, in order,
+   * for whichever subscriber does want it — skipped, never acked and
+   * discarded, and never blocking the ones behind it. */
   private pump(): void {
-    if (this.current) return;
-    const index = this.pending.findIndex(({ envelope }) =>
-      this.subscribers.some((s) => this.subscriberWants(s, envelope))
-    );
-    if (index < 0) return;
-    const pendingEnvelope = this.pending[index];
-    const subscriber = this.subscribers.find(
-      (s) =>
-        pendingEnvelope && this.subscriberWants(s, pendingEnvelope.envelope)
-    );
-    if (!pendingEnvelope || !subscriber) return;
-    this.pending.splice(index, 1);
-    this.current = { pending: pendingEnvelope, subscriber };
-    writeLine(subscriber.socket, pendingEnvelope.envelope);
+    for (const subscriber of this.subscribers) {
+      if (subscriber.inFlight) continue;
+      const index = this.pending.findIndex(({ envelope }) =>
+        this.subscriberWants(subscriber, envelope)
+      );
+      if (index < 0) continue;
+      const [taken] = this.pending.splice(index, 1);
+      if (!taken) continue;
+      subscriber.inFlight = taken;
+      writeLine(subscriber.socket, taken.envelope);
+    }
   }
 }
 

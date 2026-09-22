@@ -455,9 +455,10 @@ escaping is not size-preserving — a control character is one byte of utf8 and 
 (`\u0001`). Both caps are therefore checked, the payload's and the serialized envelope's
 against `MAX_PAYLOAD`, and on both sides: `send()` refuses an envelope that would not encode
 rather than queuing one the flusher could never drain, and a receiver refuses one over the
-cap rather than storing past it. An envelope already on disk that cannot be encoded is
-quarantined like any other message that can never be sent, so it does not sit at the head of
-the queue blocking everything behind it.
+cap rather than storing past it. An envelope already on disk that can never be sent —
+because it cannot be encoded here, or because the receiver refuses it over the cap every
+time it is offered — is quarantined, so it does not sit at the head of the queue blocking
+everything behind it (see "Send outcomes").
 
 **One queue per peer, not per role.** Each node keeps `mailbox/out/<peerId>/`, one file per
 undelivered message, written to a temp file and then linked into place — an exclusive create,
@@ -550,6 +551,21 @@ come yet or, worse, send it again:
 queued for workbox — that machine is not connected right now. beam will deliver this
 message the next time it comes online. Do not send it again.
 ```
+
+**A refusal the receiver will repeat forever is a lost message, and is quarantined like any
+other.** A refusing ack carries a `reason`, and the sender reads it for one thing only:
+whether sending this envelope again could ever get a different answer. `payload over the
+cap` never can — the bytes are fixed and the cap is in the protocol — so that envelope is
+quarantined, exactly as a queue file that cannot be read or an envelope that cannot be
+encoded already is: logged, handed to `onQuarantine`, and left discoverable through
+`Mailbox.quarantined()` across a restart. It is not left at the head of the queue, because
+the flusher always takes the head and `send()` has already reported it `queued` — one such
+envelope would otherwise stall every later message to that peer for as long as it sat there.
+`inbound queue is full` and `seen state unreadable` do clear, on their own or with an
+operator's help, so those keep their place and are retried. An ack timeout, and any reason
+this version does not recognise, is treated as transient: retrying something permanent costs
+a connection, while quarantining something transient destroys a message the caller was told
+was durable.
 
 `rejected` must name which cause applied. `queue-full` means this peer's queue is at its
 depth or byte bound; like `storage-failure`, nothing was stored and the caller may retry.
@@ -726,9 +742,20 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
 ## Decisions
 
 Comments throughout `libs/beam` cite decisions by number (`D1`, `D5`, …). This is the
-register they point at. The numbers are beam-specific, which is why they live here and not in
-`docs/decisions.md`. Each entry states the decision and the reason it was made that way; the
-sections above are where the mechanics live.
+register they point at. Each entry states the decision and the reason it was made that way;
+the sections above are where the mechanics live.
+
+**There is a second register, and the numbers overlap.** Wiring beam into n10 — remote tmux,
+the desktop's node, which machine surfaces render — has its own D-series in the same numeric
+range, and it lives in `docs/decisions.md` under "Numbered decisions". The same number means
+different things in the two: this register's `D3` is the `'error'`-listener and upgrade-handler
+rule, while the other's is "one session poller per machine"; this register's `D4` is an
+unprobed peer reporting `unknown`, the other's is connection state and process state coming
+from different sources. So **write the register into every new citation** — `beam.md D5`,
+`decisions.md D5` — rather than a bare `D5`. Existing bare citations resolve by where they
+sit: inside `libs/beam` they are this register's, and any citation that names `decisions.md`
+belongs to the other one, wherever it sits. `D8`, `D10`, `D13` and `D14` are the other
+register's and have no entry here.
 
 | #   | Decision                                                                                                                                                                                                                                                  | Why                                                                                                                                                                                                                                                                                                                                          |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -743,12 +770,17 @@ sections above are where the mechanics live.
 | D15 | A receiving node writes an envelope to `mailbox/in/<peerId>/` before acking it on the wire, and unlinks it only once a subscriber acks.                                                                                                                   | Without the inbound store, `delivered` would mean only that some process had the message in memory: killing the receiver would lose it, and a resend would be refused as a duplicate because `seen/` had already advanced.                                                                                                                   |
 | D16 | A peer's scopes ride on the pairing token rather than on the pair request, and storing them can only ever narrow what the record already holds.                                                                                                           | The machine minting the token is the one deciding what the joiner may do to it, and a joiner that could name its own grant has no grant at all. Narrowing-only closes the mirror hole: a public key is not a secret and `replace` is the caller's flag, so a captured pairing URL would otherwise re-widen a peer that had been held down.   |
 
-Two cited numbers have no recoverable rationale and are deliberately left unstated rather
-than guessed at: **D7**, cited once in `mailbox/mailbox.ts` as "decisions.md D7/D9" with no
-accompanying reasoning, and **D14**, cited once in this document's desktop-subscriber
-paragraph for "resolves a target against local state". D1 is also cited in the mailbox for
-two further rules — the receiver's lack of a contiguity requirement, and quarantine being
-loud rather than silent — both stated in full under "Durable mailbox" above.
+One cited number has no recoverable rationale and is deliberately left unstated rather than
+guessed at: **D7**, cited in `mailbox/mailbox.ts` alongside D9 and in `apps/beam`'s `peers`
+command, with no accompanying reasoning in either place. **D12** is not cited anywhere and
+has no entry. D1 is also cited in the mailbox for two further rules — the receiver's lack of
+a contiguity requirement, and quarantine being loud rather than silent — both stated in full
+under "Durable mailbox" above.
+
+`D8`, `D10`, `D13` and `D14` are cited in `apps/desktop` (and `D13` in `apps/beam`'s `msg
+listen`); every one of them belongs to the machine-integration register in
+`docs/decisions.md`, not here. This document's desktop-subscriber paragraph above cites D14
+in that sense.
 
 ## Deliberately out of scope, doors left open
 

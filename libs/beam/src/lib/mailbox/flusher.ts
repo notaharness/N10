@@ -8,12 +8,22 @@
 import type { ConnectionRegistry } from '../connection-registry.js';
 import type { PeerConnection } from '../connection.js';
 import type { BeamStream } from '../stream.js';
+import { isPermanentRefusal } from './ack-reasons.js';
 import type { Envelope } from './envelope.js';
 import type { OutboundQueue, QueuedEnvelope } from './outbound-queue.js';
 
+/** What came back for one envelope: the peer's ack, or a synthesised
+ * refusal with no reason when the ack timer expired first. `reason` is only
+ * ever read through `isPermanentRefusal` — the flusher never branches on
+ * the text itself. */
+interface Ack {
+  accepted: boolean;
+  reason?: string;
+}
+
 interface MsgStreamState {
   stream: BeamStream;
-  pending: Map<string, (accepted: boolean) => void>;
+  pending: Map<string, (ack: Ack) => void>;
 }
 
 export interface FlusherOptions {
@@ -144,9 +154,9 @@ export class Flusher {
     state: MsgStreamState,
     next: QueuedEnvelope
   ): Promise<boolean> {
-    let accepted: boolean;
+    let ack: Ack;
     try {
-      accepted = await this.sendOne(state, next.envelope);
+      ack = await this.sendOne(state, next.envelope);
     } catch (error) {
       // The envelope cannot be put on the wire at all — an oversized
       // serialization, most likely. `drain` always takes the head of the
@@ -154,21 +164,51 @@ export class Flusher {
       // and re-throw out of every kick. Quarantine is what this queue
       // already does with a message it can never send: loud, durable, and
       // out of the way. See docs/beam.md on quarantine never being silent.
-      const reason = `cannot be sent: ${(error as Error).message}`;
-      this.log(`msg to ${peerId} ${reason}; quarantining it`);
-      this.queue.quarantineFile(peerId, next.fileName, reason);
-      // Reported as no progress on purpose. Quarantine is best-effort — if
-      // the rename aside fails, this envelope is still the head of the
-      // queue next time round, and claiming progress would spin the drain
-      // loop on it with nothing between the turns.
-      return false;
+      return this.giveUpOn(
+        peerId,
+        next,
+        `cannot be sent: ${(error as Error).message}`
+      );
     }
-    if (accepted) {
+    if (ack.accepted) {
       this.queue.remove(peerId, next.fileName);
       this.onDelivered?.(peerId, next.envelope);
       return true;
     }
-    this.log(`msg to ${peerId} not acked; retrying while connected`);
+    // A refusal the receiver will repeat for every resend — the payload is
+    // over the cap — is the same situation as the local encode failure
+    // above, reached from the other end: this envelope can never be
+    // delivered, and `drain` always takes the head of the queue, so
+    // leaving it there stalls every later message to this peer forever
+    // while `send()` has already reported it `queued`. Same remedy, the
+    // one this queue already has: quarantine it, loudly and durably
+    // (ack-reasons.ts, and docs/beam.md on quarantine never being silent).
+    if (isPermanentRefusal(ack.reason)) {
+      return this.giveUpOn(peerId, next, `refused permanently: ${ack.reason}`);
+    }
+    // Everything else — an ack timeout, a full inbound queue, unreadable
+    // seen state, a reason this version does not know — clears on its own
+    // or with an operator's help, so the envelope keeps its place.
+    const detail = ack.reason ? ` (${ack.reason})` : '';
+    this.log(`msg to ${peerId} not acked${detail}; retrying while connected`);
+    return false;
+  }
+
+  /** Move an undeliverable envelope out of the way. Reported as no
+   * progress on purpose: quarantine is best-effort — if the rename aside
+   * fails, this envelope is still the head of the queue next time round,
+   * and claiming progress would spin the drain loop on it with nothing
+   * between the turns. The loss reaches the caller the way every other
+   * quarantine does — `OutboundQueue.onQuarantine`, which `Mailbox` logs,
+   * forwards, and leaves discoverable through `quarantined()` across a
+   * restart. */
+  private giveUpOn(
+    peerId: string,
+    next: QueuedEnvelope,
+    reason: string
+  ): boolean {
+    this.log(`msg to ${peerId} ${reason}; quarantining it`);
+    this.queue.quarantineFile(peerId, next.fileName, reason);
     return false;
   }
 
@@ -203,27 +243,40 @@ export class Flusher {
     const resolve = state.pending.get(message['id']);
     if (!resolve) return;
     state.pending.delete(message['id']);
-    resolve(message['accepted'] === true);
+    // `reason` is carried through rather than dropped: it is the only
+    // thing that tells a refusal that will clear from one that never
+    // will. Anything that is not a string arrives as absent, which
+    // `isPermanentRefusal` reads as transient.
+    resolve({
+      accepted: message['accepted'] === true,
+      reason:
+        typeof message['reason'] === 'string' ? message['reason'] : undefined,
+    });
   }
 
   private awaitAck(
     state: MsgStreamState,
     key: string,
     send: () => void
-  ): Promise<boolean> {
+  ): Promise<Ack> {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (accepted: boolean): void => {
+      const finish = (ack: Ack): void => {
         if (settled) return;
         settled = true;
         state.pending.delete(key);
-        resolve(accepted);
+        resolve(ack);
       };
-      const timer = setTimeout(() => finish(false), this.ackTimeoutMs);
+      // No reason on a timeout: silence says nothing about whether a
+      // resend would fare differently, so it is transient by default.
+      const timer = setTimeout(
+        () => finish({ accepted: false }),
+        this.ackTimeoutMs
+      );
       timer.unref?.();
-      state.pending.set(key, (accepted) => {
+      state.pending.set(key, (ack) => {
         clearTimeout(timer);
-        finish(accepted);
+        finish(ack);
       });
       try {
         send();
@@ -239,7 +292,7 @@ export class Flusher {
     });
   }
 
-  private sendOne(state: MsgStreamState, envelope: Envelope): Promise<boolean> {
+  private sendOne(state: MsgStreamState, envelope: Envelope): Promise<Ack> {
     return this.awaitAck(state, envelope.id, () =>
       state.stream.write(new TextEncoder().encode(JSON.stringify(envelope)))
     );

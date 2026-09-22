@@ -7,9 +7,11 @@ and the durable mailbox. See `docs/beam.md` at the repository root for the
 full contract — that document, not this file, is authoritative on wire
 format and behavior.
 
-No n10, git, tmux or Orchestra imports (lint-enforced by the workspace's
-project boundaries): this library knows nothing about worktrees, agents,
-report kinds or `@orchestra-*` tags. `apps/beam`, `apps/desktop` and the
+No n10, git, tmux or Orchestra imports: this library knows nothing about
+worktrees, agents, report kinds or `@orchestra-*` tags. Lint-enforced —
+`eslint.config.mjs` gives `scope:beam` an empty `onlyDependOnLibsWithTags`,
+so `@nx/enforce-module-boundaries` refuses a dependency on any workspace
+library at all, not merely on the ones that look n10-specific. `apps/beam`, `apps/desktop` and the
 Orchestra plugin's shell scripts are the only intended consumers, all
 through the exported API in `src/index.ts`.
 
@@ -118,8 +120,15 @@ through the exported API in `src/index.ts`.
   holds: the sender drains strictly sequentially over one ordered transport,
   so the receiver cannot observe reordering; contiguity never provided that,
   only detection of a sender-side loss the sender already knows about. A
-  malformed queue file is quarantined (moved to `corrupt/`), not left to
-  block the messages behind it, and quarantine is loud, never silent: it is
+  queue file that can never be delivered is quarantined (moved to
+  `corrupt/`), not left to block the messages behind it: a malformed file, an
+  envelope that will not encode here, and one the receiver refuses
+  _permanently_ all take the same route. `mailbox/ack-reasons.ts` is the one
+  place that says which refusals are permanent — over the cap is, a full
+  inbound queue and unreadable seen state are not, and an unrecognised reason
+  is transient, because retrying something permanent costs a connection while
+  quarantining something transient loses a message a caller was told was
+  durable. Quarantine is loud, never silent: it is
   logged, handed to `onQuarantine`, and stays discoverable afterwards
   through `Mailbox.quarantined()`/`OutboundQueue.quarantined()`, across a
   restart, since the file and its reason stay on disk. `enqueue` never
@@ -139,4 +148,10 @@ through the exported API in `src/index.ts`.
   connection without also revoking it.
 - **Local IPC** (`ipc-socket.ts`): `$BEAM_DIR/run/inbox.sock`, mode `0600`,
   line-delimited JSON. Only remove a stale socket left by a crashed node;
-  check liveness before unlinking one a running node may still own.
+  check liveness before unlinking one a running node may still own. Delivery
+  is sequential _per subscriber_ — each holds one envelope until it acks or
+  its consumer disconnects — and concurrent across them: the in-flight slot
+  belongs to the subscriber, never to the node. A consumer that stays
+  connected and never acks is the ordinary shape of a wedged subscriber, and
+  one slot shared across the node let it stop every other subscriber's mail,
+  including mail on topics it does not even receive.

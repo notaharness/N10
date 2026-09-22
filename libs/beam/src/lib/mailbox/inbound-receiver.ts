@@ -9,6 +9,11 @@
 import { isPeerId, isTopic } from '../identifiers.js';
 import type { BeamStream } from '../stream.js';
 import {
+  ACK_REASON_OVER_CAP,
+  ACK_REASON_QUEUE_FULL,
+  ACK_REASON_SEEN_UNREADABLE,
+} from './ack-reasons.js';
+import {
   envelopeFitsOneFrame,
   isEnvelope,
   MAX_PAYLOAD_BYTES,
@@ -118,11 +123,16 @@ export class InboundReceiver {
       // the 1 MiB frame limit. Refused rather than stored, and said so:
       // an unaccepted envelope stays in the sender's queue, where the
       // sender is the side that can report the loss.
+      //
+      // This is the one *permanent* refusal (ack-reasons.ts). The bytes
+      // cannot shrink and the cap is in the protocol, so the reason has
+      // to be specific enough for the sender to tell it from the two
+      // refusals below, which do clear on their own.
       stream.control({
         kind: 'ack',
         id: parsed.id,
         accepted: false,
-        reason: 'payload over the cap',
+        reason: ACK_REASON_OVER_CAP,
       });
       return;
     }
@@ -135,7 +145,7 @@ export class InboundReceiver {
         kind: 'ack',
         id: parsed.id,
         accepted: false,
-        reason: 'inbound queue is full',
+        reason: ACK_REASON_QUEUE_FULL,
       });
       return;
     }
@@ -179,7 +189,7 @@ export class InboundReceiver {
         kind: 'ack',
         id: envelope.id,
         accepted: false,
-        reason: 'seen state unreadable',
+        reason: ACK_REASON_SEEN_UNREADABLE,
       });
     }
   }
