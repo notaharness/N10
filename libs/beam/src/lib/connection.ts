@@ -42,7 +42,8 @@ export interface PeerConnection {
   /**
    * Ask the transport for a liveness round trip right now, and resolve
    * with whether the peer answered inside `timeoutMs` (default: the
-   * monitor's own pong timeout).
+   * monitor's own pong timeout). A frame arriving from the peer while
+   * the question is outstanding answers it too — see `liveness.ts`.
    *
    * For a caller that is about to *rely* on this connection — a
    * reconnect, a manual retry — and cannot afford the periodic timer's
@@ -113,6 +114,11 @@ export function createConnection(
   }
 
   socket.onData((data) => {
+    // A frame from the peer answers the liveness question as well as a
+    // pong does, and arrives where a pong cannot: behind a backlog. The
+    // monitor is told before the muxer runs, so a handler that throws
+    // cannot cost the connection its evidence of life.
+    monitor?.noteInbound();
     if (!muxer.receive(data)) socket.close();
   });
   socket.onClose(() => {
