@@ -13,9 +13,10 @@ import {
 } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { MutualAuth, verifySignature, WS_PROOF_PREFIX } from './auth.js';
+import { MutualAuth, verifySignature } from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection } from './connection.js';
+import { wsTranscript } from './handshake-transcript.js';
 import { sendJson } from './http-json.js';
 import {
   DESCRIPTOR_PATH,
@@ -87,6 +88,7 @@ export class Host {
       peers: this.peers,
       auth: new MutualAuth({
         peers: this.peers,
+        hostPeerId: this.identity.peerId,
         privateKeyPem: this.identity.privateKeyPem,
         now: options.now,
       }),
@@ -302,7 +304,10 @@ export class Host {
       claimed !== undefined &&
       verifySignature(
         claimed.publicKeyPem,
-        `${WS_PROOF_PREFIX}${ticket}`,
+        wsTranscript(
+          { hostPeerId: this.identity.peerId, clientPeerId: claimed.peerId },
+          ticket
+        ),
         proof
       );
     if (!peerId || !proven) return { refusal: '401 Unauthorized' };

@@ -172,7 +172,11 @@ export function handleChallenge(
     sendJson(res, 403, { error: 'revoked-peer' });
     return;
   }
-  sendJson(res, 200, { challenge: ctx.auth.issueChallenge() });
+  // Minted for this peer and no other: the nonce carries `peer.peerId`,
+  // and `/session` refuses it from anyone else. The route is open to every
+  // known peer, so a fungible nonce is one any peer can fetch in a third
+  // party's name and have that party sign.
+  sendJson(res, 200, { challenge: ctx.auth.issueChallenge(peer.peerId) });
 }
 
 export async function handleSession(
