@@ -232,6 +232,36 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(chunks.some((c) => c.includes('replayed screen'))).toBe(true);
   });
 
+  it('marks a re-attach as a reconnect, so the opener does not reuse a transport that just died', async () => {
+    // The first attach has no evidence against the pooled connection; a
+    // re-attach does — the stream on it just died. An opener told
+    // nothing cannot tell the two apart and hands the automatic retries,
+    // and the manual Reconnect behind them, the same dead socket.
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const calls = (machine.ptyOpener.open as ReturnType<typeof vi.fn>).mock
+      .calls;
+    expect(calls[0][0].reconnect).toBeUndefined();
+
+    opens[0]!.close();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+
+    expect(backend.connectionState).toBe('connected');
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0].reconnect).toBe(true);
+  });
+
   it('reconnect() retries immediately after automatic reconnection has given up', async () => {
     let opensAttempted = 0;
     run.mockImplementation(async (argv: string[]) => {
