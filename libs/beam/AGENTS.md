@@ -29,6 +29,23 @@ through the exported API in `src/index.ts`.
   must be effective everywhere a peer is checked: `/challenge`, `/session`,
   the WS upgrade (ticket alone is not enough — the peer's current state is
   re-checked at upgrade time), and any already-live connection.
+- **Scopes** (`peer-scopes.ts`, `open-gate.ts`): a peer record names which
+  stream kinds that peer may open here. The grant is minted onto the
+  pairing token, never taken from the pair request — a joiner that can name
+  its own grant has none — and `PeerTable.upsert` intersects it with what
+  is already stored, so a re-pair can only narrow. Read every stored
+  `scopes` through `grantedScopes`, never as the typed field:
+  `PeerTable.load` is a bare `JSON.parse`, only an _absent_ field means all
+  three, and a present value this code cannot parse grants nothing.
+  Enforcement is one entry in `openRefusal`, reached from
+  `Muxer.handleOpen`, which is the single gate every stream passes through;
+  it looks the peer up per `Open` rather than capturing it, so narrowing
+  takes effect on a live connection and a grant survives a reconnect. A new
+  stream kind needs an entry in `STREAM_SCOPES` and `scopeForStream` or no
+  scope governs it. Refusals leave as `scope-not-granted:<scope>` and
+  arrive at the opener as `StreamScopeError`: the opener has to be able to
+  tell a permanent refusal from a dead transport without reading a
+  message.
 - **Frame protocol and muxer** (`protocol.ts`, `muxer.ts`, `stream.ts`): the
   wire codec is pure and has no I/O; another implementation matches it byte
   for byte. `Open`'s payload carries the stream name and its JSON parameters

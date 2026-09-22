@@ -31,6 +31,12 @@ import {
 } from './host-routes.js';
 import type { Identity } from './identity.js';
 import type { LivenessOptions } from './liveness.js';
+import {
+  grantedScopes,
+  normalizeScopes,
+  STREAM_SCOPES,
+  type StreamScope,
+} from './peer-scopes.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
 import { MAX_TRANSPORT_MESSAGE_BYTES } from './protocol.js';
 import { PAIRING_TOKEN_TTL_MS, SingleUseSecrets } from './secrets.js';
@@ -92,7 +98,10 @@ export class Host {
         privateKeyPem: this.identity.privateKeyPem,
         now: options.now,
       }),
-      pairingTokens: new SingleUseSecrets(PAIRING_TOKEN_TTL_MS, options.now),
+      pairingTokens: new SingleUseSecrets<readonly StreamScope[]>(
+        PAIRING_TOKEN_TTL_MS,
+        options.now
+      ),
       endpoints: options.endpoints ?? [],
       capabilities: options.capabilities ?? ['streams'],
       log: this.log,
@@ -125,16 +134,41 @@ export class Host {
     this.ctx.endpoints = endpoints;
   }
 
-  /** Mint a bare one-time pairing token (10 min TTL). */
-  issuePairingToken(): string {
-    return this.ctx.pairingTokens.issue(undefined);
+  /**
+   * Mint a bare one-time pairing token (10 min TTL), granting `scopes` to
+   * whoever spends it.
+   *
+   * The grant rides on the token rather than on the pair request, because
+   * the machine minting the token is the one deciding what the joiner may
+   * do to it. A joiner cannot ask for more than the token it was handed
+   * carries; there is no field in the request for it to inflate.
+   *
+   * Omitted means all three scopes, so every existing caller — the CLI's
+   * `beam serve`, the desktop's pairing panel — keeps granting exactly
+   * what it granted before.
+   */
+  issuePairingToken(scopes?: readonly StreamScope[]): string {
+    return this.ctx.pairingTokens.issue(
+      normalizeScopes(scopes) ?? STREAM_SCOPES
+    );
   }
 
   /** Mint a token plus the ready-to-share pair URL carrying it in the hash,
-   * which keeps it out of request lines, proxy logs, and Referer headers. */
-  issuePairingUrl(): { token: string; url: string } {
-    const token = this.issuePairingToken();
-    return { token, url: `${this.baseUrl}/pair#token=${token}` };
+   * which keeps it out of request lines, proxy logs, and Referer headers.
+   * The scopes the token grants stay on this machine: the URL is a bearer
+   * secret and the grant is not the holder's to choose. */
+  issuePairingUrl(scopes?: readonly StreamScope[]): {
+    token: string;
+    url: string;
+    scopes: readonly StreamScope[];
+  } {
+    const granted = normalizeScopes(scopes) ?? STREAM_SCOPES;
+    const token = this.issuePairingToken(granted);
+    return {
+      token,
+      url: `${this.baseUrl}/pair#token=${token}`,
+      scopes: granted,
+    };
   }
 
   listen(): Promise<void> {
@@ -272,6 +306,10 @@ export class Host {
         role: 'acceptor',
         socket: wrapWebSocket(ws),
         registry: this.registry,
+        // Looked up per `Open`, not captured here: scopes belong to the
+        // peer, so they must survive a reconnect and must not need one to
+        // change.
+        scopes: () => grantedScopes(this.peers.get(peerId)),
         liveness: this.liveness,
       });
       this.connections.add(connection);

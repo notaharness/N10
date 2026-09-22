@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { assertLabel, assertPeerId } from './identifiers.js';
+import { narrowScopes, type StreamScope } from './peer-scopes.js';
 
 /** The filesystem calls PeerTable's atomic write goes through; overridable
  * so a test can simulate a crash between the write and the rename without
@@ -38,6 +39,12 @@ export interface PeerRecord {
   lastSeenAt?: number;
   /** Kept, never matched, never dialed. */
   revoked: boolean;
+  /** Which stream kinds this peer may open here, granted when the pairing
+   * token that let it in was minted. Absent means all three, which is what
+   * every record written before this field existed means and must keep
+   * meaning. Read it through `grantedScopes` (peer-scopes.ts), never
+   * directly: nothing validates this file when it is loaded. */
+  scopes?: StreamScope[];
   /** When `revoked` became true; absent while it is false. */
   revokedAt?: number;
 }
@@ -82,7 +89,13 @@ export class PeerTable {
       label,
       pairedAt: existing?.pairedAt ?? this.now(),
       revoked: existing?.revoked ?? false,
+      // A re-pair may take scopes away and never hand them back
+      // (peer-scopes.ts): anyone with a live pairing token and this peer's
+      // public key can reach this path, so widening here would make a
+      // captured pairing URL an escalation route.
+      scopes: narrowScopes(existing?.scopes, input.scopes),
     };
+    if (record.scopes === undefined) delete record.scopes;
     this.peers.set(record.peerId, record);
     this.save();
     return record;
