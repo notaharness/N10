@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow, sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
 
 // Regression test for the diff viewer. The DiffPane was split into
@@ -65,12 +65,14 @@ test.describe('@integration Diff Viewer', () => {
       n10.term.getByText('Add color support for tile values').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    // 2. Navigate the sidebar selection onto PR #37 and confirm it's
-    //    selected (the icon is ◉ or ◎).
+    // 2. Navigate the sidebar selection onto PR #37. The walk waits for
+    //    the review list to stop growing first, then presses 'j' a
+    //    bounded number of times instead of an unbounded while loop —
+    //    see `selectSidebarRow` for why an unbounded walk races the
+    //    incremental GitHub load. The follow-up assertion is now cheap;
+    //    it stays to document intent.
     const pr37 = sidebarLocator(n10.term.page, 'Add color support');
-    while ((await pr37.selected().count()) === 0) {
-      await n10.term.press('j');
-    }
+    await selectSidebarRow(n10.term, 'Add color support');
     await expect(pr37.selected().first()).toBeVisible();
 
     // 3. Press `d` to open the diff file list for the selected PR.
