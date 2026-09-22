@@ -111,7 +111,7 @@ Authentication only; no payload ever travels over HTTP. Bodies are capped at 64 
 | ------ | ------------------------ | ------------------------------------------------------------------------------ |
 | GET    | `/.well-known/beam/host` | descriptor: `{ peerId, label, protocol, capabilities }`                        |
 | POST   | `/pair`                  | trade a token plus public key for mutual peer records                          |
-| GET    | `/challenge/:peerId`     | `{ challenge }` — a nonce for that peer to sign (60s TTL)                      |
+| GET    | `/challenge/:peerId`     | `{ challenge }` — a nonce minted **for that peer** to sign (60s TTL)           |
 | POST   | `/session`               | mutual proof, returns `{ ticket, hostSignature }` (ticket 30s TTL, single use) |
 | POST   | `/rtc`                   | WebRTC offer for a ticket, returns the answer                                  |
 | GET    | `/ws?ticket=…&proof=…`   | upgrade to the stream connection; both are required                            |
@@ -123,23 +123,68 @@ specific peer it has a record of.
 
 `POST /session` takes `{ peerId, challenge, signature, clientChallenge }`. The host verifies
 the peer's signature **before** consuming the challenge, so a bogus signature cannot burn the
-legitimate one. It then signs `clientChallenge` with its own key and returns that signature;
-the client verifies it against the stored `publicKeyPem` and aborts on mismatch. Mutual proof
-means neither side talks to an impostor, which matters because the WebSocket transport is not
+legitimate one. It then signs the client's own nonce and returns that signature; the client
+verifies it against the stored `publicKeyPem` and aborts on mismatch. Mutual proof means
+neither side talks to an impostor, which matters because the WebSocket transport is not
 itself encrypted.
 
-`GET /ws` takes a `proof` as well as the `ticket`: the caller's signature over
-`beam-ws:<ticket>`, verified against the public key stored for the peer the ticket was issued
-to. The transport is not encrypted, so the ticket travels where anyone on the path can read
-it; possession of it alone would let a passive attacker race the legitimate client for it.
+#### What a handshake signature covers
+
+No signature in the handshake is over a bare value. Each is over a transcript naming the
+context and both machines, with the value being proved fresh last:
+
+```
+<context>:<hostPeerId>:<clientPeerId>:<payload>
+```
+
+| Context        | Signed by | Payload           | Sent in                  |
+| -------------- | --------- | ----------------- | ------------------------ |
+| `beam-session` | client    | `challenge`       | `POST /session` request  |
+| `beam-host`    | host      | `clientChallenge` | `POST /session` response |
+| `beam-ws`      | client    | `ticket`          | `GET /ws?proof=…`        |
+
+`hostPeerId` is always the accepting machine — the one whose HTTP surface is being dialed —
+and `clientPeerId` always the dialing one, whichever direction the signature travels in. Both
+sides build the transcript from ids they already hold: the host from the stored peer record
+rather than from the request body, the client from the peer it resolved before dialing.
+
+Without this, both `/session` signatures are over opaque bytes the far side chose, which
+makes every paired peer a signing oracle for whoever it dials. Concretely, in the topology
+this document advertises — a laptop C with no inbound endpoint, paired with worker boxes M
+and P, where M is compromised and M and P were **never paired**: M asks
+`GET P/challenge/C`, which P answers because C is a peer of P and the route asks nothing
+else of the caller. M hands C that nonce as its own challenge when C dials it, and relays
+C's answer to `P/session`. P issues a ticket for C to a machine it holds no record of. M
+then drops the connection and, on C's reconnect, hands C the string the `/ws` proof has to
+be — turning C into a signing oracle for the ticket as well, and giving M `pty` and `exec`
+on P as C. The transcript ends this: the signature C produced names M as the host, so at P
+it verifies against nothing. The mirror case — a peer that can reach `/session` on a host H,
+using H as an oracle for a ticket issued to H elsewhere — is closed by the same binding on
+the host's own signature.
+
+**The challenge is bound too.** `/challenge/:peerId` mints a nonce carrying that peer id, and
+`/session` refuses one minted for anybody else (`stale-challenge`). The route is open to
+every peer the host knows, so a fungible nonce pool is one any peer can draw from in a third
+party's name. The binding is checked against a peek, so a nonce presented by the wrong peer
+is refused without being spent.
+
+The `:` join is unambiguous because of the field shapes, not by convention: a `peerId` is
+exactly 16 lowercase hex characters, so neither variable-position field can contain a
+separator, and the one field that could — the payload — is last, where nothing follows it.
+Both ids are asserted rather than assumed at the point the transcript is built, since
+`peers.json` is not re-validated when it is read back.
+
+`GET /ws` takes a `proof` as well as the `ticket`: the caller's signature over the `beam-ws`
+transcript, verified against the public key stored for the peer the ticket was issued to.
+The transport is not encrypted, so the ticket travels where anyone on the path can read it;
+possession of it alone would let a passive attacker race the legitimate client for it.
 The proof is verified **before** the ticket is consumed, for the same reason `/session`
 verifies the signature before consuming the challenge — consume first and an attacker who
 read the ticket could spend it with a garbage proof and burn the legitimate client's. The
 peer whose key the proof is checked against comes from the ticket, never from the caller. The
-`beam-ws:` prefix is domain separation from the `/session` challenge signature: without it a
-signature captured from one exchange would verify in the other, since both are otherwise just
-"this key signed this opaque string". The peer's current standing is re-checked after the
-ticket is consumed, so a revocation inside the ticket's 30s window still takes effect.
+`beam-ws` context is what keeps this proof and `/session`'s from standing in for one another.
+The peer's current standing is re-checked after the ticket is consumed, so a revocation
+inside the ticket's 30s window still takes effect.
 
 The upgrade handler is reached before any of that — no ticket, no proof, no pairing record —
 so the whole of it is wrapped, not just the parts that look risky. A request-target that is a
@@ -580,11 +625,18 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   to open one more shell.
 - The WebSocket transport is not encrypted, and it is the only transport that exists today —
   the WebRTC data channels that would bring DTLS are a seam, not an option a caller can pick
-  (see "Deliberately out of scope"). Mutual authentication is mandatory, so a network
-  attacker can read traffic but cannot impersonate either side. That extends to the upgrade
-  itself: a ticket read off the wire is not enough to connect, because `/ws` also requires
-  a signature over `beam-ws:<ticket>` from the key the host stored at pairing. Run over
-  Tailscale or tailcat when the network is not trusted.
+  (see "Deliberately out of scope"). After the upgrade there is no session key and no
+  per-frame MAC. Mutual authentication is mandatory, and the handshake's transcript binding
+  is what makes it hold across three parties. Against a **passive** network attacker that is
+  enough: it can read traffic but cannot impersonate either side, and a ticket read off the
+  wire is not enough to connect, because `/ws` also requires a signature over the `beam-ws`
+  transcript from the key the host stored at pairing. An **active on-path** attacker is not
+  defended against. Nothing authenticates the frames of an established connection, so one
+  that can write to the socket can inject, alter or drop frames on it — opening streams, and
+  so running commands, as the authenticated peer. Authentication bounds who may _open_ a
+  connection, not who may write on one. Run over Tailscale or tailcat when the network is not
+  trusted; on plain WS, treat write access to the path as equivalent to the peer's own
+  access.
 - Default bind is loopback. Exposing the node on other interfaces requires an explicit
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout

@@ -76,6 +76,16 @@ export {
   type SessionResult,
 } from './lib/auth.js';
 
+export {
+  hostTranscript,
+  sessionTranscript,
+  wsTranscript,
+  HOST_CONTEXT,
+  SESSION_CONTEXT,
+  WS_CONTEXT,
+  type HandshakeParties,
+} from './lib/handshake-transcript.js';
+
 export type { BeamStream, StreamSink } from './lib/stream.js';
 export {
   StreamRegistry,
