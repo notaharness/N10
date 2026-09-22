@@ -226,7 +226,16 @@ class TmuxBackend implements SessionBackend {
   resize(cols: number, rows: number): void {
     this.width = cols;
     this.height = rows;
-    this.inner.resize(cols, rows);
+    // Only a client that is still there can be resized. Between a
+    // detach (or a client that was killed) and the re-attach that
+    // replaces it, `inner` is a pty whose file descriptor is closed,
+    // and node-pty answers an ioctl on it by throwing `EBADF` — out of
+    // a call that is made from a window-resize handler, where a throw
+    // becomes an error the user is shown for having changed the size
+    // of their window. The size is recorded above either way, and
+    // {@link attach} makes the next client with it, so nothing is lost
+    // by not asking a departed client to do it.
+    if (this.connection === 'connected') this.inner.resize(cols, rows);
   }
   onData(cb: (data: string) => void): void {
     this.data.add(cb);
