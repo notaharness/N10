@@ -18,10 +18,14 @@ import {
   type HostilePeer,
 } from '../test-support/hostile-peer.js';
 
-/** Short enough to keep the suite fast, long enough that a loaded CI box
- * does not fail the "a healthy peer survives" controls. */
-const INTERVAL_MS = 100;
-const TIMEOUT_MS = 150;
+/** Short enough to keep the suite fast; the timeout is long enough that a
+ * loaded box stalling between a ping and its pong does not fail the "a
+ * healthy peer survives" controls, and still well inside the window those
+ * controls watch, so a monitor that ignored pongs would trip inside it. */
+const INTERVAL_MS = 200;
+const TIMEOUT_MS = 400;
+/** Several intervals, and several timeouts. */
+const OBSERVATION_MS = 2000;
 
 let peer: HostilePeer;
 
@@ -73,7 +77,7 @@ describe('connection liveness', () => {
     expect(accepted.readyState).toBe(accepted.OPEN);
 
     expect(await until(() => closes.length > 0)).toBe(true);
-    expect(closes[0]).toMatch(/no pong within 150ms/);
+    expect(closes[0]).toMatch(/no pong within 400ms/);
     expect(await connection.checkAlive(50)).toBe(false);
 
     // Dropped, not asked to leave. A graceful close would reach the peer
@@ -88,7 +92,7 @@ describe('connection liveness', () => {
     peer = await startAnsweringPeer();
     const { connection, closes } = await connectTo(peer.url);
 
-    await sleep(INTERVAL_MS * 8);
+    await sleep(OBSERVATION_MS);
 
     expect(closes).toEqual([]);
     expect(await connection.checkAlive(TIMEOUT_MS)).toBe(true);
@@ -113,7 +117,7 @@ describe('connection liveness', () => {
       () => undefined
     );
 
-    await sleep(INTERVAL_MS * 8);
+    await sleep(OBSERVATION_MS);
 
     expect(peer.received.length).toBeGreaterThan(0); // the frames arrived
     expect(opened).toBe(false); // and nothing over there answered them
