@@ -15,6 +15,7 @@ function fakeConnection(peerId: string): {
     close: () => closeHandlers.forEach((h) => h('closed locally')),
     terminate: (reason) =>
       closeHandlers.forEach((h) => h(reason ?? 'terminated locally')),
+    checkAlive: () => Promise.resolve(true),
   };
   return {
     conn,

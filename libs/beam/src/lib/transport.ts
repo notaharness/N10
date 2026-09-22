@@ -22,6 +22,18 @@ export interface TransportSocket {
   terminate(): void;
   onData(handler: (data: Uint8Array) => void): void;
   onClose(handler: () => void): void;
+  /**
+   * Send a transport-level liveness probe, answered by the far end's
+   * transport rather than by its application code. Optional: a transport
+   * with no probe of its own gets no liveness monitor, and a connection
+   * over it can only learn of a peer that closes politely. See
+   * `liveness.ts`, and `PeerConnection.checkAlive` for what a caller can
+   * ask of it.
+   */
+  ping?(): void;
+  /** Called on every answer to `ping()`. Required alongside it — a probe
+   * nobody can hear the answer to proves nothing. */
+  onPong?(handler: () => void): void;
 }
 
 export interface Transport {
@@ -105,5 +117,17 @@ export function wrapWebSocket(socket: WebSocket): TransportSocket {
       for (const bytes of buffered.splice(0, buffered.length)) handler(bytes);
     },
     onClose: (handler) => closeHandlers.push(handler),
+    // A WebSocket ping is answered by the peer's `ws` layer itself, so a
+    // pong says the far end's event loop is running — the one question a
+    // socket that stays ESTABLISHED under a dead machine cannot answer.
+    // `ws` throws on a send after close, and a socket that is already
+    // going away is the close path's business, not the monitor's.
+    ping: () => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      socket.ping();
+    },
+    onPong: (handler) => {
+      socket.on('pong', () => handler());
+    },
   };
 }
