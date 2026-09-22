@@ -43,6 +43,17 @@ through the exported API in `src/index.ts`.
   `Muxer.receive`/`handleOpen` drop frames once disposed for the same reason,
   so no transport can spawn a process after its connection was reaped;
   ordinary shutdowns still close politely.
+- **Liveness** (`liveness.ts`): process death arrives as a FIN; machine and
+  network death arrive as nothing at all, and a socket nothing writes to
+  stays ESTABLISHED indefinitely. Every connection on both sides therefore
+  pings every 10s and terminates the transport after 10s without a pong.
+  A pong comes from the peer's `ws` layer, so it proves the far process's
+  event loop is running, never that its application is making progress —
+  do not reach for this timer to catch an application-level stall. Tests
+  for it use real sockets (`src/test-support/hostile-peer.ts`): a peer
+  that accepts and never answers, and a peer process `SIGSTOP` can freeze
+  mid-stream. A fake `TransportSocket` cannot express either failure,
+  which is why this whole class went uncovered.
 - **Streams** (`pty-handler.ts`, `exec-handler.ts`): a handler is registered
   once on a `StreamRegistry` shared by every connection on a node, so its
   own bookkeeping must key on `(peer, streamId)`, never bare `streamId` —
