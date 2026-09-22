@@ -28,6 +28,20 @@ export {
 } from './lib/identity.js';
 
 export {
+  grantedScopes,
+  isStreamScope,
+  narrowScopes,
+  normalizeScopes,
+  parseScopeRefusal,
+  scopeForStream,
+  scopeRefusalReason,
+  SCOPE_REFUSAL_PREFIX,
+  STREAM_SCOPES,
+  StreamScopeError,
+  type StreamScope,
+} from './lib/peer-scopes.js';
+
+export {
   PeerTable,
   type NewPeer,
   type PeerRecord,

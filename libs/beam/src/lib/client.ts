@@ -17,6 +17,11 @@ import type { HostDescriptor } from './host.js';
 import { DESCRIPTOR_PATH, PROTOCOL_VERSION } from './host.js';
 import { derivePeerId, type Identity } from './identity.js';
 import type { LivenessOptions } from './liveness.js';
+import {
+  grantedScopes,
+  reportedGrant,
+  type StreamScope,
+} from './peer-scopes.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
 import { randomSecret } from './secrets.js';
 import { StreamRegistry } from './stream-registry.js';
@@ -103,6 +108,16 @@ export interface PairResult {
   baseUrl: string;
   /** The host, as now stored in this machine's own peer table. */
   peer: PeerRecord;
+  /**
+   * What the host says it granted this machine: which stream kinds this
+   * machine may open *there*. Informational — the host enforces its own
+   * grant on every `Open` and nothing here depends on it being honest —
+   * but it is what lets `beam pair` tell a user what the pairing bought.
+   *
+   * A host too old to report one is read as all three, which is what such
+   * a host in fact grants.
+   */
+  granted: readonly StreamScope[];
 }
 
 /** Trade a one-time pairing token for the host's identity, and store it —
@@ -143,6 +158,7 @@ export async function pair(
     label: string;
     publicKeyPem: string;
     endpoints: string[];
+    grantedScopes?: unknown;
   };
   // The id is derived, never asserted (docs/beam.md): a pairing host that
   // claims an id its own key does not derive to — including one already in
@@ -173,8 +189,13 @@ export async function pair(
     label: body.label,
     publicKeyPem: body.publicKeyPem,
     endpoints: body.endpoints,
+    // Deliberately not `body.grantedScopes`. That is what the *host* lets
+    // this machine do there; the record written here governs what the host
+    // may do *here*, and this side granted it nothing narrower. Pairing
+    // grants in one direction — the machine that minted the token is the
+    // one that decided.
   });
-  return { baseUrl, peer };
+  return { baseUrl, peer, granted: reportedGrant(body.grantedScopes) };
 }
 
 /**
@@ -406,6 +427,10 @@ export async function dial(
     role: 'initiator',
     socket,
     registry: options.registry ?? new StreamRegistry(),
+    // The dialing side enforces too: either machine may open a stream, so
+    // a connection this one started is still one the far machine can open
+    // a `pty` on. Read per `Open`, from the record this side holds.
+    scopes: () => grantedScopes(options.peers.get(peer.peerId)),
     liveness: options.liveness,
   });
   (options.connections ?? new ConnectionRegistry()).add(connection);
