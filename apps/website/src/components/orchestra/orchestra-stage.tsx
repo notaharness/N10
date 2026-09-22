@@ -6,7 +6,6 @@ import { project, type Vec2 } from '@/components/beam/mesh/geometry';
 import { BEAM_COLORS } from '@/components/beam/mesh/palette';
 import { depth } from '@/components/orchestra/stage-geometry';
 import {
-  Lectern,
   Note,
   PODIUM,
   Podium,
@@ -14,6 +13,7 @@ import {
   Riser,
   place,
 } from '@/components/orchestra/stage-parts';
+import { PlayerBox } from '@/components/orchestra/player-box';
 import { PLAYERS } from '@/components/orchestra/stage-script';
 import { useShow } from '@/components/orchestra/use-show';
 
@@ -50,13 +50,17 @@ export function OrchestraStage({ className }: { className?: string }) {
   const remote = PLAYERS.find((p) => p.remote);
   const solids = [
     { key: 'podium', at: PODIUM, node: <Podium /> },
-    ...PLAYERS.map((spec) => {
+    ...PLAYERS.map((spec, index) => {
       const at = place(spec.angle);
       return {
         key: spec.id,
         at: [at.cx, at.cy] as Vec2,
         node: (
-          <Lectern spec={spec} status={show.status[spec.id] ?? 'working'} />
+          <PlayerBox
+            spec={spec}
+            status={show.status[spec.id] ?? 'working'}
+            index={index}
+          />
         ),
       };
     }),
@@ -71,7 +75,7 @@ export function OrchestraStage({ className }: { className?: string }) {
           className="orchestra-stage h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
-          aria-label="An orchestrator at a podium keeping a beat, with five players at lecterns on a semicircular riser facing it. Their screens bounce while they work; reports fly to the podium as notes and answers fly back. One player stands on its own platform, joined to the scene by a beam from another machine."
+          aria-label="An orchestrator at a podium keeping a beat, with five computers on a semicircular riser facing it, one player each. Their screens bounce and the boxes shake while they work; reports fly to the podium as notes and answers fly back. One player stands on its own platform, joined to the scene by a beam from another machine."
         >
           <defs>
             <radialGradient id="orchestra-pool">

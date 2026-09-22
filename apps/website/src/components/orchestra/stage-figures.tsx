@@ -1,21 +1,11 @@
 import type { CSSProperties } from 'react';
 import { project, type Vec2 } from '@/components/beam/mesh/geometry';
-import { BEAM_COLORS } from '@/components/beam/mesh/palette';
 
 /**
- * The people on the stage, drawn as simple rounded figures seen from
- * behind and slightly above: a capsule body, a round head, two arms.
- * They stand at a ground point and are scaled to the scene's boxes.
- * Players are coloured by the agent they run; the conductor wears the
- * page's foreground colour.
+ * The one person on the stage: the orchestrator, a simple rounded
+ * figure seen from the front — capsule body, round head, two arms, a
+ * baton in the right hand.
  */
-export const AGENT_COLOR: Record<string, string> = {
-  claude: BEAM_COLORS.sage,
-  codex: BEAM_COLORS.sand,
-  gemini: BEAM_COLORS.blue,
-  copilot: BEAM_COLORS.mauve,
-  opencode: BEAM_COLORS.clay,
-};
 
 export function Figure({
   ground,

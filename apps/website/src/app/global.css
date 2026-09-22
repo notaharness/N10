@@ -697,21 +697,6 @@
   fill: var(--n10-sand);
 }
 
-/* A player at work bows: the right arm saws, the left holds. */
-.orchestra-figure[data-playing='true'] .orchestra-arm--right {
-  animation: orchestra-bow 0.7s ease-in-out infinite alternate;
-  animation-play-state: var(--orchestra-play);
-}
-
-@keyframes orchestra-bow {
-  from {
-    transform: rotate(-18deg);
-  }
-  to {
-    transform: rotate(22deg);
-  }
-}
-
 /* The conductor beats a four: down, in, out, up. Each beat is a
  * quarter of the bar, with a flick at the bottom of the downbeat. */
 .orchestra-figure--conductor .orchestra-arm--right {
@@ -778,16 +763,80 @@
   fill: var(--color-fd-muted-foreground);
 }
 
-/* A lectern's screen: bouncing bars while its player works, tinted by
- * the kind of report it is about to send, a glyph otherwise. */
+/* A player box hums — a fast, tiny bob — and every few seconds shakes
+ * itself in a burst of effort, each box on its own stagger. Both stop
+ * the moment it has something to report. */
+.orchestra-player[data-status='working'] .orchestra-hum {
+  animation: orchestra-hum 0.16s ease-in-out infinite alternate;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-hum {
+  to {
+    transform: translateY(-0.5px);
+  }
+}
+
+.orchestra-player[data-status='working'] .orchestra-shake {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: orchestra-shake 7s linear infinite;
+  animation-delay: var(--orchestra-stagger);
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-shake {
+  0%,
+  76%,
+  90%,
+  100% {
+    transform: none;
+  }
+  78% {
+    transform: rotate(-2.5deg) translateX(-1.5px);
+  }
+  80% {
+    transform: rotate(2.5deg) translateX(1.5px);
+  }
+  82% {
+    transform: rotate(-2deg) translateX(-1px);
+  }
+  84% {
+    transform: rotate(2deg) translateX(1px);
+  }
+  86% {
+    transform: rotate(-1deg);
+  }
+  88% {
+    transform: rotate(1deg);
+  }
+}
+
+.orchestra-vent {
+  fill: rgb(0 0 0 / 0.28);
+}
+
+.orchestra-led {
+  fill: var(--orchestra-kind);
+  animation: n10-iso-blink 2.8s steps(1, end) infinite;
+  animation-delay: var(--orchestra-stagger);
+  animation-play-state: var(--orchestra-play);
+}
+
+.orchestra-keys {
+  fill: rgb(0 0 0 / 0.16);
+}
+
+/* A player's screen: bouncing bars while it works, tinted by the kind
+ * of report it is about to send, a glyph otherwise. */
 .orchestra-screen {
   fill: var(--n10-iso-screen);
   transition: fill 400ms;
 }
 
-.orchestra-lectern[data-status='question'] .orchestra-screen,
-.orchestra-lectern[data-status='blocked'] .orchestra-screen,
-.orchestra-lectern[data-status='done'] .orchestra-screen {
+.orchestra-player[data-status='question'] .orchestra-screen,
+.orchestra-player[data-status='blocked'] .orchestra-screen,
+.orchestra-player[data-status='done'] .orchestra-screen {
   fill: color-mix(in oklab, var(--orchestra-kind) 45%, var(--n10-iso-screen));
 }
 

@@ -2,7 +2,6 @@ import type { CSSProperties } from 'react';
 import {
   boxFaces,
   centreLine,
-  inQuad,
   project,
   ribbon,
   toPoints,
@@ -18,17 +17,8 @@ import {
   turnedBox,
   type Placed,
 } from '@/components/orchestra/stage-geometry';
-import {
-  KIND_COLOR,
-  type Kind,
-  type PlayerSpec,
-  type Status,
-} from '@/components/orchestra/stage-script';
-import {
-  AGENT_COLOR,
-  Figure,
-  Nameplate,
-} from '@/components/orchestra/stage-figures';
+import type { PlayerSpec } from '@/components/orchestra/stage-script';
+import { Figure } from '@/components/orchestra/stage-figures';
 import type { Flight } from '@/components/orchestra/use-show';
 
 /** The pieces of the stage: see orchestra-stage.tsx for the scene. */
@@ -111,8 +101,8 @@ export function Podium() {
   const back = FACING + Math.PI;
   const stand: Vec2 = [cx + Math.cos(back) * 0.55, cy + Math.sin(back) * 0.55];
   const desk: Placed = {
-    cx: cx + Math.cos(FACING) * 0.55,
-    cy: cy + Math.sin(FACING) * 0.55,
+    cx: cx + Math.cos(FACING) * 0.35,
+    cy: cy + Math.sin(FACING) * 0.35,
     heading: FACING + Math.PI / 2,
   };
   const [gx, gy] = project([cx, cy, 0.36]);
@@ -133,92 +123,17 @@ export function Podium() {
         playing
         conductor
       />
-      <Faces faces={turnedBox(desk, 1.1, 0.5, 0.95, 0.35)} />
+      <Faces faces={turnedBox(desk, 1.3, 0.9, 0.12, 0.35)} />
       <polygon
-        points={toPoints(panel(desk, 1.0, 0.2, 1.3, 0.05, 0.02))}
-        className="orchestra-podium-top"
+        points={toPoints(panel(desk, 1.15, 0.05, 0.47, 0.02, 0.5))}
+        className="orchestra-keys"
       />
-    </g>
-  );
-}
-
-const STATUS_GLYPH: Record<Status, string> = {
-  working: '',
-  question: '?',
-  blocked: '!',
-  done: '✓',
-};
-
-const STATUS_KIND: Record<Status, Kind> = {
-  working: 'PROGRESS',
-  question: 'QUESTION',
-  blocked: 'BLOCKED',
-  done: 'DONE',
-};
-
-export function Lectern({
-  spec,
-  status,
-}: {
-  spec: PlayerSpec;
-  status: Status;
-}) {
-  const at = place(spec.angle);
-  const lid = panel(at, 1.25, 0.32, 1.05, 0.85, 0.28);
-  const screen = [
-    inQuad(lid, 0.06, 0.08),
-    inQuad(lid, 0.94, 0.08),
-    inQuad(lid, 0.94, 0.92),
-    inQuad(lid, 0.06, 0.92),
-  ];
-  const bars = [0.2, 0.35, 0.5, 0.65, 0.8];
-  const centre = project(inQuad(lid, 0.5, 0.5));
-  // The player stands on the viewer's side of the stand, a little to
-  // its right so the screen stays in view past their shoulder.
-  const fwd: Vec2 = [-Math.sin(at.heading), Math.cos(at.heading)];
-  const side: Vec2 = [Math.cos(at.heading), Math.sin(at.heading)];
-  const standing: Vec2 = [
-    at.cx + fwd[0] * 1.0 + side[0] * 0.55,
-    at.cy + fwd[1] * 1.0 + side[1] * 0.55,
-  ];
-  const plate: Vec2 = [at.cx + fwd[0] * 1.6, at.cy + fwd[1] * 1.6];
-  const badge =
-    status === 'working'
-      ? null
-      : { glyph: STATUS_GLYPH[status], color: KIND_COLOR[STATUS_KIND[status]] };
-  const vars = {
-    '--orchestra-kind': KIND_COLOR[STATUS_KIND[status]],
-  } as CSSProperties;
-  return (
-    <g className="orchestra-lectern" data-status={status} style={vars}>
-      <Faces faces={turnedBox(at, 1.45, 0.85, 1.05)} />
+      {/* The lid stands on the edge nearest the viewer and leans out,
+          so the screen faces the conductor and we see its back. */}
       <polygon
-        points={toPoints(lid)}
-        className="n10-iso-face n10-iso-face--left"
+        points={toPoints(panel(desk, 1.3, -0.45, 0.47, 0.72, -0.24))}
+        className="n10-iso-face n10-iso-face--right"
       />
-      <polygon points={toPoints(screen)} className="orchestra-screen" />
-      {status === 'working' &&
-        bars.map((u, i) => (
-          <polyline
-            key={u}
-            points={toPoints([inQuad(lid, u, 0.82), inQuad(lid, u, 0.18)])}
-            pathLength={1}
-            className="orchestra-bar"
-            style={{ animationDelay: `${i * -0.23}s` }}
-          />
-        ))}
-      {status !== 'working' && (
-        <text x={centre[0]} y={centre[1] + 4} className="orchestra-glyph">
-          {STATUS_GLYPH[status]}
-        </text>
-      )}
-      <Figure
-        ground={standing}
-        color={AGENT_COLOR[spec.agent] ?? BEAM_COLORS.sage}
-        playing={status === 'working'}
-        badge={badge}
-      />
-      <Nameplate ground={plate} branch={spec.branch} agent={spec.agent} />
     </g>
   );
 }
