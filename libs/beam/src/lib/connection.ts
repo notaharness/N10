@@ -10,6 +10,7 @@ import {
   type LivenessOptions,
 } from './liveness.js';
 import { Muxer, type MuxerRole } from './muxer.js';
+import type { StreamScope } from './peer-scopes.js';
 import type { StreamOpenHandler, StreamRegistry } from './stream-registry.js';
 import type { BeamStream } from './stream.js';
 import type { TransportSocket } from './transport.js';
@@ -63,6 +64,12 @@ export interface CreateConnectionOptions {
   role: MuxerRole;
   socket: TransportSocket;
   registry: StreamRegistry;
+  /** What this peer is entitled to open here, asked afresh on every
+   * inbound `Open` (see `MuxerOptions.scopes`). Both `Host` and `dial`
+   * pass a live lookup into their own peer table, which is what makes a
+   * grant a property of the peer rather than of this connection: it is
+   * re-read after a reconnect exactly as it is mid-connection. */
+  scopes?: () => readonly StreamScope[];
   /**
    * Ping/pong liveness over the transport (`liveness.ts`). On by default
    * with the module's own interval and timeout; `false` turns it off, for
@@ -83,6 +90,7 @@ export function createConnection(
     role: options.role,
     sendBytes: (bytes) => socket.send(bytes),
     peer: { peerId: options.peerId, label: options.label ?? options.peerId },
+    scopes: options.scopes,
   });
   const closeHandlers: ((reason: string) => void)[] = [];
   let closed = false;

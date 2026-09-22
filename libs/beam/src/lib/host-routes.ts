@@ -10,6 +10,7 @@ import { AuthError, type MutualAuth } from './auth.js';
 import { readJsonBody, sendJson, BodyTooLargeError } from './http-json.js';
 import { isLabel } from './identifiers.js';
 import { derivePeerId, type Identity } from './identity.js';
+import { grantedScopes, type StreamScope } from './peer-scopes.js';
 import type { PeerTable } from './peer-table.js';
 import type { SingleUseSecrets } from './secrets.js';
 
@@ -37,7 +38,10 @@ export interface RouteContext {
   identity: Identity;
   peers: PeerTable;
   auth: MutualAuth;
-  pairingTokens: SingleUseSecrets<undefined>;
+  /** Each token carries the grant its holder will be stored with: the
+   * minting machine decides what the joiner may do to it, so the scopes
+   * never travel in the pair request where the joiner could inflate them. */
+  pairingTokens: SingleUseSecrets<readonly StreamScope[]>;
   endpoints: string[];
   capabilities: string[];
   log: (message: string) => void;
@@ -99,7 +103,8 @@ export async function handlePair(
     sendJson(res, 400, { error: 'invalid-label' });
     return;
   }
-  if (!ctx.pairingTokens.consume(token).valid) {
+  const spent = ctx.pairingTokens.consume(token);
+  if (!spent.valid) {
     sendJson(res, 401, {
       error: 'invalid, expired, or already-used pairing token',
     });
@@ -112,6 +117,9 @@ export async function handlePair(
     endpoints: Array.isArray(endpoints)
       ? endpoints.filter((e): e is string => typeof e === 'string')
       : [],
+    // Straight off the spent token. Nothing the caller sent is consulted:
+    // a peer does not get to name its own grant.
+    scopes: [...spent.payload],
   };
   // The accepting side gates a re-pair exactly as the dialling side does
   // (docs/beam.md: "Re-pairing an existing peer replaces its key only with
@@ -124,14 +132,21 @@ export async function handlePair(
     sendJson(res, 409, { error: 'already-paired' });
     return;
   }
-  const peerId = ctx.peers.upsert(wanted).peerId;
-  ctx.log(`paired with ${peerId}`);
+  const stored = ctx.peers.upsert(wanted);
+  // What was *stored*, which a re-pair may have narrowed below what this
+  // token offered (peer-scopes.ts) — so the answer is never a promise this
+  // machine will not keep.
+  const granted = grantedScopes(stored);
+  ctx.log(`paired with ${stored.peerId}, granting ${granted.join(',')}`);
   sendJson(res, 201, {
     peerId: ctx.identity.peerId,
     label: ctx.identity.label,
     publicKeyPem: ctx.identity.publicKeyPem,
     endpoints: ctx.endpoints,
     protocol: PROTOCOL_VERSION,
+    // Informational, so the joiner can print what it may do there. This
+    // side enforces it; nothing rests on the joiner believing it.
+    grantedScopes: granted,
   });
 }
 

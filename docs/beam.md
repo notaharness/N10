@@ -67,6 +67,7 @@ interface PeerRecord {
   pairedAt: number;
   lastSeenAt?: number;
   revoked: boolean; // kept, never matched, never dialed
+  scopes?: StreamScope[]; // which stream kinds it may open here; absent means all
 }
 ```
 
@@ -78,19 +79,60 @@ laptop supervise a worker box without being reachable itself.
 Endpoints are opaque strings. Nothing in the library assumes a direct IP, so a relayed or
 tunnelled endpoint can be added later without touching this model.
 
+### Scopes
+
+A peer record carries the set of stream kinds that peer may open here: `pty`, `exec`, `msg`.
+Pairing is therefore not all or nothing — a worker whose only job is to report progress home
+can be paired for `msg` and get no shell on the machine it reports to.
+
+| Field         | Meaning                                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| absent        | all three. Every record written before this field existed, and the default                                                         |
+| `["msg"]`     | exactly that: `pty` and `exec` are refused                                                                                         |
+| `[]`          | nothing; the peer authenticates and can open no stream at all                                                                      |
+| anything else | nothing. A `scopes` field exists only because somebody wrote one, and one that cannot be read is not a reason to hand over a shell |
+
+`peers.json` is loaded with a bare `JSON.parse` and is not validated, so the field is read
+through one function that applies exactly that table rather than being trusted as typed.
+The last row is why: falling open on a value this code cannot parse would make a corrupted
+record indistinguishable from an unrestricted one, and the two mean opposite things. Only
+the _absence_ of the field means "all" — which is what keeps every record that predates it
+working unchanged.
+
+It is a bounded authorization field and nothing more: three names, no roles, no wildcards,
+no filtering of what an `exec` stream may then run, no policy file.
+
 ## Pairing
 
 Symmetric: one pairing act leaves both tables holding the other side's key.
 
 1. B runs `beam serve`, which mints a single-use token (32 random bytes, base64url, 10 minute
    TTL) and prints a URL carrying it in the **hash**: `http://<endpoint>/pair#token=…`.
-   The hash keeps the token out of request lines, proxy logs and `Referer`.
+   The hash keeps the token out of request lines, proxy logs and `Referer`. The token also
+   carries the scopes B is granting, defaulting to all three; `beam serve --grant msg` mints
+   one that grants only `msg`.
 2. A runs `beam pair <url>`: it reads B's descriptor, then posts
    `{ token, publicKeyPem, label, endpoints }` — `endpoints` being where B may dial A back,
    empty when A does not accept connections.
-3. B consumes the token (single use, whether or not the rest succeeds), stores A as a peer,
-   and answers with its own `{ peerId, label, publicKeyPem, endpoints, protocol }`.
+3. B consumes the token (single use, whether or not the rest succeeds), stores A as a peer
+   with the scopes that token carried, and answers with its own
+   `{ peerId, label, publicKeyPem, endpoints, protocol, grantedScopes }`.
 4. A stores B as a peer. Both sides can now authenticate the other.
+
+**The grant rides on the token, and the machine that minted the token is the one that
+decides.** There is no field in the pair request for the joiner to ask for more: it gets
+what the token it was handed carries. `grantedScopes` comes back in the answer so the joiner
+can say what the pairing bought, but it is informational — the granting side enforces it,
+and nothing rests on the joiner believing it. Pairing grants in one direction: B's record
+for A carries what B granted, and A's record for B is unconstrained, because A granted
+nothing. If A also wants to hold B down, A mints its own pairing URL with its own `--grant`.
+
+**A re-pair narrows and never widens.** Storing a grant intersects it with whatever that
+record already holds, so the most a second pairing can do is take scopes away. A public key
+is not a secret and `replace` is a flag the caller sets, so anyone holding a live pairing URL
+and a peer's key can reach that path; if it could widen, a captured pairing URL would be an
+escalation route for a peer that had deliberately been held down to `msg`. Widening is a
+local act on the granting machine: `beam peer forget <peer>`, then pair again.
 
 A label collision on either side is resolved locally by appending `-2`, `-3`, …; the id is
 what matters. Re-pairing an existing peer replaces its key only with `--force`, and the CLI
@@ -195,7 +237,9 @@ and the shells running on them (D3).
 
 Failure modes are distinguishable where they can be, because the UI has to explain them: unknown
 peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch, already
-paired under a record this pairing would change, invalid label.
+paired under a record this pairing would change, invalid label. A stream refused for want of a
+scope is distinguishable in the same way, one layer down on the stream connection rather than
+on the HTTP surface.
 
 One deliberate exception: a pairing token that is expired and one that has already been spent
 answer identically. Single-use secrets are built so that unknown, expired and spent all fail the
@@ -246,6 +290,23 @@ parameter frame from the first byte of input. Handlers get everything they need 
 Capabilities are advertised in the descriptor and in the handshake, so new stream names are
 additive: a caller checks the capability before opening. Current names: `pty`, `pty:<program>`,
 `exec`, `msg`.
+
+**`Open` is also where the peer's scopes are checked**, since it is the single gate every
+stream passes through — before the handler is resolved and long before anything spawns. The
+scope required is the name up to its first colon, so `pty:<program>` needs `pty`: the suffix
+picks the program, not a different kind of access. The check is a lookup in the peer table at
+that moment rather than something captured when the connection opened, so a grant narrowed by
+a re-pair takes effect on a live connection, exactly as revocation does, and a grant is a
+property of the peer that survives a reconnect rather than of the connection that carried it.
+
+A peer that opens a stream it was not granted gets a `Close` whose reason is
+`scope-not-granted:<scope>` — machine-readable for the same reason the HTTP surface answers
+`{"error":"revoked-peer"}` rather than prose. The opening side turns it back into a named
+`StreamScopeError` carrying the scope, so a caller never has to tell it from a dead transport
+by reading a message. That distinction is the point: "you may not do this here" is permanent
+until somebody re-pairs, while "the connection died" is worth retrying, and a caller that
+confuses them either retries an answer that will never change or gives up on a host that is
+merely unreachable.
 
 ## Liveness
 
@@ -647,12 +708,22 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
 
 ## Security posture
 
-- Pairing grants a shell as the user running the node. `exec` adds no privilege a `pty` stream
-  did not already give. Treat pairing like granting SSH access; `beam revoke` takes it back
-  immediately, and a revoked peer fails authentication rather than being silently ignored.
-  Immediately means the transport is destroyed, not asked to close, and the muxer stops
-  serving frames the moment the connection is reaped — a revoked peer gets no window in which
-  to open one more shell.
+- **A paired peer may open the stream kinds its grant names on the machine that paired it, and
+  nothing else.** It is not an account, it holds no privilege the user running the node does
+  not already have, and inside a stream it was granted it is exactly as powerful as that user.
+  That is the whole of the trust model.
+- So pairing that grants `pty` or `exec` grants a shell as the user running the node, and
+  should be treated like granting SSH access; `exec` adds no privilege a `pty` stream did not
+  already give, which is why they are separate scopes only so that a peer can be given neither.
+  Pairing that grants `msg` alone grants no code execution at all: the mailbox never parses or
+  executes a payload. The default is all three, so a pairing nobody thought about is as
+  permissive as it has always been — narrowing is a deliberate act at the moment the pairing
+  URL is minted.
+- `beam revoke` takes the whole of it back immediately, and a revoked peer fails authentication
+  rather than being silently ignored. Immediately means the transport is destroyed, not asked
+  to close, and the muxer stops serving frames the moment the connection is reaped — a revoked
+  peer gets no window in which to open one more shell. A scope is the same kind of check in the
+  same place: read per `Open`, so taking one away needs no reconnect either.
 - The WebSocket transport is not encrypted, and after the upgrade there is no session key and
   no per-frame MAC. WebRTC data channels are encrypted (DTLS); plain WS is not. Mutual
   authentication is mandatory on both, and the handshake's transcript binding is what makes
@@ -700,6 +771,7 @@ sections above are where the mechanics live.
 | D9  | A `rejected` send names who it was for as well as why, and admin ops act on the running node's live `PeerTable` rather than only on disk.                                                                                                                 | A caller told only "rejected" cannot say which peer failed, and a `revoke` that takes effect only after a restart is not a revoke. Cited interchangeably with D11 for the first half.                                                                                                                                                        |
 | D11 | Same as D9's first half: a rejection carries `to` and, where one resolves, `label`.                                                                                                                                                                       | The UI has to name the peer it could not send to.                                                                                                                                                                                                                                                                                            |
 | D15 | A receiving node writes an envelope to `mailbox/in/<peerId>/` before acking it on the wire, and unlinks it only once a subscriber acks.                                                                                                                   | Without the inbound store, `delivered` would mean only that some process had the message in memory: killing the receiver would lose it, and a resend would be refused as a duplicate because `seen/` had already advanced.                                                                                                                   |
+| D16 | A peer's scopes ride on the pairing token rather than on the pair request, and storing them can only ever narrow what the record already holds.                                                                                                           | The machine minting the token is the one deciding what the joiner may do to it, and a joiner that could name its own grant has no grant at all. Narrowing-only closes the mirror hole: a public key is not a secret and `replace` is the caller's flag, so a captured pairing URL would otherwise re-widen a peer that had been held down.   |
 
 Two cited numbers have no recoverable rationale and are deliberately left unstated rather
 than guessed at: **D7**, cited once in `mailbox/mailbox.ts` as "decisions.md D7/D9" with no
