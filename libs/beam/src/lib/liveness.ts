@@ -19,6 +19,18 @@
  * side's application is making progress — a peer whose event loop spins
  * still pongs. Application-level stalls are the mailbox's ack timeout's
  * business, not this timer's.
+ *
+ * A pong is not the only answer that counts. It is an ordinary WebSocket
+ * frame, written in order behind everything already queued on the socket,
+ * so a peer whose output outruns the link answers late through no fault of
+ * its own — a remote pane filling the send buffer puts megabytes in front
+ * of the pong, and a healthy machine then reads as silent. Any inbound
+ * frame therefore settles the question the ping asked (`noteInbound`):
+ * bytes arriving prove the far end's event loop ran *and* that something
+ * above it wrote, which is strictly more than a pong proves. It says
+ * nothing new about the peer's *reading* side — a peer that sends without
+ * ever reading still looks alive here, exactly as one that pongs without
+ * reading already did. That boundary is unchanged and still the mailbox's.
  */
 
 /** How often a live connection asks. Long enough to be free on battery and
@@ -57,20 +69,30 @@ export interface LivenessMonitor {
    * with `false` rather than probing a transport nobody owns any more. */
   stop(): void;
   /**
+   * A frame arrived from the peer. Counts as an answer: it settles the
+   * outstanding ping's deadline and every `checkAlive` in flight, exactly
+   * as a pong does. Call it on every inbound frame — the common case,
+   * with no ping outstanding and nobody waiting, costs two comparisons.
+   */
+  noteInbound(): void;
+  /**
    * Probe once, now, and resolve with whether the peer answered inside
    * `timeoutMs`. Used where a caller is about to *rely* on this
    * connection and cannot afford to wait out the periodic timer — a
    * reconnect that would otherwise redial through a socket that can
-   * never answer.
+   * never answer. A frame arriving from the peer inside the window
+   * answers it as well as a pong does, so a connection busy enough to
+   * delay the pong past `timeoutMs` still reports alive.
    */
   checkAlive(timeoutMs?: number): Promise<boolean>;
 }
 
 /**
  * Start pinging `probe` every `intervalMs`, calling `onSilent` when a ping
- * goes unanswered for `timeoutMs`. One ping is outstanding at a time: an
- * interval that fires while an earlier ping is still unanswered leaves
- * that ping's deadline to decide.
+ * goes unanswered for `timeoutMs` — where "answered" is a pong or any
+ * inbound frame the caller reports through `noteInbound`. One ping is
+ * outstanding at a time: an interval that fires while an earlier ping is
+ * still unanswered leaves that ping's deadline to decide.
  *
  * Both timers are unref'd. A node whose only remaining work is keeping an
  * idle connection honest should still be able to exit.
@@ -86,13 +108,16 @@ export function startLiveness(
   let stopped = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
 
-  probe.onPong(() => {
+  /** Evidence of life, from whichever direction it came. It settles the
+   * periodic ping and every one-shot check in flight, whichever of them
+   * put the question on the wire. */
+  const answered = (): void => {
     clearTimeout(deadline);
     deadline = undefined;
-    // A pong is a pong: it settles the periodic ping and every one-shot
-    // check in flight, whichever of them put it on the wire.
     for (const waiter of [...waiters]) waiter();
-  });
+  };
+
+  probe.onPong(answered);
 
   /** A transport that is already gone throws rather than pinging. That is
    * not an error worth propagating out of a timer callback: the deadline
@@ -121,6 +146,12 @@ export function startLiveness(
   interval.unref?.();
 
   return {
+    // Hot path: every frame on a busy connection comes through here, so
+    // the case with no ping outstanding and no waiter costs no work.
+    noteInbound: () => {
+      if (stopped || (deadline === undefined && waiters.size === 0)) return;
+      answered();
+    },
     stop: () => {
       stopped = true;
       clearInterval(interval);

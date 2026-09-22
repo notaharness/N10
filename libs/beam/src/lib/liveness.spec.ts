@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createConnection } from './connection.js';
 import { StreamRegistry } from './stream-registry.js';
-import { WebSocketTransport } from './transport.js';
+import { WebSocketTransport, type TransportSocket } from './transport.js';
 import {
   startAnsweringPeer,
   startDeafPeer,
@@ -60,23 +60,42 @@ async function connectTo(url: string) {
     liveness: { intervalMs: INTERVAL_MS, timeoutMs: TIMEOUT_MS },
   });
   connection.onClose((reason) => closes.push(reason));
-  return { connection, closes };
+  return { connection, closes, socket };
+}
+
+/** Keep real bytes moving out over the socket until the returned
+ * function is called. The peer records what reaches it, so "the
+ * connection is carrying data" is an observation rather than a claim. */
+function keepWriting(socket: TransportSocket): () => void {
+  const timer = setInterval(() => {
+    try {
+      socket.send(new Uint8Array([1, 2, 3, 4]));
+    } catch {
+      // The transport is gone; the test is about to say so.
+    }
+  }, 50);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 describe('connection liveness', () => {
   it('drops a peer that accepts and never answers a ping', async () => {
     peer = await startSilentPeer();
-    const { connection, closes } = await connectTo(peer.url);
+    const { connection, closes, socket } = await connectTo(peer.url);
     const accepted = await peer.accepted();
     const peerSideCloseCodes: number[] = [];
     accepted.on('close', (code) => peerSideCloseCodes.push(code));
+    const stopWriting = keepWriting(socket);
 
-    // The socket is open and carrying data in both directions: nothing
-    // about it distinguishes this peer from a healthy one except that it
-    // does not answer the transport's own question.
+    // The socket is open and carrying real traffic, and the peer's own
+    // side of it is receiving that traffic: nothing distinguishes this
+    // peer from a healthy one except that nothing ever comes back —
+    // neither a pong nor a frame of its own.
     expect(accepted.readyState).toBe(accepted.OPEN);
+    expect(await until(() => peer.received.length > 0)).toBe(true);
 
     expect(await until(() => closes.length > 0)).toBe(true);
+    stopWriting();
     expect(closes[0]).toMatch(/no pong within 400ms/);
     expect(await connection.checkAlive(50)).toBe(false);
 
