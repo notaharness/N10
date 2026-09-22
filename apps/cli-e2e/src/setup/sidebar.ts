@@ -1,6 +1,7 @@
 import type { Page, Locator } from '@playwright/test';
 import type { N10Term } from '../fixtures/n10.js';
 import { settleFor } from './waits.js';
+import { pressUntilSelected } from './selection.js';
 
 // Sidebar icon scheme (apps/cli/src/components/Sidebar.tsx):
 //   ◉  selected + running
@@ -169,38 +170,23 @@ export function sidebarWalkBound(rowCount: number): number {
   return rowCount + Math.max(HEADROOM_MIN, Math.ceil(rowCount / 2));
 }
 
-/** Read the currently-selected row's text for an error message. */
-async function describeSelectedRow(page: Page): Promise<string> {
-  try {
-    const row = page
-      .locator('.term-row', { hasText: new RegExp(`[${SELECTED}]`) })
-      .first();
-    if ((await row.count()) === 0) return '(no row is selected)';
-    const text = (await row.textContent()) ?? '';
-    const collapsed = text.replace(/\s+/g, ' ').trim();
-    return `"${collapsed.slice(0, 200)}"`;
-  } catch {
-    return '(could not read the selected row)';
-  }
-}
-
 /**
  * Move the sidebar selection onto the row matching `title`.
  *
  * The walk is bounded by `sidebarWalkBound` of the settled row count
- * (see `waitForSidebarSettled`): `moveSelection` clamps at both ends
- * and never wraps, so pressing the nav key more times than that bound
- * means the target isn't reachable this way. An `overallTimeout`
+ * (see `waitForSidebarSettled`): the sidebar's selection clamps at both
+ * ends and never wraps, so pressing the nav key more times than that
+ * bound means the target isn't reachable this way. An `overallTimeout`
  * deadline runs alongside the press bound — the padding in
  * `sidebarWalkBound` is only safe from turning into a long hang if
  * something else also caps the total time spent, since a per-step
  * timeout times a padded bound could otherwise approach or exceed a
  * test's own timeout.
  *
- * This deliberately does NOT retry past either limit or extend a
- * timeout, and must not be replaced by a fixed number of presses: a
- * fixed count can silently land on — and pass a test against — the
- * wrong row when the list is shorter or longer than expected.
+ * The walk itself (bound-vs-deadline tracking, the "selected instead"
+ * readout, the one-way-walk hint) is `pressUntilSelected` in
+ * `selection.ts` — see that function for why it must not be replaced
+ * by a fixed number of presses.
  */
 export async function selectSidebarRow(
   term: N10Term,
@@ -212,57 +198,20 @@ export async function selectSidebarRow(
     overallTimeout?: number;
   } = {}
 ): Promise<void> {
-  const {
-    key = 'j',
-    stepTimeout = 1_500,
-    settleTimeout,
-    overallTimeout = 45_000,
-  } = opts;
+  const { key, stepTimeout, settleTimeout, overallTimeout } = opts;
   const { page } = term;
   const rowCount = await waitForSidebarSettled(page, {
     timeout: settleTimeout,
   });
   const bound = sidebarWalkBound(rowCount);
   const row = sidebarLocator(page, title);
-  const start = Date.now();
-  let pressesSent = 0;
-  let stoppedBy: 'bound' | 'deadline' = 'bound';
 
-  for (let i = 0; i <= bound; i++) {
-    try {
-      await row
-        .selected()
-        .first()
-        .waitFor({ state: 'visible', timeout: stepTimeout });
-      return;
-    } catch {
-      if (i === bound) break;
-      if (Date.now() - start > overallTimeout) {
-        stoppedBy = 'deadline';
-        break;
-      }
-      await term.press(key);
-      pressesSent += 1;
-    }
-  }
-
-  const limitClause =
-    stoppedBy === 'bound'
-      ? `exhausted its bound of ${bound} presses`
-      : `ran out of its ${overallTimeout}ms budget after ${pressesSent} presses`;
-  // Exhausting the bound does not prove the row is absent: the walk only
-  // travels one way and `moveSelection` clamps, so a row above the
-  // starting selection is unreachable with 'j' however long we press.
-  // Say so, or the reader re-runs the test hunting a row that was there.
-  const directionHint =
-    stoppedBy === 'bound'
-      ? `\nThe walk only moves one way; a row above the starting selection ` +
-        `is not reachable with '${key}'.`
-      : '';
-  throw new Error(
-    `Sidebar selection never reached "${title}": ${limitClause} across ` +
-      `${rowCount} settled sidebar rows.\n` +
-      `Selected instead: ${await describeSelectedRow(page)}` +
-      directionHint
-  );
+  await pressUntilSelected(term, row.selected(), bound, {
+    what: title,
+    subject: 'Sidebar selection',
+    key,
+    stepTimeout,
+    overallTimeout,
+    scope: ` across ${rowCount} settled sidebar rows`,
+  });
 }

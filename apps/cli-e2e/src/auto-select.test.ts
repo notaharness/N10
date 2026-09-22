@@ -2,10 +2,10 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { Locator } from '@playwright/test';
 import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow } from './setup/sidebar.js';
+import { pressUntilSelected } from './setup/selection.js';
 import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
@@ -88,26 +88,6 @@ test.describe('@integration Auto-select first comment', () => {
     cols: 140,
   });
 
-  // Race-tolerant sidebar selection helper. page.keyboard.press returns
-  // before wterm re-renders the new selection, so a tight count-based
-  // loop overshoots — wait for visibility per press instead.
-  async function pressUntilSelected(
-    n10: { term: { press: (k: string) => Promise<void> } },
-    selectedLocator: Locator,
-    maxPresses: number
-  ): Promise<boolean> {
-    for (let i = 0; i <= maxPresses; i++) {
-      try {
-        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
-        return true;
-      } catch {
-        if (i === maxPresses) return false;
-        await n10.term.press('j');
-      }
-    }
-    return false;
-  }
-
   test('opens PR #38 file with inline comments — at least one thread auto-selects', async ({
     n10,
   }) => {
@@ -123,13 +103,7 @@ test.describe('@integration Auto-select first comment', () => {
 
     // Walk to PR #38 row (PRs sit after worktrees; press j until the
     // sidebar selection icon lands on the row).
-    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr38.selected().first(),
-      30
-    );
-    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
+    await selectSidebarRow(n10.term, 'Add undo feature');
 
     // Open the PR's file list.
     await n10.term.press('d');
@@ -156,15 +130,12 @@ test.describe('@integration Auto-select first comment', () => {
       .filter({ hasText: '›' })
       .filter({ hasText: fileBasename })
       .first();
-    const fileLanded = await pressUntilSelected(
-      { term: n10.term },
-      fileSelected,
-      40
-    );
-    expect(
-      fileLanded,
-      `Could not land diff-list selection on ${fileBasename}`
-    ).toBe(true);
+    await pressUntilSelected(n10.term, fileSelected, 40, {
+      what: `${fileBasename} in the diff file list`,
+      currentlySelected: n10.term.page.locator('.term-row', {
+        hasText: '›',
+      }),
+    });
 
     await n10.term.press('Enter');
 
@@ -237,13 +208,7 @@ test.describe('@integration Auto-select first comment', () => {
       n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr38.selected().first(),
-      30
-    );
-    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
+    await selectSidebarRow(n10.term, 'Add undo feature');
     await n10.term.press('d');
     await n10.term.page
       .locator('.term-row', { hasText: /\.(c|h)\b/ })
@@ -260,15 +225,12 @@ test.describe('@integration Auto-select first comment', () => {
       .filter({ hasText: '›' })
       .filter({ hasText: fileBasename })
       .first();
-    const fileLanded = await pressUntilSelected(
-      { term: n10.term },
-      fileSelected,
-      40
-    );
-    expect(
-      fileLanded,
-      `Could not land diff-list selection on ${fileBasename}`
-    ).toBe(true);
+    await pressUntilSelected(n10.term, fileSelected, 40, {
+      what: `${fileBasename} in the diff file list`,
+      currentlySelected: n10.term.page.locator('.term-row', {
+        hasText: '›',
+      }),
+    });
     await n10.term.press('Enter');
 
     // Pre-fix the seeded dead local id sat at navPool[0] and
