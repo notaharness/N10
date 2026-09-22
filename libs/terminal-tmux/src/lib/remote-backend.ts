@@ -23,7 +23,16 @@ export interface RemotePtyHandle {
   offData(cb: (data: string) => void): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
-  /** The stream closed — a connection drop, not a hosted-process exit. */
+  /**
+   * The stream closed. Any reason: the remote `tmux attach-session`
+   * client exited because the user detached with `C-b d`, the hosted
+   * process ended, or the connection underneath went away. Nothing on
+   * this side can tell those apart — the stream carries no reason
+   * across the worker boundary — so the backend treats every close the
+   * same way, by re-attaching, and does not read a closed stream as
+   * evidence against the connection it was riding on. What is evidence
+   * is in `RemotePtyOpenParams.reconnect`.
+   */
   onClose(cb: () => void): void;
   /** Detach locally; the remote tmux session is left running. */
   dispose(): void;
@@ -40,16 +49,21 @@ export interface RemotePtyOpenParams {
   cols: number;
   rows: number;
   /**
-   * This open is replacing a stream that just died, so whatever
-   * transport carried the last one is suspect. An opener that pools a
-   * connection per machine must check that connection still answers and
-   * replace it if it does not, rather than handing this attach the same
-   * dead socket the previous one was on — three retries down a transport
-   * that can never answer are three retries spent for nothing, and the
-   * manual Reconnect behind them fails exactly the same way.
+   * The *connection* this attach will ride on is suspect, and an opener
+   * that pools one per machine should verify it before reusing it —
+   * three retries down a transport that can never answer are three
+   * retries spent for nothing, and the manual Reconnect behind them
+   * fails exactly the same way.
    *
-   * Absent (the first attach) means "whatever connection you have is
-   * fine": there is no evidence against it yet.
+   * Set only where there is evidence about the connection rather than
+   * about one stream on it: the machine stopped answering control-plane
+   * commands, or an attach over this connection has already failed. A
+   * stream closing is not evidence — the remote tmux client exits when
+   * the user detaches, and the hosted process exits when it is done,
+   * and both of those happen over a connection that is working and
+   * shared with every other pane on that machine plus its mailbox.
+   * Verifying costs a round trip the caller must wait out, and acting
+   * on a verification that fails costs every one of those streams.
    */
   reconnect?: boolean;
 }
@@ -103,6 +117,11 @@ export class RemoteTmuxBackend implements SessionBackend {
   private height: number;
   private finalFrame: string | null = null;
   private reconnectAttempts = 0;
+  /** Whether anything has said the *connection* is in doubt, as opposed
+   *  to this one stream having ended. Reset only once a re-attach has
+   *  held for the stability window, so a link that keeps failing keeps
+   *  asking the opener to verify. */
+  private transportSuspect = false;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private stableTimer?: ReturnType<typeof setTimeout>;
   private readonly unsubscribePoll: () => void;
@@ -123,7 +142,9 @@ export class RemoteTmuxBackend implements SessionBackend {
     this.bindHandle(handle);
     this.unsubscribePoll = poller.subscribe(name, {
       onState: (info) => this.handlePollState(info),
-      onUnreachable: () => this.enterReconnecting(),
+      // The poller speaks to the machine, not to this stream: it going
+      // quiet is evidence about the connection itself.
+      onUnreachable: () => this.enterReconnecting('unreachable'),
     });
   }
 
@@ -131,13 +152,19 @@ export class RemoteTmuxBackend implements SessionBackend {
     for (const cb of this.data) handle.onData(cb);
     handle.onClose(() => {
       if (this.disposed || this.handle !== handle) return;
-      this.enterReconnecting();
+      this.enterReconnecting('stream-closed');
     });
   }
 
-  private enterReconnecting(): void {
-    if (this.disposed || !this.state.running || this.connection !== 'connected')
-      return;
+  private enterReconnecting(
+    cause: 'stream-closed' | 'unreachable' | 'attach-failed'
+  ): void {
+    if (this.disposed) return;
+    // Recorded before the guard: a machine that goes unreachable while
+    // a reconnect is already in flight is still saying something about
+    // the connection, and the retry after it should act on that.
+    if (cause !== 'stream-closed') this.transportSuspect = true;
+    if (!this.state.running || this.connection !== 'connected') return;
     this.connection = 'reconnecting';
     // A stream that dropped before the window elapsed was never a
     // successful reconnection: cancel the pending reset so a flapping
@@ -181,7 +208,7 @@ export class RemoteTmuxBackend implements SessionBackend {
         env: sanitizedEnv(this.spec),
         cols: this.width,
         rows: this.height,
-        reconnect: true,
+        reconnect: this.transportSuspect,
       });
       // `dispose()` clears a *scheduled* retry; it cannot cancel one
       // already awaiting `open()`. Adopting this handle on a backend
@@ -203,10 +230,15 @@ export class RemoteTmuxBackend implements SessionBackend {
       clearTimeout(this.stableTimer);
       this.stableTimer = setTimeout(() => {
         this.reconnectAttempts = 0;
+        this.transportSuspect = false;
       }, STABLE_CONNECTION_MS);
       this.stableTimer.unref?.();
       await this.replayFinalFrame();
     } catch {
+      // An attach that failed *is* evidence about the connection, and
+      // the one place this backend gets any: the next retry asks the
+      // opener to verify rather than reusing the same transport again.
+      this.transportSuspect = true;
       this.scheduleReconnect();
     }
   }
