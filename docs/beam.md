@@ -259,6 +259,18 @@ has. A transport with no probe of its own gets no monitor and answers `checkAliv
 `false`: `TransportSocket.ping`/`onPong` are optional, and an unverifiable connection is
 reported as suspect rather than as healthy.
 
+### Bounding a dial
+
+`dial()` carries its own budget, `DEFAULT_DIAL_TIMEOUT_MS` (30s), across both HTTP requests
+and the WebSocket upgrade, and fails with a `DialTimeoutError` when it runs out. The case it
+covers is the same one liveness covers for an established connection: a host whose kernel
+completes the TCP handshake while the process behind it never answers, where the fetches
+would otherwise wait out undici's ~5 minute header timeout and `transport.connect` would
+wait forever. Callers share one in-flight dial per peer, so an unbounded dial is not one
+caller's problem but every caller's — the manual reconnect behind them joins the same
+promise instead of escaping it. A socket that opens after the budget expires is terminated
+rather than left connected to a host that believes it has a client.
+
 ## Streams
 
 ### `pty`, `pty:<program>`

@@ -61,7 +61,9 @@ through the exported API in `src/index.ts`.
   peer behind a metered link whose pongs queue behind megabytes of its
   own output (`src/test-support/slow-link.ts`). A fake `TransportSocket`
   cannot express any of them, which is why this whole class went
-  uncovered.
+  uncovered. `dial()` carries its own budget for the same family of
+  failure at connect time (`DEFAULT_DIAL_TIMEOUT_MS`): a host that accepts
+  TCP and never answers otherwise hangs every caller sharing that dial.
 - **Streams** (`pty-handler.ts`, `exec-handler.ts`): a handler is registered
   once on a `StreamRegistry` shared by every connection on a node, so its
   own bookkeeping must key on `(peer, streamId)`, never bare `streamId` —
