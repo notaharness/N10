@@ -19,6 +19,10 @@ export function baseOptions(): BaseLayoutProps {
         url: '/beam',
       },
       {
+        text: 'Orchestra',
+        url: '/orchestra',
+      },
+      {
         text: 'GitHub',
         url: 'https://github.com/notaharness/n10',
         external: true,

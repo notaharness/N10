@@ -565,3 +565,194 @@
 .dark .n10-beam-panel-spectrum {
   opacity: 0.28;
 }
+
+/* The /orchestra stage (src/components/orchestra/orchestra-stage.tsx).
+ * Each stand cycles through its own timeline: the screen brightens as
+ * the player works, then a report leaves for the podium. The podium's
+ * lamp answers each arrival. */
+.orchestra-stage {
+  --orchestra-play: running;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orchestra-stage {
+    --orchestra-play: paused;
+  }
+}
+
+.orchestra-stage[data-playing='true'] {
+  --orchestra-play: running;
+}
+
+.orchestra-stage[data-playing='false'] {
+  --orchestra-play: paused;
+}
+
+.orchestra-podium-shadow,
+.orchestra-stand-shadow {
+  fill: rgb(30 25 10 / 0.12);
+}
+
+.dark .orchestra-podium-shadow,
+.dark .orchestra-stand-shadow {
+  fill: rgb(0 0 0 / 0.5);
+}
+
+.orchestra-podium-body {
+  fill: var(--color-fd-card);
+  stroke: var(--color-fd-border);
+  stroke-width: 1.2;
+}
+
+.orchestra-podium-top {
+  fill: var(--n10-sand);
+}
+
+.orchestra-figure,
+.orchestra-player {
+  fill: var(--color-fd-foreground);
+  stroke: var(--color-fd-foreground);
+  stroke-width: 1.5;
+}
+
+.orchestra-baton {
+  stroke: var(--color-fd-foreground);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transform-origin: 14px -96px;
+  animation: orchestra-baton 2.4s ease-in-out infinite;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-baton {
+  50% {
+    transform: rotate(-28deg);
+  }
+}
+
+.orchestra-stand-desk {
+  fill: var(--color-fd-card);
+  stroke: var(--color-fd-border);
+  stroke-width: 1.2;
+}
+
+.orchestra-stand-post {
+  stroke: var(--color-fd-border);
+  stroke-width: 3;
+}
+
+.orchestra-stand-screen {
+  fill: var(--color-fd-background);
+  stroke: var(--color-fd-border);
+  stroke-width: 1;
+  animation: orchestra-screen var(--orchestra-seconds) linear infinite;
+  animation-delay: var(--orchestra-delay);
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-screen {
+  0% {
+    fill: var(--color-fd-background);
+  }
+  60% {
+    fill: color-mix(
+      in oklab,
+      var(--orchestra-kind) 35%,
+      var(--color-fd-background)
+    );
+  }
+  72% {
+    fill: var(--color-fd-background);
+  }
+}
+
+.orchestra-stand-lines line {
+  stroke: var(--orchestra-kind);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.orchestra-report-path {
+  fill: none;
+  stroke: var(--orchestra-kind);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  opacity: 0.35;
+}
+
+.orchestra-report {
+  fill: var(--orchestra-kind);
+  filter: drop-shadow(0 0 3px var(--orchestra-kind));
+  animation: orchestra-report var(--orchestra-seconds) linear infinite;
+  animation-delay: var(--orchestra-delay);
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-report {
+  0%,
+  70% {
+    opacity: 0;
+  }
+  74%,
+  90% {
+    opacity: 1;
+  }
+  92%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.orchestra-stand-label {
+  fill: var(--color-fd-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.orchestra-stand-sub {
+  fill: var(--color-fd-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.orchestra-remote-beam {
+  fill: none;
+  stroke: #a98fc4;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 6;
+  stroke-linecap: round;
+  animation: orchestra-beam 1.6s linear infinite;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-beam {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+.orchestra-remote-label {
+  fill: #a98fc4;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.orchestra-panel-glow {
+  background: linear-gradient(
+    to right,
+    var(--n10-sage),
+    var(--n10-sand),
+    #d4896a,
+    #7da3c0
+  );
+  filter: blur(70px);
+  opacity: 0.35;
+}
+
+.dark .orchestra-panel-glow {
+  opacity: 0.25;
+}

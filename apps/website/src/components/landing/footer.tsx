@@ -4,6 +4,7 @@ import { Logo } from '@/components/logo';
 const links = [
   { text: 'Docs', href: '/docs' },
   { text: 'Beam', href: '/beam' },
+  { text: 'Orchestra', href: '/orchestra' },
   { text: 'GitHub', href: 'https://github.com/notaharness/n10' },
   { text: 'llms.txt', href: '/llms.txt' },
 ];

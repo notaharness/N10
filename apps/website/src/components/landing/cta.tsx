@@ -19,7 +19,7 @@ export function Cta() {
               Read the docs
             </Link>
             <Link
-              href="https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra"
+              href="/orchestra"
               className={buttonVariants({ variant: 'outline' })}
             >
               Pair with Orchestra
