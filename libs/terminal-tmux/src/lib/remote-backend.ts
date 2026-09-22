@@ -39,6 +39,19 @@ export interface RemotePtyOpenParams {
   env?: Record<string, string>;
   cols: number;
   rows: number;
+  /**
+   * This open is replacing a stream that just died, so whatever
+   * transport carried the last one is suspect. An opener that pools a
+   * connection per machine must check that connection still answers and
+   * replace it if it does not, rather than handing this attach the same
+   * dead socket the previous one was on — three retries down a transport
+   * that can never answer are three retries spent for nothing, and the
+   * manual Reconnect behind them fails exactly the same way.
+   *
+   * Absent (the first attach) means "whatever connection you have is
+   * fine": there is no evidence against it yet.
+   */
+  reconnect?: boolean;
 }
 
 export interface RemotePtyOpener {
@@ -168,6 +181,7 @@ export class RemoteTmuxBackend implements SessionBackend {
         env: sanitizedEnv(this.spec),
         cols: this.width,
         rows: this.height,
+        reconnect: true,
       });
       // `dispose()` clears a *scheduled* retry; it cannot cancel one
       // already awaiting `open()`. Adopting this handle on a backend
