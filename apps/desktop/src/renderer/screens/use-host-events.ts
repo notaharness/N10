@@ -90,4 +90,14 @@ export function useHostEvents(
     });
     return off;
   }, [qc, cwd]);
+
+  // The machines list is pushed whole on every change — write it
+  // straight into the cache rather than invalidating and refetching,
+  // since the host already did the work of computing it.
+  useEffect(() => {
+    const off = window.n10.onMachinesChanged((machines) => {
+      qc.setQueryData(keys.machines, machines);
+    });
+    return off;
+  }, [qc]);
 }

@@ -9,6 +9,8 @@ import type { PlanItem } from '@n10/core/plan';
 import { type Mode } from '../../lib/review/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
+import { ConnectionBanner } from '../terminal/ConnectionBanner.js';
+import type { PrConnectionBanner } from './PrWorkspace.js';
 import { DiffPane } from './diff/DiffPane.js';
 import { type DiffJumpHandle } from './diff/VirtualDiffList.js';
 import { OverviewPane } from './OverviewPane.js';
@@ -34,6 +36,44 @@ function StackedPane({
   );
 }
 
+/** The agent's terminal, plus its connection banner (ux-machines.md
+ *  §6) when the session's connection is reconnecting/failed. Split out
+ *  of `ContentPane` to keep its own complexity down. */
+function AgentPane({
+  sessionName,
+  sessionEpoch,
+  active,
+  connectionBanner,
+  inputDisabled,
+}: {
+  sessionName: string;
+  sessionEpoch: number;
+  active: boolean;
+  connectionBanner?: PrConnectionBanner | null;
+  inputDisabled?: boolean;
+}) {
+  return (
+    <div className="relative flex h-full min-h-0 flex-col">
+      {connectionBanner && (
+        <ConnectionBanner
+          state={connectionBanner.state}
+          machineLabel={connectionBanner.machineLabel}
+          onReconnect={connectionBanner.onReconnect}
+          reconnecting={connectionBanner.reconnecting}
+        />
+      )}
+      <div className="relative min-h-0 flex-1">
+        <SessionTerminal
+          name={sessionName}
+          epoch={sessionEpoch}
+          active={active}
+          disabled={inputDisabled}
+        />
+      </div>
+    </div>
+  );
+}
+
 /**
  * The single content pane, with every mode's view stacked in it. The
  * terminal and the walkthrough stay mounted and are hidden rather than
@@ -49,6 +89,8 @@ export function ContentPane({
   sessionName,
   sessionEpoch,
   active,
+  connectionBanner,
+  inputDisabled,
   files,
   filesByName,
   fileOrder,
@@ -82,6 +124,10 @@ export function ContentPane({
    *  `SessionTerminal`, which re-fits its grid on it. */
   sessionEpoch: number;
   active: boolean;
+  /** Set only while the session's connection is reconnecting/failed
+   *  (ux-machines.md §6). */
+  connectionBanner?: PrConnectionBanner | null;
+  inputDisabled?: boolean;
   files: [string, DiffLine[]][];
   filesByName: Map<string, DiffLine[]>;
   fileOrder: Map<string, number>;
@@ -124,10 +170,12 @@ export function ContentPane({
     <div data-terminal-pane className="relative h-full min-h-0">
       {sessionName && (
         <StackedPane visible={effMode === 'agent'}>
-          <SessionTerminal
-            name={sessionName}
-            epoch={sessionEpoch}
+          <AgentPane
+            sessionName={sessionName}
+            sessionEpoch={sessionEpoch}
             active={active && effMode === 'agent'}
+            connectionBanner={connectionBanner}
+            inputDisabled={inputDisabled}
           />
         </StackedPane>
       )}

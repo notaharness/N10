@@ -3,10 +3,14 @@ import {
   BABYSIT_EVENTS,
   DISCOVERY_EVENTS,
   IPC,
+  LAUNCH_EVENTS,
+  MACHINES_EVENTS,
   MENU_EVENTS,
   SESSION_EVENTS,
   SYNC_EVENTS,
   type N10HostApi,
+  type LaunchStepEvent,
+  type MachinesChangedEvent,
   type MenuCommandEvent,
   type SessionDataEvent,
   type SessionExitEvent,
@@ -74,6 +78,7 @@ const api: N10HostApi = {
   resizeSession: (name, cols, rows) =>
     ipcRenderer.invoke(IPC.resizeSession, name, cols, rows),
   killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
+  reconnectSession: (name) => ipcRenderer.invoke(IPC.reconnectSession, name),
   saveClipboardImage: (data, mimeType) =>
     ipcRenderer.invoke(IPC.saveClipboardImage, data, mimeType),
   launchTerminal: (req) => ipcRenderer.invoke(IPC.launchTerminal, req),
@@ -94,6 +99,11 @@ const api: N10HostApi = {
     const listener = (_e: unknown, payload: SessionExitEvent) => cb(payload);
     ipcRenderer.on(SESSION_EVENTS.exit, listener);
     return () => ipcRenderer.removeListener(SESSION_EVENTS.exit, listener);
+  },
+  onLaunchStep: (cb) => {
+    const listener = (_e: unknown, payload: LaunchStepEvent) => cb(payload);
+    ipcRenderer.on(LAUNCH_EVENTS.step, listener);
+    return () => ipcRenderer.removeListener(LAUNCH_EVENTS.step, listener);
   },
 
   fetchDiffText: (sourceBranch, targetBranch) =>
@@ -136,6 +146,25 @@ const api: N10HostApi = {
     const listener = (_e: unknown, payload: BabysitChangedEvent) => cb(payload);
     ipcRenderer.on(BABYSIT_EVENTS.changed, listener);
     return () => ipcRenderer.removeListener(BABYSIT_EVENTS.changed, listener);
+  },
+
+  listMachines: () => ipcRenderer.invoke(IPC.listMachines),
+  getAcceptingStatus: () => ipcRenderer.invoke(IPC.getAcceptingStatus),
+  setAccepting: (enabled) => ipcRenderer.invoke(IPC.setAccepting, enabled),
+  regeneratePairingUrl: () => ipcRenderer.invoke(IPC.regeneratePairingUrl),
+  previewPairing: (url) => ipcRenderer.invoke(IPC.previewPairing, url),
+  confirmPairing: (url, force) =>
+    ipcRenderer.invoke(IPC.confirmPairing, url, force),
+  renameMachine: (peerId, label) =>
+    ipcRenderer.invoke(IPC.renameMachine, peerId, label),
+  revokeMachine: (peerId) => ipcRenderer.invoke(IPC.revokeMachine, peerId),
+  forgetMachine: (peerId) => ipcRenderer.invoke(IPC.forgetMachine, peerId),
+  dismissInboundMail: (id) => ipcRenderer.invoke(IPC.dismissInboundMail, id),
+  onMachinesChanged: (cb) => {
+    const listener = (_e: unknown, payload: MachinesChangedEvent) =>
+      cb(payload);
+    ipcRenderer.on(MACHINES_EVENTS.changed, listener);
+    return () => ipcRenderer.removeListener(MACHINES_EVENTS.changed, listener);
   },
 };
 

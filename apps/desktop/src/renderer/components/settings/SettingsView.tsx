@@ -9,6 +9,7 @@ import { cn } from '../../lib/utils.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { AppearanceRows } from './AppearanceRows.js';
 import { FieldRow } from './FieldRow.js';
+import { MachineRows } from './MachineRows.js';
 
 /**
  * Settings page: group navigation on the left, one card per group on
@@ -81,6 +82,8 @@ export function SettingsView() {
               <div className="divide-y divide-border rounded-lg border border-border bg-card">
                 {g.key === 'appearance' ? (
                   <AppearanceRows />
+                ) : g.key === 'machines' ? (
+                  <MachineRows />
                 ) : (
                   g.fields.map((f) => (
                     <FieldRow

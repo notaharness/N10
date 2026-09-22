@@ -13,6 +13,7 @@ import { BrowserWindow } from 'electron';
 import {
   BABYSIT_EVENTS,
   DISCOVERY_EVENTS,
+  MACHINES_EVENTS,
   SYNC_EVENTS,
 } from '../host/contract.js';
 import { setRepoOpenedListener } from '../host/services/repo.js';
@@ -27,6 +28,7 @@ import {
 } from '../host/services/discovery.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
 import { setBabysitNotifier } from '../host/services/babysit.js';
+import { setMachinesNotifier } from '../host/services/machines.js';
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -64,4 +66,12 @@ export function installHostEventBridge(): void {
   // A babysitter started an agent (a row and a session) or ended; its
   // status otherwise rides on the sidebar item.
   setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
+
+  // The machines list is pushed whole on every change — a connect,
+  // disconnect, probe result, pairing, rename, revoke or forget — so the
+  // renderer writes it straight into the query cache with no round
+  // trip. Repo-independent, like the discovery/babysit bridges above.
+  setMachinesNotifier((machines) =>
+    broadcast(MACHINES_EVENTS.changed, machines)
+  );
 }

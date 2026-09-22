@@ -1,15 +1,18 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
+  AcceptingStatus,
   N10HostApi,
   RepoInfo,
   SidebarItem,
 } from '../../../host/contract.js';
 import { keys, resetRepoScopedCache } from './query-keys.js';
 import {
+  acceptingStatusQuery,
   loadBranchRemovalSafety,
   loadRepoGate,
   loadSidebarModel,
+  machinesQuery,
 } from './queries.js';
 
 /**
@@ -209,5 +212,46 @@ describe('loadSidebarModel', () => {
         Promise.resolve({ cwd: '/elsewhere', items: [row('theirs')] }),
     });
     await expect(loadSidebarModel('/repo', undefined)).resolves.toEqual([]);
+  });
+});
+
+describe('acceptingStatusQuery', () => {
+  const status = (accepting: boolean): AcceptingStatus => ({
+    accepting,
+    boundAddress: accepting ? '0.0.0.0:4000' : null,
+    pairingUrl: accepting ? 'http://x/pair#token=y' : null,
+    pairingExpiresAt: accepting ? 60_000 : null,
+    connectedCount: 0,
+  });
+
+  it('fetches without waiting to be asked', () => {
+    // Nothing else reads this machine's accepting state — it does not
+    // ride the `onMachinesChanged` push — so a query gated on the
+    // panel being expanded leaves the switch falling back to
+    // `accepting: false`, rendering "off" beside copy promising this
+    // machine cannot be dialled from elsewhere, for a machine that is
+    // in fact accepting connections.
+    expect(acceptingStatusQuery().enabled).toBe(true);
+  });
+
+  it('polls while this machine is accepting, and not otherwise', () => {
+    // The 1s poll belongs to the countdown and the connection count,
+    // which are on screen exactly while the machine is accepting.
+    const interval = acceptingStatusQuery().refetchInterval;
+    expect(interval({ state: { data: status(true) } })).toBe(1_000);
+    expect(interval({ state: { data: status(false) } })).toBe(false);
+    expect(interval({ state: {} })).toBe(false);
+  });
+});
+
+describe('machinesQuery', () => {
+  it('leaves the list to the push rather than polling it often', () => {
+    // `StatusBar` is always mounted and calls `useMachines`
+    // unconditionally, so this interval is every install's baseline
+    // IPC traffic — including the local-only installs D8 hides every
+    // machines surface from, whose one machine cannot change. Real
+    // changes arrive on `onMachinesChanged`; this only catches a push
+    // that never came.
+    expect(machinesQuery().refetchInterval).toBeGreaterThanOrEqual(60_000);
   });
 });

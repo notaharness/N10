@@ -14,6 +14,8 @@
  * split.
  */
 
+import type { MachineView } from './contract-machines.js';
+
 // ── Sessions (agent terminals) ───────────────────────────────────
 
 export interface SessionDataEvent {
@@ -35,6 +37,47 @@ export const SESSION_EVENTS = {
   data: 'n10/session/data',
   exit: 'n10/session/exit',
 } as const;
+
+// ── Remote launch progress (ux-machines.md §5) ────────────────────
+
+/**
+ * A remote create is a worktree add, then a session create + tag
+ * writes + agent start, all over a network — not instant the way a
+ * local launch is. The vocabulary is deliberately closed and small: a
+ * worktree checkout on the far machine, then getting the session (or
+ * plain terminal) running there. Only emitted for a launch whose
+ * request named a machine; a local launch is fast enough that adding a
+ * step display to it would be a regression in feel.
+ */
+export type LaunchStep = 'worktree' | 'start';
+
+export interface LaunchStepEvent {
+  /** Echoes the request's own `launchId`, so two concurrent launches —
+   *  or a retry after a failure — never cross streams. */
+  launchId: string;
+  step: LaunchStep;
+}
+
+export const LAUNCH_EVENTS = {
+  step: 'n10/launch/step',
+} as const;
+
+// ── Machines (beam peers) ─────────────────────────────────────────
+
+/**
+ * The whole machines list, pushed on any change: a peer connects or
+ * disconnects, a probe result lands, a queue drains, a peer is paired,
+ * renamed, revoked or forgotten. The renderer writes this straight into
+ * the query cache (no round trip) — see decisions.md D6/D7 for why the
+ * five reachability states and queue depth have to be pushed rather
+ * than polled: a probe interval measured in tens of seconds would
+ * otherwise make a freshly-connected peer look unreachable for a while.
+ */
+export const MACHINES_EVENTS = {
+  changed: 'n10/machines/changed',
+} as const;
+
+export type MachinesChangedEvent = MachineView[];
 
 // ── Native menus ─────────────────────────────────────────────────
 

@@ -48,11 +48,13 @@ beforeAll(async () => {
 const EVENT_METHODS = [
   'onSessionData',
   'onSessionExit',
+  'onLaunchStep',
   'onMenuCommand',
   'onSyncNotice',
   'onRemoteUpdated',
   'onDiscoveryChanged',
   'onBabysitChanged',
+  'onMachinesChanged',
 ] as const;
 
 describe('preload bridge', () => {

@@ -40,6 +40,15 @@ export type { BabysitStatus, PullRequestLookup, SidebarItem } from '@n10/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
+// Machines: other n10 hosts paired over beam, and this one's own
+// identity and accept-connections state.
+export type * from './contract-machines.js';
+import type {
+  AcceptingStatus,
+  MachineView,
+  PairConfirmResult,
+  PairPreviewResult,
+} from './contract-machines.js';
 // Terminal tabs — sessions bound to a directory rather than a worktree.
 export type * from './contract-terminals.js';
 import type {
@@ -66,6 +75,8 @@ import type {
 } from './contract-reviews.js';
 import type {
   BabysitChangedEvent,
+  LaunchStepEvent,
+  MachinesChangedEvent,
   MenuCommandEvent,
   SessionDataEvent,
   SessionExitEvent,
@@ -112,6 +123,15 @@ export interface SessionLaunchRequest {
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
+  /** A beam peerId to launch on, or omitted for local (decisions.md
+   *  D2). Only meaningful for a fresh worktree session — an existing
+   *  one is already qualified to whatever machine it was created on. */
+  machine?: string;
+  /** Set only alongside `machine`: correlates this launch's
+   *  `onLaunchStep` events, so a second concurrent launch — or a retry
+   *  — never shows the wrong one's progress. Ignored for a local
+   *  launch, which emits no steps. */
+  launchId?: string;
 }
 
 /**
@@ -359,6 +379,11 @@ export interface N10HostApi {
   writeSession(name: string, data: string): Promise<void>;
   resizeSession(name: string, cols: number, rows: number): Promise<void>;
   killSession(name: string): Promise<void>;
+  /** Manual retry after Phase 5's bounded automatic reconnect (3
+   *  attempts) gives up and `connectionState` reads `failed` — the
+   *  pane's `Reconnect` action. A no-op for a session whose backend has
+   *  no manual retry (a local session, or one already connected). */
+  reconnectSession(name: string): Promise<void>;
   /** Write an image pasted into a terminal to a temp file and return
    *  its path, which is how a terminal agent can be given a picture —
    *  a PTY carries text, not bytes. Rejects anything that is not a
@@ -376,6 +401,10 @@ export interface N10HostApi {
   /** Subscribe to PTY output. Returns an unsubscribe function. */
   onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
   onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
+  /** Named launch progress for a remote launch (ux-machines.md §5) —
+   *  filter by the request's own `launchId`. Never fires for a local
+   *  launch. */
+  onLaunchStep(cb: (payload: LaunchStepEvent) => void): () => void;
 
   // ── Diff ─────────────────────────────────────────────────────
   fetchDiffText(sourceBranch: string, targetBranch: string): Promise<string>;
@@ -410,6 +439,37 @@ export interface N10HostApi {
    *  process appeared or went away. Carries no payload — the renderer
    *  refetches. */
   onDiscoveryChanged(cb: () => void): () => void;
+
+  // ── Machines (beam peers) ───────────────────────────────────
+  /** Every machine: the local one first, then paired peers. Repo
+   *  independent — like `listTerminals`, this answers the same
+   *  whatever repository (if any) is open. */
+  listMachines(): Promise<MachineView[]>;
+  getAcceptingStatus(): Promise<AcceptingStatus>;
+  /** Turn accepting on or off. Off does not drop existing connections. */
+  setAccepting(enabled: boolean): Promise<AcceptingStatus>;
+  /** A fresh pairing token/URL — the running one's TTL expired. */
+  regeneratePairingUrl(): Promise<AcceptingStatus>;
+  /** Step 1 of pairing: fetch the descriptor a URL names, without
+   *  spending its token or storing anything. */
+  previewPairing(url: string): Promise<PairPreviewResult>;
+  /** Step 2: spend the token and store the peer. `force` replaces an
+   *  existing peer's key on a `key-mismatch` failure. */
+  confirmPairing(url: string, force?: boolean): Promise<PairConfirmResult>;
+  /** Local-only: the name this machine goes by here. Works for the
+   *  local row (renames this machine's own identity) or a peer. */
+  renameMachine(peerId: string, label: string): Promise<MachineView>;
+  /** Kept, but refused from now on. The other machine's sessions keep
+   *  running. */
+  revokeMachine(peerId: string): Promise<MachineView>;
+  /** Forgets the peer entirely (not just revoked). */
+  forgetMachine(peerId: string): Promise<void>;
+  onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
+  /** Discards a refused inbound report without delivering it — the
+   *  only thing that acks it, removing it from the sender's mailbox
+   *  for good. Reflected back through the next `onMachinesChanged`
+   *  push, not returned here. */
+  dismissInboundMail(id: string): Promise<void>;
 
   // ── Babysitting ──────────────────────────────────────────────
   /** Watch a pull request and brief its agent — CI, unresolved review
@@ -456,6 +516,7 @@ export const IPC = {
   writeSession: 'n10/session/write',
   resizeSession: 'n10/session/resize',
   killSession: 'n10/session/kill',
+  reconnectSession: 'n10/session/reconnect',
   saveClipboardImage: 'n10/session/clipboard-image',
   launchTerminal: 'n10/terminal/launch',
   listTerminals: 'n10/terminal/list',
@@ -487,6 +548,16 @@ export const IPC = {
   showAbout: 'n10/shell/about',
   startBabysit: 'n10/babysit/start',
   stopBabysit: 'n10/babysit/stop',
+  listMachines: 'n10/machines/list',
+  getAcceptingStatus: 'n10/machines/accepting-status',
+  setAccepting: 'n10/machines/set-accepting',
+  regeneratePairingUrl: 'n10/machines/regenerate-pairing-url',
+  previewPairing: 'n10/machines/preview-pairing',
+  confirmPairing: 'n10/machines/confirm-pairing',
+  renameMachine: 'n10/machines/rename',
+  revokeMachine: 'n10/machines/revoke',
+  forgetMachine: 'n10/machines/forget',
+  dismissInboundMail: 'n10/machines/dismiss-inbound-mail',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

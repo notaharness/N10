@@ -2,6 +2,8 @@ import type * as CoreModule from '@n10/core';
 import { worktreeSessionKey } from '@n10/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SessionsModule from './sessions.js';
+import type { MachineView } from '../contract-machines.js';
+import type { TaggedSession } from '@n10/core';
 
 /** Sessions from multiple repositories coexist under qualified keys. */
 
@@ -34,6 +36,23 @@ const state = vi.hoisted(() => ({
   injected: [] as { name: string; prompt: string }[],
   /** Branch names whose checkout core should report as failed. */
   checkoutFails: new Set<string>(),
+  createWorktreeCalls: [] as {
+    branch: string;
+    cwd: string;
+    machine?: { id: string };
+  }[],
+  knownMachines: new Set<string>(),
+  /** Names `reconnectSession` called the fake backend's `reconnect()` for. */
+  reconnectCalls: [] as string[],
+  /** Per-name `pty.connectionState`, read live (not just at entry
+   *  creation) — finding 10's tests flip this after a session exists. */
+  connectionStateByName: new Map<string, string>(),
+  /** Paired machines `listMachines()` answers with, for the plan
+   *  checkout's cross-machine duplicate-agent check. */
+  machines: [] as MachineView[],
+  /** Tagged sessions a remote machine's `list-sessions` would report,
+   *  keyed by peerId. */
+  remoteSessions: new Map<string, TaggedSession[]>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -58,12 +77,25 @@ vi.mock('@n10/terminal-tmux', () => ({
 
 vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
-  createWorktree: (branch: string) => {
+  createWorktree: (branch: string, cwd: string, machine?: { id: string }) => {
+    state.createWorktreeCalls.push({ branch, cwd, machine });
     if (state.createFails.has(branch)) {
       return Promise.reject(new Error(`git refused ${branch}`));
     }
     return Promise.resolve(`${state.cwd}/.claude/worktrees/${branch}`);
   },
+}));
+
+vi.mock('./remote-machines.js', () => ({
+  machineFor: (peerId: string) => {
+    if (!state.knownMachines.has(peerId))
+      throw new Error(`Machine "${peerId}" is not available`);
+    return { id: peerId, executor: {}, ptyOpener: {} };
+  },
+}));
+
+vi.mock('./machines.js', () => ({
+  listMachines: () => Promise.resolve(state.machines),
 }));
 
 vi.mock('@n10/core', async (importOriginal) => {
@@ -72,7 +104,11 @@ vi.mock('@n10/core', async (importOriginal) => {
     worktreeSessionKey: actual.worktreeSessionKey,
     sessionLabel: actual.sessionLabel,
     sessionIdentity: actual.sessionIdentity,
+    LOCAL_MACHINE: actual.LOCAL_MACHINE,
     resolveAgent: actual.resolveAgent,
+    resolveWorktreeSession: actual.resolveWorktreeSession,
+    listOurSessionsWith: (_executor: unknown, machine: string) =>
+      Promise.resolve(state.remoteSessions.get(machine) ?? []),
     getSessionLaunchContext: () => ({
       exists: false,
       running: false,
@@ -156,6 +192,10 @@ vi.mock('@n10/core', async (importOriginal) => {
             onExit: () => undefined,
             write: () => undefined,
             resize: () => undefined,
+            reconnect: () => state.reconnectCalls.push(name),
+            get connectionState() {
+              return state.connectionStateByName.get(name);
+            },
           },
         });
       return state.entries.get(name);
@@ -171,6 +211,7 @@ vi.mock('@n10/core', async (importOriginal) => {
     },
     isSessionAlive: (name: string) => state.alive.has(name),
     hasSessionConnection: (name: string) => state.alive.has(name),
+    hasLiveTmuxSession: (name: string) => state.persisted.has(name),
     getSpawnedAt: () => 1000,
     noteInput: () => undefined,
     noteResize: () => undefined,
@@ -193,6 +234,7 @@ let launchAgent: typeof sessions.launchAgent;
 let checkoutPlan: typeof sessions.checkoutPlan;
 let launchReviewAgent: typeof sessions.launchReviewAgent;
 let listSessions: typeof sessions.listSessions;
+let reconnectSession: typeof sessions.reconnectSession;
 
 beforeEach(async () => {
   state.cwd = '/repo-a';
@@ -209,6 +251,12 @@ beforeEach(async () => {
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
+  state.createWorktreeCalls = [];
+  state.knownMachines = new Set();
+  state.reconnectCalls = [];
+  state.connectionStateByName = new Map();
+  state.machines = [];
+  state.remoteSessions = new Map();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -220,6 +268,7 @@ beforeEach(async () => {
     launchAgent,
     launchReviewAgent,
     listSessions,
+    reconnectSession,
   } = sessions);
   sessions.setSessionBroadcaster(() => undefined);
 });
@@ -227,6 +276,43 @@ beforeEach(async () => {
 /** Emit PTY output for a session, as the relay would. */
 function emit(name: string, data: string) {
   state.onData.get(name)?.(data);
+}
+
+// Shared by `launchAgent` and `checkoutPlan`'s cross-machine
+// duplicate-agent tests (findings 1 and 4 reuse the same guard).
+function connectedMachine(peerId: string, label: string): MachineView {
+  return {
+    peerId,
+    label,
+    isLocal: false,
+    state: 'connected',
+    transport: 'WebSocket',
+    endpoints: ['http://peer'],
+    lastSeenAt: 1000,
+    queueDepth: 0,
+    pairedAt: 1000,
+    revokedAt: null,
+    inboundWaiting: [],
+    inboundRefused: [],
+  };
+}
+
+function remoteWorktreeSession(
+  repo: string,
+  branch: string,
+  machine: string
+): TaggedSession {
+  return {
+    name: `n10-${branch.replace(/\//g, '-')}`,
+    created: 1,
+    paneDead: false,
+    path: '/wherever',
+    spawner: 'kirby',
+    repo,
+    type: 'worktree',
+    branch,
+    machine,
+  };
 }
 
 describe('launchAgent', () => {
@@ -242,6 +328,75 @@ describe('launchAgent', () => {
     );
     expect(state.spawns[0].cwd).toBe('/repo-a/.claude/worktrees/feature/x');
     expect(state.spawns[0].config).toEqual({ marker: 'root-config' });
+  });
+
+  it('creates the worktree on the named machine and keys the session with it (D2, D5)', async () => {
+    state.knownMachines.add('dddddddddddddddd');
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      machine: 'dddddddddddddddd',
+    });
+    expect(state.createWorktreeCalls[0]).toMatchObject({
+      branch: 'feature/x',
+      cwd: '/repo-a',
+      machine: { id: 'dddddddddddddddd' },
+    });
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/x', '/repo-a', 'dddddddddddddddd')
+    );
+  });
+
+  it('fails loudly rather than launching locally when the named machine is not available', async () => {
+    // peer-abc is never added to state.knownMachines.
+    await expect(
+      launchAgent({
+        branch: 'feature/x',
+        intent: 'continue-or-blank',
+        machine: 'dddddddddddddddd',
+      })
+    ).rejects.toThrow(/not available/);
+    expect(state.createWorktreeCalls).toHaveLength(0);
+    expect(state.spawns).toHaveLength(0);
+  });
+
+  it('emits worktree then start steps for a remote launch, keyed to launchId', async () => {
+    state.knownMachines.add('dddddddddddddddd');
+    const broadcasts: unknown[] = [];
+    sessions.setSessionBroadcaster((channel, payload) => {
+      if (channel === 'n10/launch/step') broadcasts.push(payload);
+    });
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      machine: 'dddddddddddddddd',
+      launchId: 'launch-1',
+    });
+    expect(broadcasts).toEqual([
+      { launchId: 'launch-1', step: 'worktree' },
+      { launchId: 'launch-1', step: 'start' },
+    ]);
+  });
+
+  it('emits no steps for a local launch', async () => {
+    const broadcasts: unknown[] = [];
+    sessions.setSessionBroadcaster((channel, payload) => {
+      if (channel === 'n10/launch/step') broadcasts.push(payload);
+    });
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    expect(broadcasts).toEqual([]);
+  });
+
+  it('a local launch never touches the machine resolver, and creates the worktree exactly as today', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    expect(state.createWorktreeCalls[0]).toMatchObject({
+      branch: 'feature/x',
+      cwd: '/repo-a',
+      machine: undefined,
+    });
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/x', '/repo-a')
+    );
   });
 
   it('launches a per-launch agent pick over the stored config', async () => {
@@ -306,6 +461,57 @@ describe('launchAgent', () => {
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     expect(state.spawns).toHaveLength(1);
+  });
+
+  // ── Finding 4 (MEDIUM): the duplicate-agent hole on the main launch ──
+  //
+  // getSessionLaunchContext only ever reads local state, so the dialog
+  // offers "Start new session" with the local default for a branch whose
+  // agent already runs on a paired machine, and this — unlike checkoutPlan
+  // — never asked findRemoteBranchOwner at all. Same guard, reused.
+  it('refuses a local launch, naming the machine, when the branch already runs there', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(
+      launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' })
+    ).rejects.toThrow(/workbox/);
+    expect(state.createWorktreeCalls).toEqual([]);
+    expect(state.spawns).toEqual([]);
+  });
+
+  it('does not refuse an explicit remote launch on a different machine than the owner', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.knownMachines.add('cccccccccccccccc');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(
+      launchAgent({
+        branch: 'feature/x',
+        intent: 'continue-or-blank',
+        machine: 'cccccccccccccccc',
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it('does not refuse a local launch when the local agent is already running (finding 1 reused here)', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    state.spawns = [];
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(
+      launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' })
+    ).resolves.toBeDefined();
   });
 });
 
@@ -376,6 +582,71 @@ describe('reusing an already-attached connection', () => {
       expected: incarnationFor(name()),
     });
     expect(state.spawns).toHaveLength(2);
+  });
+
+  // Finding 9: tmux session labels are `<repo>-<branch>` on both
+  // machines, so a *local* tmux session sharing the exact native name
+  // a remote one's registry key resolves to could otherwise answer for
+  // its incarnation check. `state.tmuxSnapshots` here is keyed exactly
+  // the way a colliding local session would be (the local mocks in
+  // this suite use the same string for a registry key and its native
+  // pty name throughout) — so the test only passes if the guard never
+  // asks local tmux at all for a remote session, not merely that this
+  // particular snapshot happens to disagree.
+  it('does not reuse a remote session by asking local tmux for its incarnation', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    const remoteName = worktreeSessionKey(
+      'reuse-remote',
+      '/repo-a',
+      'bbbbbbbbbbbbbbbb'
+    );
+    await launchAgent({
+      branch: 'reuse-remote',
+      intent: 'continue-or-blank',
+      machine: 'bbbbbbbbbbbbbbbb',
+    });
+    expect(state.spawns).toHaveLength(1);
+    state.tmuxSnapshots.set(remoteName, {
+      incarnation: incarnationFor(remoteName),
+    });
+
+    await launchAgent({
+      branch: 'reuse-remote',
+      intent: 'continue-or-blank',
+      machine: 'bbbbbbbbbbbbbbbb',
+      expected: incarnationFor(remoteName),
+    });
+    expect(state.spawns).toHaveLength(2);
+  });
+});
+
+describe('listSessions: a local session never carries a connectionState (finding 10)', () => {
+  it('omits connectionState for a local session even when the PTY reports one', async () => {
+    const name = worktreeSessionKey('local-conn', '/repo-a');
+    await launchAgent({ branch: 'local-conn', intent: 'continue-or-blank' });
+    // TmuxBackend's own local-client reconnect (a distinct, older
+    // concern than the remote D4 banner) can legitimately report this
+    // — it must still never reach the renderer for a local session.
+    state.connectionStateByName.set(name, 'reconnecting');
+    const summary = listSessions().find((s) => s.name === name);
+    expect(summary?.connectionState).toBeUndefined();
+  });
+
+  it('still reports connectionState for a remote session', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    const name = worktreeSessionKey(
+      'remote-conn',
+      '/repo-a',
+      'bbbbbbbbbbbbbbbb'
+    );
+    await launchAgent({
+      branch: 'remote-conn',
+      intent: 'continue-or-blank',
+      machine: 'bbbbbbbbbbbbbbbb',
+    });
+    state.connectionStateByName.set(name, 'reconnecting');
+    const summary = listSessions().find((s) => s.name === name);
+    expect(summary?.connectionState).toBe('reconnecting');
   });
 });
 
@@ -532,6 +803,19 @@ describe('session buffer', () => {
     const { data } = getSessionBuffer(worktreeSessionKey('big', '/repo-a'));
     expect(data.length).toBeLessThanOrEqual(512 * 1024);
     expect(data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('reconnectSession', () => {
+  it('calls the backend’s manual retry (the pane’s Reconnect action)', async () => {
+    await launchAgent({ branch: 'buf', intent: 'continue-or-blank' });
+    const name = worktreeSessionKey('buf', '/repo-a');
+    reconnectSession(name);
+    expect(state.reconnectCalls).toEqual([name]);
+  });
+
+  it('is a no-op for a session that is not there', () => {
+    expect(() => reconnectSession('nothing')).not.toThrow();
   });
 });
 
@@ -699,6 +983,88 @@ describe('checkoutPlan', () => {
     ]);
     expect([a, b]).toEqual(['spawned', 'spawned']);
     expect(state.spawns).toHaveLength(1);
+  });
+
+  // ── Cross-machine duplicate agent (Phase 8's closed hole) ─────────
+  //
+  // checkoutPlan used to resolve a branch's session by *local* state
+  // only, so a branch whose agent runs on another paired machine found
+  // nothing here and spawned a second, local agent for it — the exact
+  // duplicate-agent shape a whole review round closed on the launch
+  // path (open-session.ts's findSession), just left open on this one.
+
+  it('refuses, naming the machine, when the branch already has an agent running elsewhere', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(checkoutPlan(req())).rejects.toThrow(/workbox/);
+    expect(state.spawns).toEqual([]);
+    expect(state.createWorktreeCalls).toEqual([]);
+  });
+
+  it('does not refuse for a same-named branch in a different repository on that machine', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession(
+        '/some-other-repo',
+        'feature/x',
+        'bbbbbbbbbbbbbbbb'
+      ),
+    ]);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  it('ignores a machine that is paired but not connected — nothing to ask', async () => {
+    state.machines = [
+      {
+        ...connectedMachine('bbbbbbbbbbbbbbbb', 'workbox'),
+        state: 'unreachable',
+      },
+    ];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  it('proceeds locally when no paired machine is running that branch', async () => {
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', []);
+
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+  });
+
+  // ── Finding 1 (HIGH): a live local agent must always be injectable ──
+  //
+  // The cross-machine check above used to run before core's own State A
+  // (a live local agent) was ever considered, so a peer merely *also*
+  // having a session tagged with this repo path and branch — the normal
+  // case once the same branch is launched on a second machine — made
+  // "Send plan to agent" refuse forever, even though the agent it should
+  // inject into was sitting right there in the pane.
+  it('injects into a live local agent even when a peer also has a session for this branch', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    state.spawns = [];
+    state.knownMachines.add('bbbbbbbbbbbbbbbb');
+    state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
+    state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
+      remoteWorktreeSession('/repo-a', 'feature/x', 'bbbbbbbbbbbbbbbb'),
+    ]);
+
+    await expect(checkoutPlan(req('inject'))).resolves.toBe('injected');
+    expect(state.injected).toEqual([
+      {
+        name: worktreeSessionKey('feature/x', '/repo-a'),
+        prompt: req().prompt,
+      },
+    ]);
   });
 });
 

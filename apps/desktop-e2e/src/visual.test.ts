@@ -9,6 +9,7 @@ import {
 } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
+import { settleSettingsScroll, shot } from './setup/visual.js';
 
 /**
  * Screenshot comparisons, kept to the surfaces where they earn their
@@ -35,16 +36,11 @@ import type { FakeGitHub } from './setup/fake-gh.js';
  *
  * A diff here means "look at it", not "something is broken": regenerate
  * with `node run-visual.mjs --update-snapshots` once you have.
+ *
+ * `shot` (zero tolerance, since everything renders in one pinned
+ * container) lives in `setup/visual.ts` so `machines-visual.test.ts`
+ * reuses the exact same options.
  */
-
-// Zero tolerance. Everything renders in one pinned container, so there
-// is no cross-machine antialiasing to absorb — any differing pixel is a
-// real change, and a tolerance would only hide small ones.
-const shot = {
-  animations: 'disabled',
-  caret: 'hide',
-  maxDiffPixels: 0,
-} as const;
 
 test.describe('Visual @visual', () => {
   test.use({ repo: { name: 'n10-visual' } });
@@ -72,6 +68,21 @@ test.describe('Visual @visual', () => {
       page.getByRole('button', { name: 'Appearance' })
     ).toBeVisible();
     await expect(page).toHaveScreenshot('settings.png', shot);
+  });
+
+  test('settings machines panel', async ({ desktop }) => {
+    const { page } = desktop;
+    await clickAppMenuItem(desktop.app, 'Settings…');
+    await expect(tab(page, /Settings/)).toBeVisible();
+    await page.getByRole('button', { name: 'Machines' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Add a machine' })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('switch', { name: 'Accept connections' })
+    ).toBeVisible();
+    await settleSettingsScroll(page, 'machines');
+    await expect(page).toHaveScreenshot('settings-machines-empty.png', shot);
   });
 
   test('remove worktree dialog', async ({ desktop }) => {

@@ -7,6 +7,9 @@
       "path": "../../libs/review-comments"
     },
     {
+      "path": "../../libs/beam"
+    },
+    {
       "path": "./tsconfig.e2e.json"
     }
   ]

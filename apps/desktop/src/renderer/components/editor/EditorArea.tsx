@@ -1,7 +1,16 @@
 import { useDeferredValue, useMemo } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useSessionActivity, useTerminals } from '../../lib/data/queries.js';
+import {
+  useMachines,
+  useSessionActivity,
+  useSessions,
+  useTerminals,
+} from '../../lib/data/queries.js';
+import {
+  hasPeerMachines,
+  resolveMachineLabel,
+} from '../../lib/machines/machine-model.js';
 import {
   itemBranch,
   itemKey,
@@ -66,6 +75,9 @@ export function EditorArea({
   const closer = useCloseTabs(items);
   const activity = useSessionActivity(repo.cwd);
   const terminals = useTerminals();
+  const sessions = useSessions(repo.cwd);
+  const machines = useMachines();
+  const showMachines = hasPeerMachines(machines.data ?? []);
   const terminalRunning = useMemo(
     () =>
       new Set(
@@ -119,6 +131,20 @@ export function EditorArea({
     return undefined;
   };
 
+  // The tab title's machine prefix (ux-machines.md §6) — D8-gated on
+  // whether a peer is registered at all, on top of resolveMachineLabel
+  // already returning null for a local session.
+  const machineLabelFor = (tab: Tab): string | null => {
+    if (!showMachines) return null;
+    const name = sessionNameFor(tab);
+    if (!name) return null;
+    const machineId =
+      tab.kind === 'terminal'
+        ? terminals.data?.find((t) => t.name === name)?.machine
+        : sessions.data?.find((s) => s.name === name)?.machine;
+    return resolveMachineLabel(machineId, machines.data);
+  };
+
   // The tab strip tracks the live state so clicks feel instant; the
   // panes below follow a *deferred* copy, so mounting/unmounting a
   // pane runs as an interruptible background render instead of
@@ -167,6 +193,7 @@ export function EditorArea({
               foreignRepo={foreignRepoOf(tab, repo.cwd)}
               startsGroup={groupStarts[i]}
               running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
+              machineLabel={machineLabelFor(tab)}
             />
           );
         })}

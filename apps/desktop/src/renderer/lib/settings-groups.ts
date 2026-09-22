@@ -3,9 +3,11 @@ import type { SettingsFieldView, SettingsGroup } from '../../host/contract.js';
 /**
  * A settings section. `'appearance'` is desktop-local — it has no
  * host-side fields, because the theme and the window frame are
- * properties of this shell rather than of the repository.
+ * properties of this shell rather than of the repository. `'machines'`
+ * is desktop-local too, in the same sense: it belongs to this app
+ * instance, not to whichever repository happens to be open.
  */
-export type GroupKey = 'appearance' | SettingsGroup;
+export type GroupKey = 'appearance' | 'machines' | SettingsGroup;
 
 export interface SettingsGroupMeta {
   key: GroupKey;
@@ -41,6 +43,11 @@ export const GROUPS: SettingsGroupMeta[] = [
     label: 'Provider',
     blurb: 'Credentials and project for your VCS host.',
   },
+  {
+    key: 'machines',
+    label: 'Machines',
+    blurb: 'Other machines paired with this one, and accepting connections.',
+  },
 ];
 
 export interface SettingsSection extends SettingsGroupMeta {
@@ -68,6 +75,9 @@ export function visibleSettingsGroups(
     byGroup.set(f.group, arr);
   }
   return GROUPS.filter(
-    (g) => g.key === 'appearance' || (byGroup.get(g.key)?.length ?? 0) > 0
+    (g) =>
+      g.key === 'appearance' ||
+      g.key === 'machines' ||
+      (byGroup.get(g.key)?.length ?? 0) > 0
   ).map((g) => ({ ...g, fields: byGroup.get(g.key) ?? [] }));
 }

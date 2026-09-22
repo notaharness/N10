@@ -36,6 +36,14 @@ const state = vi.hoisted(() => ({
   nextId: 0,
   modes: [] as ('open' | 'attach' | undefined)[],
   allocatedName: undefined as string | undefined,
+  /** Per-name overrides for `sessionIdentity`, so a single test can
+   *  make one retained tab's own identity claim a remote machine —
+   *  every other name still answers `null`, matching every other test
+   *  in this suite, which is local throughout (finding 6). */
+  identityByName: new Map<string, { machine: string }>(),
+  /** Per-name `pty.connectionState`, read live — finding 10's test
+   *  flips this after a session exists. */
+  connectionStateByName: new Map<string, string>(),
   // Every path used across this file is a real directory as far as
   // launchTerminal's cwd check is concerned, unless a test says
   // otherwise — the check itself is exercised by its own describe
@@ -105,6 +113,9 @@ vi.mock('@n10/core', () => ({
         onData: (cb: (data: string) => void) => state.onData.set(name, cb),
         onExit: (cb: (code: number) => void) =>
           state.onExit.get(name)?.push(cb),
+        get connectionState() {
+          return state.connectionStateByName.get(name);
+        },
       },
     });
     return { name };
@@ -122,6 +133,15 @@ vi.mock('@n10/core', () => ({
   },
   isSessionAlive: (name: string) => state.alive.has(name),
   getSpawnedAt: () => 1000,
+  LOCAL_MACHINE: 'local',
+  // Every session in this suite is local by default; a real machine
+  // tag would be parsed off the qualified key (D2), which these
+  // fixture names never are — `identityByName` lets one test claim
+  // otherwise for one retained tab.
+  sessionIdentity: (name: string) =>
+    state.identityByName.get(name)
+      ? { kind: 'terminal', id: name, ...state.identityByName.get(name) }
+      : null,
 }));
 
 let terminals: typeof TerminalsModule;
@@ -143,6 +163,8 @@ beforeEach(async () => {
   state.missingDirs = new Set();
   state.tmuxHolds = new Set();
   state.broadcasts = [];
+  state.identityByName = new Map();
+  state.connectionStateByName = new Map();
   vi.resetModules();
   terminals = await import('./terminals.js');
   const relay = await import('./session-relay.js');
@@ -190,6 +212,29 @@ describe('launchTerminal', () => {
     );
     expect(summary.repo).toBeNull();
     expect(state.recents).toEqual([]);
+  });
+
+  it('emits a start step for a remote launch, keyed to launchId', async () => {
+    await terminals.launchTerminal(
+      {
+        kind: 'shell',
+        cwd: '/remote/dir',
+        machine: 'dddddddddddddddd',
+        launchId: 'L1',
+      },
+      HOME
+    );
+    expect(state.broadcasts).toEqual([
+      {
+        channel: 'n10/launch/step',
+        payload: { launchId: 'L1', step: 'start' },
+      },
+    ]);
+  });
+
+  it('emits no steps for a local launch', async () => {
+    await terminals.launchTerminal({ kind: 'shell', cwd: '/x' }, HOME);
+    expect(state.broadcasts).toEqual([]);
   });
 
   it('gives each terminal in the same directory its own session', async () => {
@@ -536,6 +581,56 @@ describe('a retained agent pane', () => {
         HOME
       )
     ).rejects.toThrow(/does not exist/);
+  });
+
+  // Finding 6: a restart request never carries `machine` — TerminalView
+  // sends only {sessionName, kind, cwd} — so gating the directory check
+  // on `req.machine` alone `statSync`s a path on this machine that only
+  // ever existed on the remote one, and rejects a resumable remote
+  // agent as "Terminal directory does not exist". The retained tab's
+  // own identity (D2's key) is what must decide this, not a field the
+  // restart request never had.
+  it('does not statSync a retained tab’s directory when its own identity says it is remote', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/remote/checkout', machine: 'bbbbbbbbbbbbbbbb' },
+      HOME
+    );
+    state.identityByName.set(tab.name, { machine: 'bbbbbbbbbbbbbbbb' });
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    // A path that would fail assertLaunchableCwd if it were ever checked.
+    state.missingDirs.add('/remote/checkout');
+    const restarted = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/remote/checkout', sessionName: tab.name },
+      HOME
+    );
+    expect(restarted.name).toBe(tab.name);
+    expect(restarted.running).toBe(true);
+  });
+
+  // Finding 10: a local session must never carry a connectionState at
+  // all — TmuxBackend's own local-client reconnect (a distinct, older
+  // concern than the remote D4 banner) must not reach the renderer for
+  // a local terminal, even when it legitimately reports one.
+  it('omits connectionState for a local terminal even when the PTY reports one', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
+      HOME
+    );
+    state.connectionStateByName.set(tab.name, 'reconnecting');
+    const [summary] = terminals.listTerminals(HOME);
+    expect(summary?.connectionState).toBeUndefined();
+  });
+
+  it('still reports connectionState for a remote terminal', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/remote/checkout', machine: 'bbbbbbbbbbbbbbbb' },
+      HOME
+    );
+    state.identityByName.set(tab.name, { machine: 'bbbbbbbbbbbbbbbb' });
+    state.connectionStateByName.set(tab.name, 'reconnecting');
+    const [summary] = terminals.listTerminals(HOME);
+    expect(summary?.connectionState).toBe('reconnecting');
   });
 });
 

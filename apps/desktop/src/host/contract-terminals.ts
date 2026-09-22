@@ -19,6 +19,13 @@ export interface TerminalLaunchRequest {
   /** Initial PTY size — the renderer knows the pane geometry. */
   cols?: number;
   rows?: number;
+  /** A beam peerId to launch on, or omitted for local (decisions.md
+   *  D2). Ignored when restarting an existing `sessionName` — that
+   *  terminal's machine is whatever it was created on. */
+  machine?: string;
+  /** Set only alongside `machine`: correlates this launch's
+   *  `onLaunchStep` events. Ignored for a local launch. */
+  launchId?: string;
 }
 
 /**
@@ -44,4 +51,10 @@ export interface TerminalSummary {
   repo: string | null;
   running: boolean;
   spawnedAt: number;
+  /** The machine this terminal runs on — `'local'` or a beam peerId
+   *  (decisions.md D2, D8). */
+  machine: string;
+  /** Local client health, independent of `running` (decisions.md D4).
+   *  Absent for a local terminal. */
+  connectionState?: 'connected' | 'reconnecting' | 'failed';
 }

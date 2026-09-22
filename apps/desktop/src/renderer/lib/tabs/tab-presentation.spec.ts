@@ -217,4 +217,49 @@ describe('tabPresentation', () => {
       face: 'settings',
     });
   });
+
+  // ux-machines.md §6 / D8: the machine, resolved by the caller, comes
+  // first — and is entirely absent for a local tab.
+  describe('machine prefix (D8)', () => {
+    const branchTab = tab({ itemKey: 'branch:feat-undo', branch: 'feat-undo' });
+
+    it('is unprefixed for a local tab — no machineLabel argument at all', () => {
+      expect(tabPresentation(branchTab, undefined)).toEqual({
+        label: 'feat-undo',
+        face: 'branch',
+      });
+    });
+
+    it('is unprefixed when the caller explicitly passes null (local)', () => {
+      expect(tabPresentation(branchTab, undefined, null)).toEqual({
+        label: 'feat-undo',
+        face: 'branch',
+      });
+    });
+
+    it('puts a remote machine label first, separated by " · "', () => {
+      expect(tabPresentation(branchTab, undefined, 'workbox')).toEqual({
+        label: 'workbox · feat-undo',
+        face: 'branch',
+      });
+    });
+
+    it('prefixes a terminal tab’s directory label the same way', () => {
+      expect(
+        tabPresentation(terminal('t', null, '~/x'), undefined, 'workbox')
+      ).toEqual({ label: 'workbox · ~/x', face: 'terminal' });
+    });
+
+    it('never prefixes settings, even if a caller passed a label', () => {
+      const settings: Tab = {
+        id: 'settings',
+        kind: 'settings',
+        preview: false,
+      };
+      expect(tabPresentation(settings, undefined, 'workbox')).toEqual({
+        label: 'Settings',
+        face: 'settings',
+      });
+    });
+  });
 });

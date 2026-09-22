@@ -7,6 +7,11 @@ import {
   useKillSession,
   useOpenInEditor,
 } from '../../lib/data/mutations.js';
+import { useMachines, useSessions } from '../../lib/data/queries.js';
+import {
+  hasPeerMachines,
+  resolveMachineLabel,
+} from '../../lib/machines/machine-model.js';
 import { babysitBadge } from '../../lib/sidebar/babysit-badge.js';
 import {
   itemBranch,
@@ -38,11 +43,15 @@ function RowBadges({
   rebasing,
   conflictCount,
   babysit,
+  machineLabel,
 }: {
   merged: boolean;
   rebasing: boolean;
   conflictCount: number;
   babysit: BabysitStatus | undefined;
+  /** The row's session machine, resolved by the caller — only when
+   *  more than one machine is registered (ux-machines.md §6, D8). */
+  machineLabel: string | null;
 }) {
   const conflicts = `${conflictCount} conflict${
     conflictCount === 1 ? '' : 's'
@@ -50,6 +59,14 @@ function RowBadges({
   const sitter = babysit && babysitBadge(babysit);
   return (
     <>
+      {machineLabel && (
+        <span
+          data-testid="machine-badge"
+          className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground"
+        >
+          {machineLabel}
+        </span>
+      )}
       {sitter && (
         <span
           className={cn(
@@ -85,6 +102,22 @@ function RowBadges({
   );
 }
 
+/** The row's machine badge (ux-machines.md §6) — only when more than
+ *  one machine is registered (D8). Split out to keep SidebarRow's own
+ *  complexity down. */
+function useRowMachineLabel(
+  cwd: string,
+  sessionName: string | undefined
+): string | null {
+  const sessions = useSessions(cwd);
+  const machines = useMachines();
+  if (!hasPeerMachines(machines.data ?? [])) return null;
+  return resolveMachineLabel(
+    sessions.data?.find((s) => s.name === sessionName)?.machine,
+    machines.data
+  );
+}
+
 export function SidebarRow({
   item,
   active,
@@ -104,6 +137,7 @@ export function SidebarRow({
   const hasWorktree = itemHasWorktree(item);
   const branch = itemBranch(item);
   const sessionName = itemSessionName(item);
+  const machineLabel = useRowMachineLabel(repo.cwd, sessionName);
   const pr = item.pr;
   const title = itemTitle(item);
   const rebasing = item.kind === 'session' && item.session.state === 'rebasing';
@@ -211,6 +245,7 @@ export function SidebarRow({
               rebasing={rebasing}
               conflictCount={conflictCount}
               babysit={item.babysit}
+              machineLabel={machineLabel}
             />
           </div>
           {pr && (

@@ -1,10 +1,10 @@
-import { worktreeSessionKey, sessionLabel } from '@n10/core';
+import { worktreeSessionKey } from '@n10/core';
 import {
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
-  stopSession,
+  LOCAL_MACHINE,
   sessionIdentity,
   isSessionAlive,
   hasSessionConnection,
@@ -19,12 +19,20 @@ import { readConfig } from '@n10/vcs-core';
 import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
 import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
+import { machineFor } from './remote-machines.js';
+import { refuseIfRemoteOwns } from './plan-remote-owner.js';
 import {
-  attachRelay,
-  newRelayEntry,
+  adoptSession,
+  foreignSessionError,
+  known,
+  ownSession,
+  ownSessionNames,
+  stopOwnWorktreeSession,
+} from './session-registry.js';
+import {
+  broadcastLaunchStep,
   relayBuffer,
   setSessionBroadcaster,
-  type RelayEntry,
 } from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
@@ -37,6 +45,12 @@ import type {
 } from '../contract.js';
 
 export type { SessionLaunchRequest, SessionSummary };
+export {
+  adoptSpawnedSession,
+  isForeignSession,
+  isOwnSessionAlive,
+  killOwnSession,
+} from './session-registry.js';
 
 /** What launching or reattaching an agent hands back to the caller. */
 interface LaunchResult {
@@ -51,117 +65,9 @@ const DEFAULT_ROWS = 40;
 // the broadcaster through this module.
 export { setSessionBroadcaster };
 
-interface KnownSession extends RelayEntry {
-  branch: string;
-  /** Repository displayed by this relay. Qualified keys let other repos stay live. */
-  repoCwd: string;
-}
-
-/**
- * Record a freshly spawned PTY and start relaying its output.
- *
- * `seq` is deliberately carried over when the name is respawned. A
- * mounted terminal remembers the sequence number its replayed snapshot
- * ended at and ignores anything at or below it, so restarting a session
- * behind a pane that is still on screen — relaunching a finished agent,
- * or restarting one with a plan — would emit chunks numbered from 1
- * again and the pane would drop every one of them. The scrollback
- * *is* reset: the new agent starts with an empty screen.
- */
-function adoptSession(name: string, branch: string, repoCwd: string): void {
-  const prev = known.get(name);
-  const entry: KnownSession =
-    prev && prev.repoCwd === repoCwd
-      ? Object.assign(prev, { branch, chunks: [], bytes: 0 })
-      : { ...newRelayEntry(), branch, repoCwd };
-  known.set(name, entry);
-  attachRelay(name, entry);
-}
-
-/**
- * Adopt a session another service had `@n10/core` spawn — the
- * babysitter's, started to receive an update when no agent was
- * running. Same bookkeeping as a launch from the renderer.
- */
-export function adoptSpawnedSession(name: string, branch: string): void {
-  adoptSession(name, branch, requireRepo());
-}
-
 /** The grid a session starts on when no pane has measured one yet. */
 export function defaultPaneSize(): { cols: number; rows: number } {
   return { cols: DEFAULT_COLS, rows: DEFAULT_ROWS };
-}
-
-// ── Known sessions ───────────────────────────────────────────────
-// The pty-registry has no iteration API (the CLI enumerates via its
-// own React state), so the desktop host tracks the sessions it
-// launched. Entries persist after exit so the final frame stays
-// viewable — matching TUI behavior.
-
-const known = new Map<string, KnownSession>();
-
-/** The session under `name`, but only when it belongs to the repo
- *  that's open now. Entries for other repos stay in the map (their
- *  agents are still running and are restored on switching back) but are
- *  invisible to this repo's UI and operations. */
-function ownSession(name: string): KnownSession | undefined {
-  const entry = known.get(name);
-  if (!entry) return undefined;
-  return entry.repoCwd === requireRepo() ? entry : undefined;
-}
-
-/** Names this host launched for the currently open repo. */
-function ownSessionNames(): string[] {
-  const cwd = requireRepo();
-  return [...known.entries()]
-    .filter(([, e]) => e.repoCwd === cwd)
-    .map(([name]) => name);
-}
-
-/** Whether this host holds a live session for the open repository. */
-export function isOwnSessionAlive(name: string): boolean {
-  return isSessionAlive(name) && ownSession(name) !== undefined;
-}
-
-/**
- * Stop `name`, unless it belongs to another repository — in which case
- * this repo has no agent under that name to stop (the guard in
- * `doLaunchAgent` makes a second one impossible), and killing it would
- * reach into the other repo's.
- *
- * Distinct from `killSession`, which throws: that one answers a user
- * pointing at a specific agent, where silence would be a lie. This one
- * is housekeeping inside a larger operation that is legitimate either
- * way, so it skips rather than aborting it.
- */
-export function killOwnSession(name: string): void {
-  if (known.has(name) && !ownSession(name)) return;
-  stopOwnWorktreeSession(name);
-}
-
-/** Shared by {@link killOwnSession} and {@link killSession}: stop `name`
- *  only when it is a worktree session this repository actually owns. */
-function stopOwnWorktreeSession(name: string): void {
-  const identity = sessionIdentity(name);
-  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
-    stopSession(name);
-  }
-}
-
-/** Whether a session under `name` is another repository's — known to
- *  this host, and not the open repository's. The babysitter asks
- *  before typing into one; the launch paths throw on the same test. */
-export function isForeignSession(name: string): boolean {
-  return known.has(name) && !ownSession(name);
-}
-
-/** Thrown when a session name is live but owned by another repository —
- *  acting on it would reach into that repo's agent. */
-function foreignSessionError(name: string): Error {
-  return new Error(
-    `The session "${sessionLabel(name)}" belongs to another repository. ` +
-      `Open that repository to manage it.`
-  );
 }
 
 // ── Operations ───────────────────────────────────────────────────
@@ -186,7 +92,7 @@ export function launchAgent(
   knownWorktreePath?: string
 ): Promise<LaunchResult> {
   const repo = requireRepo();
-  const name = worktreeSessionKey(req.branch, repo);
+  const name = worktreeSessionKey(req.branch, repo, req.machine);
   const signature = JSON.stringify([
     req.intent,
     req.agentId,
@@ -195,6 +101,7 @@ export function launchAgent(
     req.fresh,
     req.expected,
     knownWorktreePath,
+    req.machine,
   ]);
   const existing = inflightLaunches.get(name);
   if (existing) {
@@ -213,23 +120,55 @@ export function launchAgent(
   return promise;
 }
 
-async function doLaunchAgent(
+/** Named launch progress (ux-machines.md §5) — a no-op unless `req`
+ *  names both a machine and a launchId, which only a remote launch's
+ *  request ever does. Split out to keep `doLaunchAgent` readable. */
+function noteLaunchStep(
   req: SessionLaunchRequest,
-  name: string,
-  knownWorktreePath?: string
-): Promise<{ name: string }> {
-  const repoCwd = requireRepo();
+  step: 'worktree' | 'start'
+): void {
+  if (req.machine && req.launchId) {
+    broadcastLaunchStep({ launchId: req.launchId, step });
+  }
+}
+
+/** Reuse a live connection, or refuse a local launch a paired machine
+ *  already owns — split out to keep `doLaunchAgent` under budget. */
+async function guardLaunch(
+  req: SessionLaunchRequest,
+  name: string
+): Promise<{ name: string } | null> {
   if (canReuseConnection(req, name)) {
     // A stale UI request must not read another repository's relay.
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
   }
-  // Use the actual checkout path reported by discovery, or resolve this exact branch.
+  // An explicit machine is the user's own choice of where to launch —
+  // findSession already resolves or creates on exactly that machine.
+  // Only a local launch risks a second, local agent (finding 4).
+  if (!req.machine) await refuseIfRemoteOwns(requireRepo(), req.branch, name);
+  return null;
+}
+
+async function doLaunchAgent(
+  req: SessionLaunchRequest,
+  name: string,
+  knownWorktreePath?: string
+): Promise<{ name: string }> {
+  const reused = await guardLaunch(req, name);
+  if (reused) return reused;
+  const repoCwd = requireRepo();
+  // Use the actual checkout path reported by discovery, or resolve this
+  // exact branch. machineFor() throws for a machine it cannot build, so
+  // createWorktree runs on the right machine or not at all.
+  const machine = req.machine ? machineFor(req.machine) : undefined;
+  if (!knownWorktreePath) noteLaunchStep(req, 'worktree');
   const wtPath =
-    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd));
+    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd, machine));
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
+  noteLaunchStep(req, 'start');
   // Config comes from the repo root, like the TUI — per-project config
   // is keyed by cwd hash, so reading from the worktree path resolved a
   // different (empty) project bag.
@@ -285,6 +224,8 @@ export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
     systemGuidance: request.systemGuidance,
     cols: req.cols,
     rows: req.rows,
+    machine: req.machine,
+    launchId: req.launchId,
   });
 }
 
@@ -327,6 +268,7 @@ async function doCheckoutPlan(
   name: string,
   repoCwd: string
 ): Promise<PlanCheckoutResult> {
+  await refuseIfRemoteOwns(repoCwd, req.pr.sourceBranch, name);
   const config = readConfig(repoCwd);
   // core reports failures by flashing a status line, which the TUI has
   // and the host does not. Capture the message and reject with it: the
@@ -363,11 +305,22 @@ function clampDim(value: number | undefined, fallback: number): number {
 }
 
 export function listSessions(): SessionSummary[] {
-  return ownSessionNames().map((name) => ({
-    name,
-    running: isSessionAlive(name),
-    spawnedAt: getSpawnedAt(name) ?? 0,
-  }));
+  return ownSessionNames().map((name) => {
+    const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
+    return {
+      name,
+      running: isSessionAlive(name),
+      spawnedAt: getSpawnedAt(name) ?? 0,
+      machine,
+      // A local session must never carry a connectionState at all —
+      // see the matching comment in terminals.ts's summarize()
+      // (finding 10).
+      connectionState:
+        machine === LOCAL_MACHINE
+          ? undefined
+          : getSession(name)?.pty.connectionState,
+    };
+  });
 }
 
 export function writeSession(name: string, data: string): void {
@@ -419,16 +372,36 @@ export function killSession(name: string): void {
   stopOwnWorktreeSession(name);
 }
 
+/** Manual retry after Phase 5's bounded automatic reconnect (3
+ *  attempts) gives up — the pane's `Reconnect` action. Shared by
+ *  worktree sessions and terminal tabs, which both register through
+ *  the same `@n10/core` PTY registry `getSession` reads. A no-op for a
+ *  backend with no manual retry (a local session, or a name that is
+ *  not there any more): rendering the button requires `failed`, which
+ *  only a remote backend ever reports, so this never has to explain
+ *  "nothing happened" to the caller. */
+export function reconnectSession(name: string): void {
+  getSession(name)?.pty.reconnect?.();
+}
+
 // `name` is only a tmux label — tmux-launch.ts's create path reuses one
 // once its holder is killed — so a matching `expected` is verified
 // against a fresh snapshot's native incarnation, not the cached
 // `pty.name`, which cannot tell a live reuse from a same-named
 // replacement underneath it. A mismatch or unreadable snapshot falls
 // through to the full launch path's own guarded compare-and-swap.
+//
+// `tmuxSessionSnapshot` only ever asks *local* tmux — labels are
+// `<repo>-<branch>` on every machine, so a same-named local session
+// could answer for a remote one's incarnation check (finding 9). A
+// remote registry entry has no local snapshot to compare against, so
+// this reads it the same as an unreadable one: no match, fall through.
 function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
   if (req.fresh || !isSessionAlive(name) || !hasSessionConnection(name))
     return false;
   if (!req.expected) return true;
+  const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
+  if (machine !== LOCAL_MACHINE) return false;
   const nativeName = getSession(name)?.pty.name;
   const live = nativeName && tmuxSessionSnapshot(nativeName)?.incarnation;
   return !!live && sameTmuxIncarnation(live, req.expected);
