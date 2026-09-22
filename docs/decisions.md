@@ -70,6 +70,17 @@ PATH and the agent adapter's environment additions; do not copy the entire
 process environment into command-line `-e` flags. `list-sessions -F` output is
 tab-separated; `tmux -u` preserves separators under non-UTF-8 locales.
 
+A dead pane carries less than it looks. `pane_dead` flips when the pane's file
+descriptor closes; `pane_dead_status`, `pane_dead_signal`, `pane_dead_time` and
+the retained `Pane is dead` notice arrive only once tmux has reaped the process,
+which is a separate event. Short of CPU — a two-core CI runner, a loaded
+laptop — tmux can leave the process unreaped indefinitely, so a pane reads dead
+with an empty status and no notice written into it, permanently. The notice is
+therefore not something a capture or a repaint can recover, and a missing exit
+status is reported as code 0. Do not gate exit reporting on the status arriving,
+and do not assert on the notice: an agent's own final output and the
+application's own exited state are the signals that always exist.
+
 Tests isolate HOME and the tmux socket, unset inherited TMUX, and validate that
 the socket belongs to the fixture before cleanup. Kill fixture sessions
 individually; never use `tmux kill-server` or the user's default server.
@@ -305,3 +316,46 @@ chunk is what makes a fast wheel spin scroll by more than one line.
 
 For release preparation and global-install constraints, see
 `.agents/skills/publish-beta/references/packaging.md`.
+
+## Numbered decisions: which register a `D<n>` belongs to
+
+There are **two** numbered decision registers in this repository, they overlap
+in the same numeric range, and the same number means different things in each.
+`D3` is "wrap every `'error'` listener and the pre-auth upgrade handler" in one
+and "one session poller per machine" in the other; `D4` is "an unprobed peer
+reports `unknown`" in one and "connection state and process state come from
+different sources" in the other.
+
+| Register                | Lives in       | Covers                                                                 | Cited from                                                          |
+| ----------------------- | -------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **beam**                | `docs/beam.md` | the wire protocol, auth, streams and the durable mailbox               | `libs/beam`, and the mailbox-facing parts of `apps/beam`            |
+| **machine integration** | this section   | wiring beam into n10: remote tmux, the desktop's node, the UI's gating | `libs/terminal-tmux`, `apps/desktop`, `apps/beam`'s command surface |
+
+**Write the register into every new citation** — `beam.md D5`, `decisions.md
+D5` — rather than a bare `D5`.
+
+Existing citations resolve like this. One that names `decisions.md` is this
+register's, wherever it sits. A bare number inside `libs/beam` is beam's. A
+bare number anywhere else has to be read by subject, and both registers do
+appear outside `libs/beam`: `apps/desktop/src/main/beam-node-probe.ts` opens
+with beam's D6 and cites this register's D8 eleven lines later, and
+`apps/beam` cites beam's D9 (a rejection naming its peer, usually written
+`D9/D11`) alongside this register's D9 (its own command surface).
+
+### The machine integration register
+
+| #   | Decision                                                                                                                                                                                   | Why                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D2  | A session's or terminal's `machine` is `'local'` or a beam `peerId`, and n10's registry keys gain a machine segment whose local value is `local`.                                          | Every id belongs to the machine it lives on, so two machines may hold the same session label or worktree path. A `local` segment leaves existing local behaviour byte for byte unchanged while making a remote entry unable to collide with it.                                                             |
+| D3  | One session poller per machine, not per backend: one `tmux list-sessions -F …` on a ~1s interval, fanned out to every backend subscribed to that machine.                                  | A remote backend polling `tmux display-message` per session the way `TmuxBackend` does locally would cost one network round trip per session per half-second. Fanning one call out costs one round trip regardless of how many remote sessions are open.                                                    |
+| D4  | A remote session's `connectionState` (the `pty` stream's health) and its `processState` (what the D3 poller last reported) are driven by two different sources.                            | A dropped connection must never render as the agent having exited. They are different failures with different remedies, and one source cannot tell them apart.                                                                                                                                              |
+| D5  | Remote tmux runs through a `MachineExecutor` seam — the same argv this code would run locally, handed to something that runs it elsewhere — rather than a second remote implementation.    | The plan is the same plan; only the execution moves. One seam keeps local and remote from drifting, and the interface is declared locally rather than imported because `@n10/core` depends on `libs/terminal-tmux` and not the reverse.                                                                     |
+| D8  | With only the local machine registered, nothing this feature adds renders: no machines surfaces, no machine prefixes, no `machine`/`launchId` fields in requests, and no probe timer runs. | The overwhelming majority of users never pair anything, and they must see no trace of the feature — request payloads and background cost included. The gate is one predicate (`hasPeerMachines`) so every surface answers it the same way.                                                                  |
+| D9  | `apps/beam`'s command surface: which commands exist, and what each prints.                                                                                                                 | **Not recovered.** Cited across nearly every file in `apps/beam/src/commands`, and `status.ts` quotes a sentence from it, but no statement of the reasoning survives. Note that `apps/beam` also cites the _beam_ register's D9 (a rejection naming its peer), usually as `D9/D11` — read each by subject.  |
+| D10 | The desktop's beam node runs inside an Electron utility process, forked lazily on the first machines call.                                                                                 | A beam-served `pty` or `exec` stream spawns a child process on behalf of whatever a remote caller asked for, which cannot be classified as short-lived the way `TmuxBackend`'s node-pty client is. Lazily, so an app that launches with nothing paired never spawns a node at all.                          |
+| D13 | Under the desktop, the desktop itself is the mailbox subscriber, and its subscriber ack means "this pane received the text".                                                               | The desktop already owns the tmux sessions a report has to land in, so it is the only thing in a position to ack honestly. Only a successful injection acks; a refusal never does, and a target with no live connection waits. Built on `subscribeInbound` because that answer arrives a process hop later. |
+| D14 | The relay resolves an envelope's target against this machine's own session registry, never the envelope's say-so, and caps its size and strips terminal control characters first.          | This is the boundary at which a peer's bytes become keystrokes in a local pane. The check belongs at the edge that owns the consequence, rather than resting on an assumption that some layer below already made it.                                                                                        |
+
+`D1`, `D6`, `D7`, `D11`, `D12`, `D15` and `D16` are not used by this register;
+citations of those numbers are beam's. Nothing outside `libs/beam` should cite
+a bare number from the beam register without naming `beam.md`.

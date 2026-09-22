@@ -26,6 +26,7 @@ import {
   startExternalTmuxSession,
 } from '../setup/external.js';
 import { killFixtureSessions } from '../setup/tmux.js';
+import { closeDesktopApp } from '../setup/app-close.js';
 import {
   startSurvivingTerminal,
   type TerminalSeed,
@@ -434,10 +435,14 @@ export const test = base.extend<
           contentType: 'text/plain',
         });
       }
-      try {
-        await app.close();
-      } catch {
-        /* already gone */
+      // Bounded, and never the reason a test fails: see setup/app-close.ts.
+      const closeNote = await closeDesktopApp(app);
+      if (closeNote) {
+        console.warn(`[desktop-e2e] ${closeNote}`);
+        await testInfo.attach('desktop-close', {
+          body: closeNote,
+          contentType: 'text/plain',
+        });
       }
       if (ownsRepo) cleanupTestRepo(repoPath);
     }

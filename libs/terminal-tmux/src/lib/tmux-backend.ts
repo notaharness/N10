@@ -176,6 +176,11 @@ class TmuxBackend implements SessionBackend {
     // `state.running` and the timer untouched; the next tick tries again.
     if (read.status === 'failed') return;
     if (read.status === 'ok' && !read.state.paneDead) return;
+    // `paneDead` alone, deliberately. An exit status arrives only once
+    // tmux has reaped the process, and a machine short of CPU can leave
+    // it unreaped for good — the status then never comes, nor does the
+    // retained "Pane is dead" notice this frame would otherwise carry.
+    // Waiting for either strands a finished agent as running.
     if (read.status === 'ok') this.replayFinalFrame();
     this.state = {
       running: false,
@@ -221,7 +226,16 @@ class TmuxBackend implements SessionBackend {
   resize(cols: number, rows: number): void {
     this.width = cols;
     this.height = rows;
-    this.inner.resize(cols, rows);
+    // Only a client that is still there can be resized. Between a
+    // detach (or a client that was killed) and the re-attach that
+    // replaces it, `inner` is a pty whose file descriptor is closed,
+    // and node-pty answers an ioctl on it by throwing `EBADF` — out of
+    // a call that is made from a window-resize handler, where a throw
+    // becomes an error the user is shown for having changed the size
+    // of their window. The size is recorded above either way, and
+    // {@link attach} makes the next client with it, so nothing is lost
+    // by not asking a departed client to do it.
+    if (this.connection === 'connected') this.inner.resize(cols, rows);
   }
   onData(cb: (data: string) => void): void {
     this.data.add(cb);

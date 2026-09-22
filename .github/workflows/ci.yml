@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - master
+      - 'claude/**'
 
 permissions:
   actions: read
@@ -22,7 +23,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
 
       - run: npm ci
@@ -44,6 +45,11 @@ jobs:
       # and the comparison can hold at zero tolerance.
       - run: npx nx affected -t lint test build typecheck e2e e2e:visual
 
+      # Both desktop e2e targets land under `apps/desktop-e2e/test-output`,
+      # each in its own subdirectory (`playwright/` for the offline suite,
+      # `visual/` for the screenshot suite), so a failing screenshot's
+      # expected/actual/diff PNGs travel with the offline suite's traces
+      # instead of one run erasing the other's.
       - name: Upload Playwright test output on failure
         if: failure()
         uses: actions/upload-artifact@v4
