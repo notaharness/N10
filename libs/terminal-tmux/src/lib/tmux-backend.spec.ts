@@ -166,6 +166,26 @@ describe('explicit tmux launch plans', () => {
     expect(mock.calls[1]).toContain('-- /bin/sh -c agent');
     expect(mock.calls[2]).toBe('attach');
   });
+  // Regression guard for every current (local) user: adding the D5
+  // machine-executor seam must not change one byte of what a local
+  // launch asks tmux for. Pinned as a literal so a change to argv
+  // construction — local or the new remote path sharing its builders —
+  // fails loudly here first.
+  it('produces byte-for-byte identical argv to today for a local launch', async () => {
+    await launch({
+      mode: 'create',
+      label: 'test',
+      tags: {},
+      retainOnExit: false,
+    });
+    expect(mock.calls[0]).toBe('create test -- /bin/sh -c exec sleep 86400');
+    // `-e` flags mirror the runner's own PATH/HOME, so only their
+    // presence (not the runner's actual values) is pinned here.
+    expect(mock.calls[1]).toMatch(
+      /^set-option -t =test: remain-on-exit off ; set-option -t =test: status off ; respawn-pane -k -t =test: -c \/tmp( -e \S+=\S+)* -- \/bin\/sh -c agent$/
+    );
+    expect(mock.calls[2]).toBe('attach');
+  });
   it('awaits isolated preparation and attaches to its returned name without rewriting metadata', async () => {
     let prepared!: (name: string) => void;
     setTmuxSessionPreparer(
@@ -428,6 +448,16 @@ describe('hosted process lifecycle', () => {
     backend.dispose();
     await vi.advanceTimersByTimeAsync(2000);
     expect(mock.spawn).toHaveBeenCalledOnce();
+  });
+  // Finding 10: closing n10 (or switching a tab away) is a deliberate
+  // detach, not a connection failure. Disposing a healthy connection
+  // must not leave connectionState reading 'failed' — that specifically
+  // means "reconnection was attempted and gave up".
+  it('does not report connectionState as failed after a deliberate dispose while healthy', async () => {
+    const backend = await launch();
+    expect(backend.connectionState).toBe('connected');
+    backend.dispose();
+    expect(backend.connectionState).not.toBe('failed');
   });
   it('stops polling and emitting after disposal without killing the process', async () => {
     const backend = await launch();

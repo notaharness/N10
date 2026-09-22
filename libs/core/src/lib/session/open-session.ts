@@ -1,19 +1,22 @@
 import {
+  createRemoteTmuxBackend,
   createTmuxBackend,
   type TmuxSessionIncarnation,
   type TmuxLaunchPlan,
 } from '@n10/terminal-tmux';
-import type { SessionSpec } from '@n10/terminal';
+import type { SessionBackend, SessionSpec } from '@n10/terminal';
 import {
   sessionNames,
   spawnSession,
   type NamedPtyEntry,
 } from '../pty-registry.js';
 import {
+  LOCAL_MACHINE,
   sessionIdentity,
   terminalSessionKey,
   worktreeSessionKey,
 } from '../session-key.js';
+import { pollerFor, requireMachine } from '../machine-registry.js';
 import {
   ORCHESTRA_TAG,
   sessionTags,
@@ -22,6 +25,7 @@ import {
   type TaggedSession,
 } from '../session-identity.js';
 import {
+  listOurSessionsWith,
   resolveSessionByName,
   resolveWorktreeSession,
 } from '../session-resolver.js';
@@ -45,11 +49,31 @@ export interface OpenSessionParams {
   ) => { spec: LaunchSpec; agent?: string; fresh?: boolean };
 }
 
-function findSession(request: SessionRequest): TaggedSession | null {
+/**
+ * The tagged session `request` already names, found on whichever
+ * machine it lives on — local tmux directly, or one `list-sessions`
+ * round trip through the machine's own executor for a remote request
+ * (finding 7). Without this, a remote launch could never find what it
+ * already has: `launchPlan`'s `!existing` branch always won, so
+ * re-opening a repository whose agent is still running on another
+ * machine created a second tmux session and a second agent in the same
+ * checkout — the worst class of bug this feature can cause.
+ */
+async function findSession(
+  request: SessionRequest
+): Promise<TaggedSession | null> {
+  const machineId = request.machine ?? LOCAL_MACHINE;
+  const sessions =
+    machineId === LOCAL_MACHINE
+      ? undefined
+      : await listOurSessionsWith(
+          requireMachine(machineId).executor,
+          machineId
+        );
   return request.type === 'worktree'
-    ? resolveWorktreeSession(request.repo, request.branch)
+    ? resolveWorktreeSession(request.repo, request.branch, sessions)
     : request.target
-    ? resolveSessionByName(request.target)
+    ? resolveSessionByName(request.target, sessions)
     : null;
 }
 
@@ -69,11 +93,12 @@ const opening = new Map<
 
 export function openSession(params: OpenSessionParams): Promise<NamedPtyEntry> {
   const request = params.session;
+  const machineId = request.machine ?? LOCAL_MACHINE;
   const key =
     request.type === 'worktree'
-      ? worktreeSessionKey(request.branch, request.repo)
+      ? worktreeSessionKey(request.branch, request.repo, machineId)
       : request.target
-      ? terminalSessionKey(request.target)
+      ? terminalSessionKey(request.target, machineId)
       : undefined;
   if (!key) return performOpen(params);
   const fresh = !!params.fresh || params.intent === 'fresh';
@@ -100,7 +125,7 @@ export function openSession(params: OpenSessionParams): Promise<NamedPtyEntry> {
 
 async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
   const { session, cols, rows, mode = 'open' } = params;
-  const existing = resolveOpenTarget(params);
+  const existing = await resolveOpenTarget(params);
   const attaching = !params.fresh && shouldAttach(mode, existing);
   const launch = attaching
     ? { spec: { cmd: '', args: [] }, agent: existing!.agent, fresh: false }
@@ -118,21 +143,38 @@ async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
           : {}),
       }
     : launchPlan(session, existing, launch.agent, fresh, params.expected);
-  const backend = await createTmuxBackend(
-    sessionSpec(params, launch.spec, !!fresh),
-    plan
-  );
+  const machineId = session.machine ?? LOCAL_MACHINE;
+  const spec = sessionSpec(params, launch.spec, !!fresh, machineId);
+  const backend: SessionBackend =
+    machineId === LOCAL_MACHINE
+      ? await createTmuxBackend(spec, plan)
+      : await createRemoteBackend(spec, plan, machineId);
   const key =
     session.type === 'worktree'
-      ? worktreeSessionKey(session.branch, session.repo)
-      : terminalSessionKey(backend.name!);
+      ? worktreeSessionKey(session.branch, session.repo, machineId)
+      : terminalSessionKey(backend.name!, machineId);
   return spawnSession(key, backend, cols, rows, launch.agent);
 }
 
-function resolveOpenTarget(params: OpenSessionParams): TaggedSession | null {
+/** The remote twin of `createTmuxBackend`: the same plan, executed on
+ *  `machineId` (decisions.md D5). `requireMachine` throws loudly
+ *  (rather than falling back to a local launch) when the machine is
+ *  not available — "the one thing that must not happen". */
+function createRemoteBackend(
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan,
+  machineId: string
+): Promise<SessionBackend> {
+  const machine = requireMachine(machineId);
+  return createRemoteTmuxBackend(spec, plan, machine, pollerFor(machine));
+}
+
+async function resolveOpenTarget(
+  params: OpenSessionParams
+): Promise<TaggedSession | null> {
   const { session, cwd, mode = 'open' } = params;
   validateCheckout(session, cwd);
-  const existing = mode === 'create' ? null : findSession(session);
+  const existing = mode === 'create' ? null : await findSession(session);
   if (mode === 'attach' && !existing)
     throw new Error('Session ended before it could be attached');
   if (params.expected && (!existing || params.expected.name !== existing.name))
@@ -146,19 +188,35 @@ function resolveOpenTarget(params: OpenSessionParams): TaggedSession | null {
   return existing;
 }
 
+/**
+ * `env` (the complete environment `sessionEnvFlags` and
+ * `remote-backend.ts`'s `sanitizedEnv` both read PATH/HOME and the rest
+ * from) must carry this machine's `process.env` only for a *local*
+ * launch, where it is genuinely the environment the spawned process
+ * inherits. A remote launch has no business shipping this machine's
+ * PATH, HOME or anything else it happens to have set — `docs/beam.md`'s
+ * "the accepting machine expands `~/`" principle for cwd applies here
+ * too: environment describing this machine must not travel, and the
+ * remote server's own environment (which it retains from how it was
+ * started) supplies the rest. `additions` — the launch's own
+ * session-scoped variables plus the fresh-conversation reset flags —
+ * are genuinely portable and always ride along, local or remote
+ * (second-pass finding 6).
+ */
 function sessionSpec(
   params: OpenSessionParams,
   launch: LaunchSpec,
-  fresh: boolean
+  fresh: boolean,
+  machineId: string
 ): SessionSpec {
   const additions = {
     ...launch.env,
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    ...additions,
-  };
+  const env: Record<string, string | undefined> =
+    machineId === LOCAL_MACHINE
+      ? { ...process.env, ...additions }
+      : { ...additions };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return {

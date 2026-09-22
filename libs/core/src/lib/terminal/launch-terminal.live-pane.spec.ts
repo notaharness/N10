@@ -41,6 +41,7 @@ const liveAgentPane: TaggedSession = {
   agent: 'codex',
   created: 1,
   paneDead: false,
+  machine: 'local',
 };
 
 beforeEach(() => {

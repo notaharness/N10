@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { log } from '@n10/logger';
 import { exec, gitOptions } from './exec.js';
+import { isRemoteMachine, runGitOn, type Machine } from './machine.js';
 import { branchToSessionName } from './refs.js';
 import { ownsWorktreePath } from './worktree-resolver.js';
 
@@ -132,37 +133,83 @@ export function recoverRebaseBranch(worktreePath: string): string | null {
  * repository — what every caller polling for the sidebar wants. A
  * caller acting on a repository it was handed passes it, so the answer
  * cannot be about somewhere the desktop `chdir`-ed to meanwhile.
+ *
+ * `machine` is local by default. A remote machine runs the same `git
+ * worktree list --porcelain -z` through its executor instead of a
+ * local fork — but cannot recover a detached-HEAD worktree's rebase
+ * branch (`recoverRebaseBranch` reads the remote's `.git` directory
+ * directly, which only makes sense against this machine's filesystem),
+ * so a remote mid-rebase worktree is reported detached rather than
+ * with its recovered branch. Everything else is unchanged.
  */
-export async function listWorktrees(cwd?: string): Promise<WorktreeInfo[]> {
+export async function listWorktrees(
+  cwd?: string,
+  machine?: Machine
+): Promise<WorktreeInfo[]> {
+  if (isRemoteMachine(machine)) return listWorktreesRemote(cwd, machine);
   try {
     const { stdout } = await exec(
       'git worktree list --porcelain -z',
       gitOptions(cwd)
     );
-    const owned = parseWorktrees(stdout).filter(
-      (w) => !w.bare && ownsWorktreePath(w.path, cwd)
+    return recoverDetachedHeads(
+      parseWorktrees(stdout),
+      cwd,
+      recoverRebaseBranch
     );
-    const recovered: WorktreeInfo[] = [];
-    for (const w of owned) {
-      if (w.branch !== '') {
-        recovered.push(w);
-        continue;
-      }
-      const rebaseBranch = recoverRebaseBranch(w.path);
-      if (rebaseBranch) {
-        recovered.push({ ...w, branch: rebaseBranch, state: 'rebasing' });
-      } else {
-        // True orphan (detached, no rebase in progress — e.g. a
-        // `git worktree add --detach <SHA>`). Keep it with an empty
-        // branch: consumers name it via `worktreeSessionName`, which
-        // falls back to the directory basename, so it renders in the
-        // sidebar and can host a session by its directory name.
-        recovered.push(w);
-      }
-    }
-    return recovered;
   } catch (e) {
     log('error', 'listWorktrees', 'git worktree list failed', e);
     return [];
   }
+}
+
+async function listWorktreesRemote(
+  cwd: string | undefined,
+  machine: Machine
+): Promise<WorktreeInfo[]> {
+  try {
+    const { stdout } = await runGitOn(
+      machine,
+      ['worktree', 'list', '--porcelain', '-z'],
+      cwd
+    );
+    // No local filesystem to recover a detached HEAD's rebase branch
+    // from — see this function's doc comment.
+    return recoverDetachedHeads(parseWorktrees(stdout), cwd, () => null);
+  } catch (e) {
+    log(
+      'error',
+      'listWorktrees',
+      `remote git worktree list failed on ${machine.id}`,
+      e
+    );
+    return [];
+  }
+}
+
+function recoverDetachedHeads(
+  parsed: WorktreeInfo[],
+  cwd: string | undefined,
+  recover: (worktreePath: string) => string | null
+): WorktreeInfo[] {
+  const owned = parsed.filter((w) => !w.bare && ownsWorktreePath(w.path, cwd));
+  const recovered: WorktreeInfo[] = [];
+  for (const w of owned) {
+    if (w.branch !== '') {
+      recovered.push(w);
+      continue;
+    }
+    const rebaseBranch = recover(w.path);
+    if (rebaseBranch) {
+      recovered.push({ ...w, branch: rebaseBranch, state: 'rebasing' });
+    } else {
+      // True orphan (detached, no rebase in progress — e.g. a
+      // `git worktree add --detach <SHA>`). Keep it with an empty
+      // branch: consumers name it via `worktreeSessionName`, which
+      // falls back to the directory basename, so it renders in the
+      // sidebar and can host a session by its directory name.
+      recovered.push(w);
+    }
+  }
+  return recovered;
 }

@@ -73,4 +73,27 @@ describe('terminal requests', () => {
       agent: 'claude',
     });
   });
+
+  it("carries a fresh terminal request's machine into the session request (D2)", async () => {
+    await launchTerminalSession({
+      ...base,
+      kind: 'shell',
+      machine: 'peer-abc',
+    });
+    expect(state.calls[0]).toMatchObject({
+      session: { type: 'terminal', kind: 'shell', machine: 'peer-abc' },
+    });
+  });
+
+  it('a restarted terminal keeps the machine from its own qualified key, ignoring the request field', async () => {
+    await launchTerminalSession({
+      ...base,
+      kind: 'shell',
+      name: terminalSessionKey('saved', 'peer-real'),
+      machine: 'peer-wrong', // must never win over the key's own machine
+    });
+    expect(state.calls[0]).toMatchObject({
+      session: { target: 'saved', machine: 'peer-real' },
+    });
+  });
 });

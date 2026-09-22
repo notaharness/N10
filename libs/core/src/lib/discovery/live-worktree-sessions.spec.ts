@@ -56,6 +56,7 @@ function session(
     repo,
     type: 'worktree',
     branch,
+    machine: 'local',
     ...extra,
   };
 }
@@ -90,6 +91,7 @@ describe('listLiveWorktreeSessions', () => {
         branch: 'feat/a',
         detached: false,
         sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
+        machine: 'local',
       },
       {
         tmuxName: 'beta-feat-b',
@@ -98,8 +100,32 @@ describe('listLiveWorktreeSessions', () => {
         branch: 'feat-b',
         detached: false,
         sessionName: worktreeSessionKey('feat-b', '/repos/beta'),
+        machine: 'local',
       },
     ]);
+  });
+
+  it('stamps the sessionName and machine from the session that was listed, for a local session', () => {
+    state.sessions = [ALPHA];
+    expect(list()).toEqual([
+      expect.objectContaining({
+        machine: 'local',
+        sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
+      }),
+    ]);
+  });
+
+  // Finding 11: `exists`/`readHead` read *this* machine's filesystem,
+  // synchronously — meaningless for a session whose own tag says it
+  // lives elsewhere. A remote session's path happening to also exist
+  // locally (as ALPHA's does here) must not make it eligible: refusing
+  // loudly beats reading the wrong filesystem. Once this can honour
+  // the machine (an async stat/HEAD read through its own executor)
+  // this test should change to expect it included instead.
+  it('excludes a session tagged for a remote machine rather than reading its path locally', () => {
+    state.sessions = [{ ...ALPHA, machine: 'peer-123' }];
+    expect(list()).toEqual([]);
+    expect(headMock).not.toHaveBeenCalled();
   });
 
   // The repository is the tag's to say: the name is not consulted, and

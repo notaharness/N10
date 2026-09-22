@@ -102,6 +102,7 @@ describe('taggedSession', () => {
       repo: '/repos/alpha',
       type: 'worktree',
       branch: 'feat/a',
+      machine: 'local',
     });
   });
 

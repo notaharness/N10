@@ -9,10 +9,23 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { log } from '@n10/logger';
 import { exec, gitOptions } from './exec.js';
+import { isRemoteMachine, runGitOn, type Machine } from './machine.js';
 import { assertShellSafeRef } from './refs.js';
 import { worktreeDir } from './worktree-resolver.js';
 import { listWorktrees, type WorktreeInfo } from './worktree-list.js';
 import { getMainBranch } from './branches.js';
+
+/** Throws for any function this phase left local-only: half-threading
+ *  the machine seam (accepting one that is quietly ignored) is the
+ *  data-loss bug this package's AGENTS.md warns about, so a caller
+ *  that hands one of these a remote machine gets a loud failure
+ *  instead of an operation silently run against the local repository. */
+function refuseRemote(fn: string, machine: Machine | undefined): void {
+  if (isRemoteMachine(machine))
+    throw new Error(
+      `${fn}() does not support a remote machine yet (${machine.id})`
+    );
+}
 
 /**
  * Resolve the actual on-disk path of the worktree that has `branch`
@@ -30,31 +43,43 @@ import { getMainBranch } from './branches.js';
  */
 async function worktreeForBranch(
   branch: string,
-  cwd?: string
+  cwd?: string,
+  machine?: Machine
 ): Promise<WorktreeInfo | null> {
-  const wt = (await listWorktrees(cwd)).find((w) => w.branch === branch);
+  const wt = (await listWorktrees(cwd, machine)).find(
+    (w) => w.branch === branch
+  );
   return wt ?? null;
 }
 
 async function worktreePathForBranch(
   branch: string,
-  cwd?: string
+  cwd?: string,
+  machine?: Machine
 ): Promise<string | null> {
-  return (await worktreeForBranch(branch, cwd))?.path ?? null;
+  return (await worktreeForBranch(branch, cwd, machine))?.path ?? null;
 }
 
 /**
  * Create a git worktree for a branch.
  * If the branch exists, checks it out. If not, creates a new branch from HEAD.
  * Returns the worktree path on success, null on failure.
+ *
+ * `machine` is local by default. A remote machine (D5) runs the same
+ * two-step git sequence through its executor instead of a local fork —
+ * see {@link createWorktreeRemote} for what that path cannot do that
+ * the local one can.
  */
 export async function createWorktree(
   branch: string,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  machine?: Machine
 ): Promise<string | null> {
   assertShellSafeRef(branch);
   const relativeDir = worktreeDir(branch);
   const absoluteDir = resolve(cwd, relativeDir);
+  if (isRemoteMachine(machine))
+    return createWorktreeRemote(branch, cwd, relativeDir, absoluteDir, machine);
 
   const existingPath = await worktreePathForBranch(branch, cwd);
   if (existingPath) return existingPath;
@@ -95,6 +120,52 @@ export async function createWorktree(
 }
 
 /**
+ * The remote twin of {@link createWorktree}'s two-step sequence, run
+ * through `machine`'s executor. There is no filesystem on this side to
+ * `existsSync` check against the remote directory before creating —
+ * that guard is the git call's to make: `git worktree add` refuses an
+ * occupied directory on its own, loudly, which is exactly what should
+ * happen instead of a silent local fallback.
+ */
+async function createWorktreeRemote(
+  branch: string,
+  cwd: string,
+  relativeDir: string,
+  absoluteDir: string,
+  machine: Machine
+): Promise<string | null> {
+  const existingPath = await worktreePathForBranch(branch, cwd, machine);
+  if (existingPath) return existingPath;
+  try {
+    await runGitOn(machine, ['worktree', 'add', relativeDir, branch], cwd);
+    return absoluteDir;
+  } catch (e) {
+    log(
+      'warn',
+      'createWorktree',
+      `remote existing-branch checkout failed for ${branch} on ${machine.id}`,
+      e
+    );
+    try {
+      await runGitOn(
+        machine,
+        ['worktree', 'add', '-b', branch, relativeDir],
+        cwd
+      );
+      return absoluteDir;
+    } catch (e2) {
+      log(
+        'error',
+        'createWorktree',
+        `remote new-branch creation failed for ${branch} on ${machine.id}`,
+        e2
+      );
+      return null;
+    }
+  }
+}
+
+/**
  * Check out a branch that already exists — locally, or on exactly one
  * remote, which git resolves to a tracking branch of the same name —
  * into its worktree, and return the path. Null when git refused,
@@ -110,8 +181,10 @@ export async function createWorktree(
  */
 export async function checkoutWorktree(
   branch: string,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  machine?: Machine
 ): Promise<string | null> {
+  refuseRemote('checkoutWorktree', machine);
   assertShellSafeRef(branch);
   const relativeDir = worktreeDir(branch);
   const absoluteDir = resolve(cwd, relativeDir);
@@ -142,17 +215,47 @@ export async function checkoutWorktree(
 /**
  * Remove a git worktree for a branch.
  * Returns true on success, false on failure.
+ *
+ * `machine` is local by default. A remote machine (D5) removes the
+ * worktree through its executor instead of a local fork — the
+ * function this package's AGENTS.md exists to warn about: running
+ * locally when the caller asked for a remote machine would delete the
+ * wrong work, so this never falls back silently.
  */
 export async function removeWorktree(
   branch: string,
-  { force = false, cwd = process.cwd() }: { force?: boolean; cwd?: string } = {}
+  {
+    force = false,
+    cwd = process.cwd(),
+    machine,
+  }: { force?: boolean; cwd?: string; machine?: Machine } = {}
 ): Promise<boolean> {
   assertShellSafeRef(branch);
   // Prefer the worktree's real path from git; fall back to the
   // resolver-derived dir only if git doesn't know the branch.
-  const target = await worktreePathForBranch(branch, cwd);
+  const target = await worktreePathForBranch(branch, cwd, machine);
   if (!target) return false;
   assertShellSafeRef(target, 'worktree path');
+  const removeArgs = [
+    'worktree',
+    'remove',
+    ...(force ? ['--force'] : []),
+    target,
+  ];
+  if (isRemoteMachine(machine)) {
+    try {
+      await runGitOn(machine, removeArgs, cwd);
+      return true;
+    } catch (e) {
+      log(
+        'error',
+        'removeWorktree',
+        `remote git worktree remove failed for ${branch} on ${machine.id}`,
+        e
+      );
+      return false;
+    }
+  }
   try {
     const forceFlag = force ? ' --force' : '';
     await exec(`git worktree remove${forceFlag} "${target}"`, gitOptions(cwd));
@@ -174,8 +277,10 @@ export async function removeWorktree(
  */
 export async function canRemoveBranch(
   branch: string,
-  confirmedMerged = false
+  confirmedMerged = false,
+  machine?: Machine
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
+  refuseRemote('canRemoveBranch', machine);
   assertShellSafeRef(branch);
   // Protected branch guard
   if (
@@ -260,8 +365,10 @@ async function hasUnpushedCommits(branch: string): Promise<boolean> {
  * If conflicts arise, the rebase is automatically aborted.
  */
 export async function rebaseOntoMaster(
-  worktreePath: string
+  worktreePath: string,
+  machine?: Machine
 ): Promise<'success' | 'conflict' | 'error'> {
+  refuseRemote('rebaseOntoMaster', machine);
   assertShellSafeRef(worktreePath, 'worktree path');
   const main = await getMainBranch();
   try {

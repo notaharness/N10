@@ -35,6 +35,7 @@ import {
 } from './branches.js';
 import { existsSync, readFileSync } from 'node:fs';
 import type * as ExecModule from './exec.js';
+import type { Machine, MachineExecutor } from './machine.js';
 
 vi.mock('./exec.js', async (importOriginal) => ({
   ...(await importOriginal<typeof ExecModule>()),
@@ -1468,5 +1469,199 @@ describe('shell-safety guard for refs', () => {
     await expect(countConflicts('evil`id`')).rejects.toThrow(/unsafe/);
     await expect(canRemoveBranch('evil`id`')).rejects.toThrow(/unsafe/);
     await expect(removeWorktree('evil`id`')).rejects.toThrow(/unsafe/);
+  });
+});
+
+/**
+ * The one thing that must not happen (root AGENTS.md, this package's
+ * own): a function handed a remote machine that quietly acts on the
+ * local repository instead. Every test below asserts the *negative* —
+ * `mockExec` (the local `child_process.exec` path) is never called
+ * once a remote machine is in play — so a regression that reintroduces
+ * a local fallback fails here even if the remote path also happens to
+ * "work" by coincidence.
+ */
+describe('the machine seam (D5): remote-aware functions, and explicit failure for the rest', () => {
+  function fakeMachine(
+    handler: (
+      argv: string[],
+      cwd?: string
+    ) => { stdout: string; stderr: string; code: number }
+  ): { machine: Machine; calls: { argv: string[]; cwd?: string }[] } {
+    const calls: { argv: string[]; cwd?: string }[] = [];
+    const executor: MachineExecutor = {
+      async run(argv, opts) {
+        calls.push({ argv, cwd: opts?.cwd });
+        return handler(argv, opts?.cwd);
+      },
+    };
+    return { machine: { id: 'peer-abc', executor }, calls };
+  }
+
+  describe('createWorktree', () => {
+    it('creates the worktree on the remote machine via its executor, never touching local exec', async () => {
+      const { machine, calls } = fakeMachine((argv) => {
+        if (argv.join(' ') === 'git worktree list --porcelain -z')
+          return { stdout: '', stderr: '', code: 0 };
+        return { stdout: '', stderr: '', code: 0 };
+      });
+      const result = await createWorktree('feature/auth', '/repo', machine);
+      expect(result).toBe('/repo/.claude/worktrees/feature-auth');
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(calls[0]!.argv).toEqual([
+        'git',
+        'worktree',
+        'list',
+        '--porcelain',
+        '-z',
+      ]);
+      expect(calls[0]!.cwd).toBe('/repo');
+      expect(calls[1]!.argv).toEqual([
+        'git',
+        'worktree',
+        'add',
+        '.claude/worktrees/feature-auth',
+        'feature/auth',
+      ]);
+    });
+
+    it('falls back to -b remotely exactly as locally, without ever calling local exec', async () => {
+      let attempts = 0;
+      const { machine } = fakeMachine((argv) => {
+        if (argv.includes('list')) return { stdout: '', stderr: '', code: 0 };
+        if (argv.includes('add') && !argv.includes('-b')) {
+          attempts += 1;
+          return { stdout: '', stderr: 'branch not found', code: 1 };
+        }
+        return { stdout: '', stderr: '', code: 0 };
+      });
+      const result = await createWorktree('new-branch', '/repo', machine);
+      expect(result).toBe('/repo/.claude/worktrees/new-branch');
+      expect(attempts).toBe(1);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it('reuses an existing remote worktree without attempting a second create', async () => {
+      const { machine, calls } = fakeMachine((argv) => {
+        if (argv.join(' ') === 'git worktree list --porcelain -z')
+          return {
+            stdout: `worktree /repo/.claude/worktrees/feature-auth\0branch refs/heads/feature/auth\0\0`,
+            stderr: '',
+            code: 0,
+          };
+        return { stdout: '', stderr: '', code: 0 };
+      });
+      const result = await createWorktree('feature/auth', '/repo', machine);
+      expect(result).toBe('/repo/.claude/worktrees/feature-auth');
+      expect(calls).toHaveLength(1);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeWorktree', () => {
+    it('removes the worktree on the remote machine, never touching local exec', async () => {
+      const { machine, calls } = fakeMachine((argv) => {
+        if (argv.join(' ') === 'git worktree list --porcelain -z')
+          return {
+            stdout: `worktree /repo/.claude/worktrees/feature-auth\0branch refs/heads/feature/auth\0\0`,
+            stderr: '',
+            code: 0,
+          };
+        return { stdout: '', stderr: '', code: 0 };
+      });
+      const ok = await removeWorktree('feature/auth', {
+        cwd: '/repo',
+        machine,
+      });
+      expect(ok).toBe(true);
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(calls[1]!.argv).toEqual([
+        'git',
+        'worktree',
+        'remove',
+        '/repo/.claude/worktrees/feature-auth',
+      ]);
+    });
+
+    it('reports failure rather than silently succeeding when the remote git call fails', async () => {
+      const { machine } = fakeMachine((argv) => {
+        if (argv.join(' ') === 'git worktree list --porcelain -z')
+          return {
+            stdout: `worktree /repo/.claude/worktrees/feature-auth\0branch refs/heads/feature/auth\0\0`,
+            stderr: '',
+            code: 0,
+          };
+        return { stdout: '', stderr: 'worktree is dirty', code: 1 };
+      });
+      const ok = await removeWorktree('feature/auth', {
+        cwd: '/repo',
+        machine,
+      });
+      expect(ok).toBe(false);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it('answers false, without touching local exec, when the branch has no worktree on that machine', async () => {
+      const { machine } = fakeMachine(() => ({
+        stdout: '',
+        stderr: '',
+        code: 0,
+      }));
+      const ok = await removeWorktree('feature/auth', {
+        cwd: '/repo',
+        machine,
+      });
+      expect(ok).toBe(false);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the no-silent-fallback rule for functions this phase left local-only', () => {
+    it('checkoutWorktree throws rather than checking out locally for a remote machine', async () => {
+      const { machine } = fakeMachine(() => ({
+        stdout: '',
+        stderr: '',
+        code: 0,
+      }));
+      await expect(
+        checkoutWorktree('feature/auth', '/repo', machine)
+      ).rejects.toThrow(/does not support a remote machine/);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it('canRemoveBranch throws rather than judging local state for a remote machine', async () => {
+      const { machine } = fakeMachine(() => ({
+        stdout: '',
+        stderr: '',
+        code: 0,
+      }));
+      await expect(
+        canRemoveBranch('feature/auth', false, machine)
+      ).rejects.toThrow(/does not support a remote machine/);
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it('rebaseOntoMaster throws rather than rebasing the local checkout for a remote machine', async () => {
+      const { machine } = fakeMachine(() => ({
+        stdout: '',
+        stderr: '',
+        code: 0,
+      }));
+      await expect(rebaseOntoMaster('/repo/wt', machine)).rejects.toThrow(
+        /does not support a remote machine/
+      );
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it('a "local" machine id is treated as local, not routed through the executor', async () => {
+      const executor: MachineExecutor = {
+        run: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+      };
+      mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
+      mockExec.mockResolvedValueOnce(resolve());
+      await createWorktree('feature/auth', '/repo', { id: 'local', executor });
+      expect(executor.run).not.toHaveBeenCalled();
+      expect(mockExec).toHaveBeenCalled();
+    });
   });
 });

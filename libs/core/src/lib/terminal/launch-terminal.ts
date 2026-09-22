@@ -17,21 +17,38 @@ export interface TerminalLaunchParams {
   cols: number;
   rows: number;
   config: AppConfig;
+  /** A beam peerId, or omitted for local (decisions.md D2). Only
+   *  meaningful for a fresh terminal — `params.name`, when qualified
+   *  (D2's key), already carries whatever machine it was created on. */
+  machine?: string;
+}
+
+/** A restart's key (when qualified) always wins over the request's own
+ *  `machine`: a retained terminal already lives on whatever machine it
+ *  was created on. Split out to keep `launchTerminalSession`'s own
+ *  complexity within budget. */
+function terminalIdentity(params: TerminalLaunchParams) {
+  const key = params.name ? sessionIdentity(params.name) : null;
+  if (params.name && key?.kind !== 'terminal')
+    throw new Error('Expected a qualified terminal key');
+  return {
+    target: key?.kind === 'terminal' ? key.id : undefined,
+    machine: key?.kind === 'terminal' ? key.machine : params.machine,
+  };
 }
 
 /** Terminal intent is explicit in core; no tags are used as internal flags. */
 export async function launchTerminalSession(
   params: TerminalLaunchParams
 ): Promise<NamedPtyEntry> {
-  const key = params.name ? sessionIdentity(params.name) : null;
-  if (params.name && key?.kind !== 'terminal')
-    throw new Error('Expected a qualified terminal key');
+  const identity = terminalIdentity(params);
   return openSession({
     session: {
       type: 'terminal',
       kind: params.kind,
       repo: getRepoRoot() ?? params.cwd,
-      target: key?.kind === 'terminal' ? key.id : undefined,
+      target: identity.target,
+      machine: identity.machine,
     },
     mode: params.name ? params.mode : 'create',
     fresh: params.kind === 'agent' && params.fresh,

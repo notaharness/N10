@@ -1,4 +1,8 @@
-import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
+import {
+  worktreeSessionKey,
+  terminalSessionKey,
+  LOCAL_MACHINE,
+} from './session-key.js';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import type { TmuxSessionInfo } from '@n10/terminal-tmux';
@@ -79,6 +83,27 @@ export interface TaggedSession {
   agent?: string;
   orchestrator?: string;
   lastReport?: string;
+  /** The machine this session lives on — a beam `peerId`, or `'local'`.
+   *  Set by whoever listed the session: the local resolver always says
+   *  `'local'`; a remote poller (D3) stamps its peerId. Tags themselves
+   *  carry no machine — `@orchestra-repo` holds the path as it exists
+   *  on this machine, whichever one that is. */
+  machine: string;
+}
+
+/** Orchestra's own tags, carried along only when set. Split out of
+ *  {@link taggedSession} to keep its own complexity within budget. */
+function orchestraTagFields(
+  tags: Record<string, string>
+): Pick<TaggedSession, 'agent' | 'orchestrator' | 'lastReport'> {
+  const agent = tags[ORCHESTRA_TAG.agent];
+  const orchestrator = tags[ORCHESTRA_TAG.orchestrator];
+  const lastReport = tags[ORCHESTRA_TAG.lastReport];
+  return {
+    ...(agent ? { agent } : {}),
+    ...(orchestrator ? { orchestrator } : {}),
+    ...(lastReport ? { lastReport } : {}),
+  };
 }
 
 /**
@@ -87,16 +112,16 @@ export interface TaggedSession {
  * of the known values; worktrees also require a nonempty repo tag.
  * Nothing about the name is consulted.
  */
-export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
+export function taggedSession(
+  info: TmuxSessionInfo,
+  machine: string = LOCAL_MACHINE
+): TaggedSession | null {
   const tags = info.options ?? {};
   const spawner = tags[ORCHESTRA_TAG.spawner];
   const type = tags[ORCHESTRA_TAG.sessionType];
   const repo = tags[ORCHESTRA_TAG.repo];
   if (!spawner || !type || !SESSION_TYPES.has(type)) return null;
   if (type === 'worktree' && !repo) return null;
-  const agent = tags[ORCHESTRA_TAG.agent];
-  const orchestrator = tags[ORCHESTRA_TAG.orchestrator];
-  const lastReport = tags[ORCHESTRA_TAG.lastReport];
   return {
     name: info.name,
     created: info.created,
@@ -107,9 +132,8 @@ export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
     repo: repo ?? '',
     type: type as SessionType,
     branch: tags[ORCHESTRA_TAG.branch] ?? '',
-    ...(agent ? { agent } : {}),
-    ...(orchestrator ? { orchestrator } : {}),
-    ...(lastReport ? { lastReport } : {}),
+    machine,
+    ...orchestraTagFields(tags),
   };
 }
 
@@ -142,8 +166,8 @@ export function isTerminalSession(
  */
 export function registryNameOf(session: TaggedSession): string {
   return session.type === 'worktree'
-    ? worktreeSessionKey(session.branch, session.repo)
-    : terminalSessionKey(session.name);
+    ? worktreeSessionKey(session.branch, session.repo, session.machine)
+    : terminalSessionKey(session.name, session.machine);
 }
 
 /** The tags n10 writes on a session it creates. */

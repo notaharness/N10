@@ -1,4 +1,9 @@
-import { tmuxListSessionsDetailed } from '@n10/terminal-tmux';
+import {
+  tmuxListSessionsDetailed,
+  tmuxListSessionsDetailedWith,
+  type MachineExecutor,
+  type TmuxSessionInfo,
+} from '@n10/terminal-tmux';
 import {
   isWorktreeSessionFor,
   LISTED_TAGS,
@@ -16,21 +21,75 @@ import {
  * one place. Never throws: no server, or no tmux, is an empty listing.
  */
 
-/** Every session on the server that carries our tags, in tmux's
- *  listing order. */
-export function listOurSessions(): TaggedSession[] {
-  let listed;
-  try {
-    listed = tmuxListSessionsDetailed(LISTED_TAGS);
-  } catch {
-    return [];
-  }
+function sessionsFromListing(
+  listed: TmuxSessionInfo[],
+  machine?: string
+): TaggedSession[] {
   const ours: TaggedSession[] = [];
   for (const info of listed) {
-    const session = taggedSession(info);
+    const session = taggedSession(info, machine);
     if (session) ours.push(session);
   }
   return ours;
+}
+
+/** Every session on the server that carries our tags, in tmux's
+ *  listing order. */
+export function listOurSessions(): TaggedSession[] {
+  try {
+    return sessionsFromListing(tmuxListSessionsDetailed(LISTED_TAGS));
+  } catch {
+    return [];
+  }
+}
+
+/** Bounds one `listOurSessionsWith` round trip: `RemoteOps.execOn`
+ *  resolves only on stream close and a beam dial has no timeout of its
+ *  own, so a half-open connection would otherwise hang the call
+ *  forever — and with it `openSession`'s `opening` map, which never
+ *  clears an in-flight entry, wedging that key behind "Another launch
+ *  is in progress" permanently (second-pass finding 1). */
+export const LIST_SESSIONS_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    timer.unref?.();
+    promise.finally(() => clearTimeout(timer)).then(resolve, reject);
+  });
+}
+
+/**
+ * The remote twin, one round trip through `executor` — the model
+ * `open-session.ts`'s `findSession` follows to discover an existing
+ * remote worktree or terminal before creating a second one (finding
+ * 7). Unlike the local resolver, a failed round trip is *not* an empty
+ * listing: it propagates, bounded by {@link LIST_SESSIONS_TIMEOUT_MS}.
+ * Discovering nothing and failing to ask a machine are different
+ * facts — a caller that cannot tell them apart takes the `create`
+ * branch on a transient control-plane fault exactly as if the machine
+ * had answered "no session here", reopening the duplicate-agent bug
+ * `b12a3f3` closed one layer down (second-pass finding 1). `machine`
+ * stamps every returned session so `TaggedSession.machine` says where
+ * it was actually found, rather than defaulting to `'local'`
+ * (second-pass finding 2).
+ */
+export async function listOurSessionsWith(
+  executor: MachineExecutor,
+  machine: string
+): Promise<TaggedSession[]> {
+  return sessionsFromListing(
+    await withTimeout(
+      tmuxListSessionsDetailedWith(executor, LISTED_TAGS),
+      LIST_SESSIONS_TIMEOUT_MS,
+      `list-sessions on ${machine} timed out after ${LIST_SESSIONS_TIMEOUT_MS}ms`
+    ),
+    machine
+  );
 }
 
 /** The oldest of several sessions, by tmux's creation time. More than

@@ -21,7 +21,7 @@ function parsePaneState(fields: string[]): TmuxPaneState {
 }
 
 /** Shared by the sync and async pane-state readers. */
-function paneStateArgs(name: string): string[] {
+export function paneStateArgs(name: string): string[] {
   return [
     '-u',
     'display-message',
@@ -33,7 +33,9 @@ function paneStateArgs(name: string): string[] {
 }
 
 /** Shared with the async poller: both read the same fixed columns. */
-function parsePaneStateResult(result: TmuxRunResult): TmuxPaneState | null {
+export function parsePaneStateResult(
+  result: TmuxRunResult
+): TmuxPaneState | null {
   const fields = result.stdout.trimEnd().split('\t');
   // display-message may succeed with empty output for a vanished target.
   // Require an actual pane identity and explicit native liveness state.
@@ -151,16 +153,17 @@ export function sessionColumns(options: readonly string[]): string[] {
  *  option value is the caller's to keep tab-free, and the path may
  *  contain anything — so the first columns are split off one tab at a
  *  time and whatever remains, tabs included, is the path. */
+/** Pure argv builder, shared with the remote executor path (D3's
+ *  per-machine poller): a machine change must not change what is
+ *  asked of tmux. */
+export function listSessionsArgv(options: readonly string[] = []): string[] {
+  return [UTF8, 'list-sessions', '-F', sessionColumns(options).join('\t')];
+}
+
 export function tmuxListSessionsDetailed(
   options: readonly string[] = []
 ): TmuxSessionInfo[] {
-  const columns = sessionColumns(options);
-  const { stdout, exitCode } = runTmux([
-    UTF8,
-    'list-sessions',
-    '-F',
-    columns.join('\t'),
-  ]);
+  const { stdout, exitCode } = runTmux(listSessionsArgv(options));
   if (exitCode !== 0) return [];
   return stdout
     .split('\n')

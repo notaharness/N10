@@ -14,9 +14,15 @@ The reasoning behind each rule is in `docs/decisions.md`.
   create/attach/restart. Build agent argv only for create or restart. The tmux
   package receives opaque launch plans; it must not infer n10 identities.
 - **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
-  branch; terminal keys encode the allocated tmux target. Labels never address
-  entries. The registry owns connections, rendering and activity, not launch
-  policy. `dispose()` detaches; `kill()` terminates; shutdown must dispose.
+  branch; terminal keys encode the allocated tmux target. Both gain an
+  _optional trailing_ machine segment (a beam `peerId`), omitted entirely when
+  local, so every existing call site keeps producing byte-identical keys.
+  `sessionIdentity` switches on kind (`value[0]`) first, then reads
+  positionally with the optional machine — never on tuple length and kind
+  together, since a remote terminal key and a local worktree key are both
+  length-3 tuples. Labels never address entries. The registry owns
+  connections, rendering and activity, not launch policy. `dispose()`
+  detaches; `kill()` terminates; shutdown must dispose.
 - **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
   labels, `@orchestra-*` tags are identity. Attach and continuation preserve
   creator/reporting tags. Fresh conversations preserve creator/repo/branch but
@@ -27,7 +33,16 @@ The reasoning behind each rule is in `docs/decisions.md`.
 - **Agent restart** (`session/launch-session.ts`): continuation selects the
   recorded agent and its explicit resume adapter. Fresh launch selects the
   user's choice or configured default. Missing metadata must not silently
-  redirect a continuation to a different agent.
+  redirect a continuation to a different agent. `deliverToRunningSession`
+  refuses (returns `false`, does not throw) an exited session or one whose
+  `connectionState` is set and not `connected`.
+- **Relay targeting** (`session/relay-target.ts`, decisions.md D14): a mailbox
+  envelope's target is data a peer sent and is never trusted directly.
+  `resolveLocalRelayTarget` resolves it only against this machine's own PTY
+  registry, matched by the tmux name the registry itself allocated — never a
+  foreign tmux session, a shell terminal, or a session on another machine.
+  Extending what a relay can deliver into means extending this allowlist, not
+  trusting more of the envelope.
 - **Discovery** (`discovery/`): poll and use pure `diffScans`; attach through the
   shared launcher, rechecking connection state between awaits. Retired names
   are suppressed. Observe worktree processes, orphaned sessions and standalone
