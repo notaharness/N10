@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events';
 import type { IPty } from 'node-pty';
 import { describe, expect, it } from 'vitest';
 import {
+  decodePtyExit,
+  encodePtyExit,
   createPtyStreamHandler,
   guardPtyErrors,
   isPtyExitError,
@@ -308,5 +310,56 @@ describe('createPtyStreamHandler', () => {
     expect(isPtyExitError(new Error('read EIO'))).toBe(true);
     expect(isPtyExitError(new Error('errno 5'))).toBe(true);
     expect(isPtyExitError(new Error('EACCES: permission denied'))).toBe(false);
+  });
+});
+
+describe('a pty stream close reason', () => {
+  it('round-trips an exit through encode and decode', () => {
+    expect(decodePtyExit(encodePtyExit({ exitCode: 0 }))).toEqual({
+      exitCode: 0,
+    });
+    expect(decodePtyExit(encodePtyExit({ exitCode: 3 }))).toEqual({
+      exitCode: 3,
+    });
+    expect(decodePtyExit(encodePtyExit({ exitCode: 0, signal: 9 }))).toEqual({
+      exitCode: 0,
+      signal: 9,
+    });
+  });
+
+  it('reads the reason the handler actually writes, not one this test made up', () => {
+    // The literal the handler produced before `encodePtyExit` existed. If
+    // the two ever drift, a peer running an older build stops being
+    // understood, and the caller starts reading its clean exits as drops.
+    expect(decodePtyExit('process exited (code 0)')).toEqual({ exitCode: 0 });
+    expect(decodePtyExit('process exited (code 0, signal 15)')).toEqual({
+      exitCode: 0,
+      signal: 15,
+    });
+  });
+
+  it('refuses every close reason that is not the process ending', () => {
+    // Each of these is a real reason some layer writes: the muxer on a
+    // transport that ended, on one that ended mid-frame, and on a handler
+    // that threw; the connection's own local close; the open gate; and
+    // the pty handler's own non-exit failures.
+    for (const reason of [
+      undefined,
+      '',
+      'connection closed',
+      'connection closed: truncated frame',
+      'closed locally',
+      'stream handler failed: boom',
+      'scope-not-granted:pty',
+      'too many live pty sessions',
+      'pty error: spawn ENOENT',
+      'process exited',
+      'process exited (code )',
+      'process exited (code abc)',
+      'a process exited (code 0)',
+      'process exited (code 0) and then some',
+    ]) {
+      expect(decodePtyExit(reason)).toBeNull();
+    }
   });
 });

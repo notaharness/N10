@@ -669,8 +669,14 @@ describe('Mailbox: crash windows', () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(b.received).toHaveLength(0);
     expect(new InboundStore(b.dir).list(a.identity.peerId)).toHaveLength(0);
-    // Unacked, so it stays where the sender can still account for it.
-    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(1);
+    // The sender still accounts for it, but not by leaving it at the head
+    // of the queue: that refusal is the same for every resend, so holding
+    // the envelope there would stall every later message to this peer
+    // forever. It moves to quarantine, where it stays discoverable.
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
+    expect(
+      a.mailbox.quarantined(b.identity.peerId).map((q) => q.fileName)
+    ).toEqual(['0000000001.json']);
   });
 
   it('quarantine is durable and discoverable across a restart, even with no live onQuarantine listener', async () => {
@@ -967,5 +973,254 @@ describe('Mailbox: node-start flush trigger', () => {
       (n) => n === 1
     );
     expect(b.received[0]?.payload).toBe('pre-existing');
+  });
+});
+
+describe('Mailbox: a refusal the receiver will never take back', () => {
+  /** Over the receiver's 256 KiB payload cap, but well under the 1 MiB
+   * frame limit — so this node can put it on the wire perfectly well and
+   * the *receiver* is the side that refuses it. Plain ASCII, so the
+   * serialized form is barely larger than the payload. Written straight to
+   * disk, as a node running an older build with a weaker cap would have
+   * left it: `send()` refuses this shape today. */
+  function queueOverCap(a: TestNode, b: TestNode, seq: number): void {
+    new OutboundQueue(a.dir).enqueue(b.identity.peerId, {
+      id: `over-cap-${seq}`,
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq,
+      topic: 't',
+      payload: 'x'.repeat(300 * 1024),
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+  }
+
+  it('an envelope refused as over the cap is quarantined, and the messages behind it are not stuck', async () => {
+    const quarantined: QuarantinedFile[] = [];
+    const a = makeNode('a', { onQuarantine: (info) => quarantined.push(info) });
+    const b = makeNode('b');
+    pairNodes(a, b);
+
+    queueOverCap(a, b, 1);
+    new OutboundQueue(a.dir).enqueue(b.identity.peerId, {
+      id: 'behind-it',
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq: 2,
+      topic: 't',
+      payload: 'behind-it',
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+
+    connectNodes(a, b);
+
+    // The positive control, and the thing that would still be false if the
+    // queue simply never drained: the message *behind* the refused one has
+    // to arrive. Nothing else in this test can produce it.
+    await waitFor(
+      () => b.received.map((e) => e.payload),
+      (payloads) => payloads.includes('behind-it')
+    );
+    await waitFor(
+      () => a.mailbox.queue(b.identity.peerId).length,
+      (n) => n === 0
+    );
+
+    // And the loss is loud: the refused envelope is accounted for by peer
+    // and by the exact seq, durably and through the callback, exactly as a
+    // corrupt queue file is.
+    const listed = a.mailbox.quarantined(b.identity.peerId);
+    expect(listed.map((q) => q.fileName)).toEqual(['0000000001.json']);
+    expect(listed[0]?.reason).toContain('payload over the cap');
+    expect(quarantined.map((q) => q.fileName)).toEqual(['0000000001.json']);
+
+    // The receiver never stored it — a refusal, not a silent truncation.
+    expect(b.received.map((e) => e.payload)).toEqual(['behind-it']);
+  });
+
+  it('a refusal that can clear — a full inbound queue — keeps its place and is never quarantined', async () => {
+    const quarantined: QuarantinedFile[] = [];
+    const a = makeNode('a', { onQuarantine: (info) => quarantined.push(info) });
+    // maxDepth 0 makes every inbound envelope arrive at a queue that is
+    // already at its bound, which is the `inbound queue is full` refusal —
+    // transient by nature: a subscriber taking what is stored clears it.
+    const b = makeNode('b', { queueLimits: { maxDepth: 0 } });
+    pairNodes(a, b);
+    connectNodes(a, b);
+
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'keeps-its-place',
+    });
+
+    // Long enough for several turns of the 30ms retry loop, so "not
+    // quarantined" means "kept being retried", not "was never tried".
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(outcome.outcome).toBe('queued');
+    expect(quarantined).toEqual([]);
+    expect(a.mailbox.quarantined(b.identity.peerId)).toEqual([]);
+    expect(
+      a.mailbox.queue(b.identity.peerId).map((q) => q.envelope.payload)
+    ).toEqual(['keeps-its-place']);
+  });
+
+  it('the same message to a receiver with room is delivered — the refusal is what differs, not the wiring', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    connectNodes(a, b);
+
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'keeps-its-place',
+    });
+
+    expect(outcome.outcome).toBe('delivered');
+    expect(b.received.map((e) => e.payload)).toEqual(['keeps-its-place']);
+  });
+});
+
+describe('Mailbox: the receiver cannot write its dedup state', () => {
+  it('a failed seen-state write refuses the envelope without losing it, and delivery resumes when the disk does', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    connectNodes(a, b);
+
+    // Positive control, and the thing that creates `mailbox/seen/`: one
+    // ordinary delivery over this exact wiring before anything is broken.
+    expect(
+      (
+        await a.mailbox.send({
+          to: b.identity.peerId,
+          topic: 't',
+          payload: 'before',
+        })
+      ).outcome
+    ).toBe('delivered');
+
+    // A read-only `seen/` stands in for ENOSPC and the rest of the
+    // can't-write-right-now family. `SeenTracker.save` raises a plain
+    // Error, not a MailboxCorruptionError, so `accept` rethrows and the
+    // muxer closes that `msg` stream rather than acking anything.
+    const seenDir = join(b.dir, 'mailbox', 'seen');
+    chmodSync(seenDir, 0o500);
+    try {
+      const outcome = await a.mailbox.send({
+        to: b.identity.peerId,
+        topic: 't',
+        payload: 'during',
+      });
+      // Not delivered, and not thrown away: `queued` is the honest answer
+      // — the sender still holds it and will keep trying.
+      expect(outcome.outcome).toBe('queued');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(
+        a.mailbox.queue(b.identity.peerId).map((q) => q.envelope.payload)
+      ).toEqual(['during']);
+      // Never handed to the application: an envelope whose dedup state
+      // did not advance must not be delivered, or the retry that follows
+      // would deliver it twice.
+      expect(b.received.map((e) => e.payload)).toEqual(['before']);
+      // And it is not quarantined either — this is the transient side of
+      // the permanent/transient split, reached from the receiver.
+      expect(a.mailbox.quarantined(b.identity.peerId)).toEqual([]);
+    } finally {
+      chmodSync(seenDir, 0o700);
+    }
+
+    // The node is still there, the connection is still up, and the
+    // flusher is still retrying: recovery needs nothing but the disk.
+    await waitFor(
+      () => b.received.map((e) => e.payload),
+      (seen) => seen.includes('during'),
+      5000
+    );
+    expect(b.received.map((e) => e.payload)).toEqual(['before', 'during']);
+    await waitFor(
+      () => a.mailbox.queue(b.identity.peerId).length,
+      (n) => n === 0
+    );
+
+    // Exactly once, after all that: the retry that finally succeeded must
+    // not also be the second copy.
+    await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'after',
+    });
+    await waitFor(
+      () => b.received.length,
+      (n) => n === 3
+    );
+    expect(b.received.map((e) => e.payload)).toEqual([
+      'before',
+      'during',
+      'after',
+    ]);
+  });
+});
+
+describe('Mailbox: what a corrupt seq.json does and does not take down', () => {
+  it('refuses to construct, and says which file — the node cannot start with a counter it cannot trust (D2)', () => {
+    const dir = tmp('beam-seqfail-');
+    const identity = loadOrCreateIdentity(dir, { hostname: () => 'a' });
+    mkdirSync(join(dir, 'mailbox'), { recursive: true, mode: 0o700 });
+    // Empty, which is what a power loss between the rename and the flush
+    // can leave behind: `save()` fsyncs neither the file nor its directory.
+    writeFileSync(join(dir, 'mailbox', 'seq.json'), '');
+
+    expect(
+      () =>
+        new Mailbox({
+          identity,
+          peers: new PeerTable(dir),
+          connections: new ConnectionRegistry(),
+          registry: new StreamRegistry(),
+          beamDir: dir,
+        })
+    ).toThrow(/seq counter is malformed/);
+  });
+
+  it('takes nothing else on the node with it: streams over the same beamDir are untouched', async () => {
+    const dir = tmp('beam-seqfail-streams-');
+    mkdirSync(join(dir, 'mailbox'), { recursive: true, mode: 0o700 });
+    writeFileSync(join(dir, 'mailbox', 'seq.json'), '');
+
+    // The same transport wiring a node uses, assembled without a Mailbox.
+    // Nothing on this path reads `seq.json`, so a `pty` or `exec` caller is
+    // collateral only where something builds the two together and lets one
+    // failure answer for both — which is a property of the assembly, not
+    // of beam.
+    const serverRegistry = new StreamRegistry();
+    serverRegistry.register('echo', (stream) => {
+      stream.control({ kind: 'opened' });
+      stream.onData((data) => stream.write(data));
+    });
+    const [socketA, socketB] = wireSockets();
+    const client = createConnection({
+      peerId: '00000000000000a1',
+      role: 'initiator',
+      socket: socketA,
+      registry: new StreamRegistry(),
+    });
+    createConnection({
+      peerId: '00000000000000b1',
+      role: 'acceptor',
+      socket: socketB,
+      registry: serverRegistry,
+    });
+
+    const stream = await client.openStream('echo');
+    const echoed = await new Promise<string>((resolve) => {
+      stream.onData((data) => resolve(new TextDecoder().decode(data)));
+      stream.write(new TextEncoder().encode('still works'));
+    });
+    expect(echoed).toBe('still works');
   });
 });

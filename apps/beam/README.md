@@ -51,7 +51,7 @@ beam status                                      # this machine's identity and p
 
 `exec` keeps stdout and stderr separate and hands back the remote exit code. Nothing on the far side goes through a shell: `argv[0]` is executed directly, and a `~/` path is expanded by the accepting machine only when you pass it as `--cwd`, never inside an argument. `connect` gives you a real terminal with Ctrl-C passed through to the remote process rather than interrupting your local one. A message to a machine that is offline is written to a local queue and drains on the next connection, so a script can report to a machine that is not listening yet.
 
-A peer is named by its label or its peer id. `beam peer rename`, `beam peer forget` and `beam revoke` manage the table. Exit codes are 0 for success, 1 for a runtime failure, 2 for a usage mistake.
+A peer is named by its label or its peer id. `beam peer rename`, `beam peer forget` and `beam revoke` manage the table. Exit codes are 0 for success, 1 for a runtime failure, 2 for a usage mistake. `connect` exits 0 only when the remote process itself ended; a connection that dies under a live shell, or a shell killed by a signal, is a runtime failure and says which on stderr.
 
 ## Requirements
 
