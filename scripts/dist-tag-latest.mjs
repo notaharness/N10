@@ -9,7 +9,7 @@
 // never picked up by a plain install without it.
 //
 // The version comes from assertVersionsMatch() rather than an argument:
-// the two packages ship as one release, and re-deriving the number here
+// the packages ship as one release, and re-deriving the number here
 // would let a typo tag a version that was never published.
 
 import { execFileSync } from 'node:child_process';

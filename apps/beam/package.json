@@ -118,11 +118,16 @@
       },
       "publish": {
         "dependsOn": [
-          "prune"
+          "build"
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "npm publish --tag beta apps/beam/dist"
+          "commands": [
+            "node apps/beam/scripts/prepare-publish.mjs",
+            "npm publish --tag beta apps/beam/dist",
+            "node scripts/dist-tag-latest.mjs @notaharness/beam"
+          ],
+          "parallel": false
         }
       }
     }

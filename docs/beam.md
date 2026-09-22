@@ -365,25 +365,6 @@ has. A transport with no probe of its own gets no monitor and answers `checkAliv
 `false`: `TransportSocket.ping`/`onPong` are optional, and an unverifiable connection is
 reported as suspect rather than as healthy.
 
-Two things a caller acting on that answer has to get right, because a failed check
-terminates a connection every pane on that machine shares with its mailbox:
-
-- **Ask only on evidence about the connection.** A stream ending is not evidence — a remote
-  tmux client exits when the user detaches, and a hosted process exits when it is done, both
-  over a connection that is working. What is evidence is the machine failing to answer
-  control-plane commands, or an open over that connection failing.
-- **Re-read the registry after the await.** The answer is about the connection it was asked
-  of, not about the peer. The registry can swap connections inside the window: the peer
-  dialing in supersedes what is there, `ConnectionRegistry.add` closes the connection it
-  superseded, and closing it resolves its own probe with `false`. A caller that acts on the
-  snapshot it took beforehand terminates a connection that is already gone and dials past a
-  fresh one, which `add` then closes — reaping the streams that had just reopened on it.
-
-The budget for such a check is set for a link that is merely slow rather than one that is
-idle. A busy connection passes immediately, since the frames it is carrying answer the
-question as well as a pong would; what has to fit inside the window is a link with nothing
-on it but a high round trip.
-
 ### Bounding a dial
 
 `dial()` carries its own budget, `DEFAULT_DIAL_TIMEOUT_MS` (30s), across both HTTP requests
@@ -533,14 +514,6 @@ transport destroyed within the ping timeout, the drain loop then finds no connec
 stops, and the envelope stays queued for the next one. No timers are needed for offline
 peers — there is nothing to try.
 
-Nothing in the library dials on its own: a trigger needs a connection, and a connection needs
-something to open one. The desktop is what closes that loop for a peer it can reach —
-when its reachability prober finds a peer reachable and that peer's outbound queue is not
-empty, it dials (`apps/desktop/src/main/beam-node-mail-dial.ts`), which fires the connect
-trigger and drains the queue. That is what makes `send()`'s "the next time it comes online"
-true rather than a hope. A reachable peer with nothing queued is left alone, so the common
-case costs no connection.
-
 **A lost counter with an empty backlog is the one hole left.** `SeqCounter` reconciles every
 `next()` against the highest seq already on that peer's own disk, so a counter file that is
 lost while messages are still queued cannot reissue a number this node already wrote down.
@@ -645,10 +618,7 @@ to refuse: `ws` would then hold the socket open for its 30s close timeout, deliv
 peer's frames the whole time. Terminating destroys the transport on the spot. An ordinary
 shutdown — `Host.close()`, or a peer's new connection superseding its old one — still closes
 politely. A CLI command prefers
-this socket and falls back to writing `peers.json` directly only when no node answers. The
-desktop's own `revokeMachine` and `forgetMachine` (`apps/desktop/src/main/beam-node.ts`)
-terminate as well, over the peer table and connection registry they share with that node's
-`Host` — the rule is about every path a user can revoke through, not only the library's own.
+this socket and falls back to writing `peers.json` directly only when no node answers.
 
 #### Acknowledging a subscription
 
@@ -724,19 +694,33 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   to close, and the muxer stops serving frames the moment the connection is reaped — a revoked
   peer gets no window in which to open one more shell. A scope is the same kind of check in the
   same place: read per `Open`, so taking one away needs no reconnect either.
-- The WebSocket transport is not encrypted, and after the upgrade there is no session key and
-  no per-frame MAC. WebRTC data channels are encrypted (DTLS); plain WS is not. Mutual
-  authentication is mandatory on both, and the handshake's transcript binding is what makes
-  it hold across three parties. Against a **passive** network attacker that is enough: it can
-  read traffic but cannot impersonate either side, and a ticket read off the wire is not
-  enough to connect, because `/ws` also requires a signature over the `beam-ws` transcript
-  from the key the host stored at pairing. An **active on-path** attacker is not defended
-  against. Nothing authenticates the frames of an established connection, so one that can
-  write to the socket can inject, alter or drop frames on it — opening streams, and so
-  running commands, as the authenticated peer. Authentication bounds who may _open_ a
-  connection, not who may write on one. Run over Tailscale or tailcat when the network is not
-  trusted; on plain WS, treat write access to the path as equivalent to the peer's own
-  access.
+- The WebSocket transport is not encrypted, and it is the only transport that exists today —
+  the WebRTC data channels that would bring DTLS are a seam, not an option a caller can pick
+  (see "Deliberately out of scope"). After the upgrade there is no session key and no
+  per-frame MAC. Mutual authentication is mandatory, and the handshake's transcript binding
+  is what makes it hold across three parties. Against a **passive** network attacker that is
+  enough: it can read traffic but cannot impersonate either side, and a ticket read off the
+  wire is not enough to connect, because `/ws` also requires a signature over the `beam-ws`
+  transcript from the key the host stored at pairing. An **active on-path** attacker is not
+  defended against. Nothing authenticates the frames of an established connection, so one
+  that can write to the socket can inject, alter or drop frames on it — opening streams, and
+  so running commands, as the authenticated peer. Authentication bounds who may _open_ a
+  connection, not who may write on one. On plain WS, treat write access to the path as
+  equivalent to the peer's own access.
+- **`beam serve --tailscale-serve` is the supported way to get encryption**, not a suggestion
+  to arrange one yourself. It binds the node on loopback as usual and then publishes it with
+  `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, so tailscaled terminates TLS
+  with the tailnet's MagicDNS certificate and peers reach the node as
+  `https://<name>.<tailnet>.ts.net` over HTTPS and WSS. The endpoint the pairing peer stores,
+  and the pairing URL printed, both carry that name, so every later reconnect resolves over
+  the tailnet rather than at an address only this machine can reach. It refuses to combine
+  with `--hostname`, which would leave the unencrypted port listening on that interface
+  alongside the TLS one. The mapping is removed when the node shuts down; a node that is
+  killed leaves it behind, and the next run refuses a port it did not map rather than
+  overwriting it, unless the leftover already points at the same local port. What is still
+  true without the flag: mutual authentication, revocation and the loopback default all work
+  exactly as described above — what is missing is confidentiality and frame integrity, and
+  nothing else supplies them.
 - Default bind is loopback. Exposing the node on other interfaces requires an explicit
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout
@@ -765,7 +749,7 @@ sections above are where the mechanics live.
 | D1  | An `Open` frame carries the stream name and its JSON parameters in one payload, never a name followed by a separate parameter frame.                                                                                                                      | A handler whose parameters are optional cannot tell an absent parameter frame from the stream's first real byte of input. The earlier form let an open payload be delivered to whatever `onData` was already wired up, as if it had been typed at the process.                                                                               |
 | D2  | A counter or dedup file that cannot be read is refused rather than reset, and a queue file is created exclusively rather than renamed over.                                                                                                               | A sequence that restarts reissues a number the receiver already accepted, so the receiver acks it as the duplicate it looks like and the sender reports `delivered` for mail nobody will ever get. Silence is the failure mode this whole subsystem exists to avoid.                                                                         |
 | D3  | Every child stream and every raw socket gets an `'error'` listener, even a swallowing one, every write or ioctl that can race a close is guarded, and the synchronous pre-auth `'upgrade'` handler is wrapped whole so a throw refuses that socket alone. | An EventEmitter that emits `'error'` with nobody listening throws, and an uncaught throw out of a connection whose timing any paired peer controls is a remote kill switch. A swallowing `'error'` listener does not catch a thrown exception, and the upgrade path runs before authentication, so there the caller need not even be a peer. |
-| D4  | A peer with a known endpoint that has not been probed reports `unknown`, never a guessed `unreachable`.                                                                                                                                                   | The library has no prober of its own; the desktop's runs above it, and a peer it has not reached yet is not one it failed to reach. A laptop that has never dialed a paired worker box is not at fault, and calling it `unreachable` reads as a live problem and invites the user to re-pair a healthy machine.                              |
+| D4  | A peer with a known endpoint that has not been probed reports `unknown`, never a guessed `unreachable`.                                                                                                                                                   | No prober exists yet. A laptop that has never dialed a paired worker box is not at fault, and calling it `unreachable` reads as a live problem and invites the user to re-pair a healthy machine.                                                                                                                                            |
 | D5  | The PTY and `exec` caps, and revocation, are enforced per peer rather than globally across the node.                                                                                                                                                      | One handler instance is shared by every connection, so a global cap would let one peer consume another's budget. Revocation is checked on every turn of the drain loop for the same reason: it must stop queued mail even when something closed the connection without revoking.                                                             |
 | D6  | Peer reachability is a small closed set — `connected`, `reachable`, `unreachable`, `no-endpoint`, `unknown` — and `revoked` is orthogonal to it.                                                                                                          | `connected` and `no-endpoint` are answerable with certainty from what the library tracks; the rest are not, and folding `revoked` into the same field would hide a trust decision inside a reachability report.                                                                                                                              |
 | D9  | A `rejected` send names who it was for as well as why, and admin ops act on the running node's live `PeerTable` rather than only on disk.                                                                                                                 | A caller told only "rejected" cannot say which peer failed, and a `revoke` that takes effect only after a restart is not a revoke. Cited interchangeably with D11 for the first half.                                                                                                                                                        |
