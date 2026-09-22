@@ -10,7 +10,10 @@ import {
   OutboundQueue,
   PeerTable,
   derivePeerState,
+  grantedScopes,
+  STREAM_SCOPES,
   type PeerState,
+  type StreamScope,
 } from '@n10/beam';
 import { beamDirFor, inboxSocketPath } from '../context.js';
 import type { Io } from '../io.js';
@@ -23,6 +26,10 @@ export interface PeerRow {
   revoked: boolean;
   endpoint: string;
   queueDepth: number;
+  /** Which stream kinds this peer may open here, with the legacy default
+   * already applied — a record with no grant reports all three rather than
+   * an absence the caller would have to interpret. */
+  scopes: StreamScope[];
 }
 
 interface RawStatus {
@@ -33,9 +40,7 @@ interface RawStatus {
   queueDepth: number;
 }
 
-export async function collectPeerRows(
-  io: Io
-): Promise<{
+export async function collectPeerRows(io: Io): Promise<{
   rows: PeerRow[];
   nodeRunning: boolean;
   bindAddress: string | null;
@@ -66,11 +71,25 @@ export async function collectPeerRows(
     }));
   }
 
-  const rows = statuses.map((status) => ({
-    ...status,
-    endpoint: peers.get(status.peerId)?.endpoints[0] ?? '',
-  }));
+  const rows = statuses.map((status) => {
+    const record = peers.get(status.peerId);
+    return {
+      ...status,
+      endpoint: record?.endpoints[0] ?? '',
+      scopes: [...grantedScopes(record)],
+    };
+  });
   return { rows, nodeRunning, bindAddress };
+}
+
+/** A grant, worded for a table: `all` rather than the full list, because
+ * every peer paired before scopes existed and every peer paired without
+ * `--grant` holds all three, and a column repeating that on every row
+ * teaches the eye to skip it — which is the one row where it matters. */
+export function describeScopes(scopes: readonly StreamScope[]): string {
+  if (scopes.length === 0) return 'none';
+  if (scopes.length === STREAM_SCOPES.length) return 'all';
+  return scopes.join(',');
 }
 
 /** D6's states, worded for a human. `no-endpoint` is a normal condition

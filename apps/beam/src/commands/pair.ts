@@ -66,7 +66,14 @@ export async function runPair(args: string[], io: Io): Promise<number> {
     const label = labelOverride
       ? peers.rename(result.peer.peerId, labelOverride).label
       : result.peer.label;
-    io.stdout.write(`paired with "${label}" (${result.peer.peerId})\n`);
+    // What that machine will let this one open there. It is the host's
+    // grant, enforced by the host; printing it is how a user finds out
+    // that a `msg`-only pairing will not give them `beam connect`.
+    io.stdout.write(
+      `paired with "${label}" (${
+        result.peer.peerId
+      }) — granted ${result.granted.join(', ')} there\n`
+    );
     await notifyRunningNode(beamDir);
     return 0;
   } catch (error) {

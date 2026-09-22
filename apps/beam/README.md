@@ -26,6 +26,8 @@ beam serve
 
 It prints a pairing URL containing a single-use token, good for ten minutes. Anything that captures that output captures the token, so treat it like a password while it is live.
 
+The token also carries what the pairing grants: `pty`, `exec` and `msg` unless you say otherwise. `beam serve --grant msg` prints a URL that pairs a machine able to send and receive messages and nothing else — no terminal, no commands. The machine that prints the URL is the one that decides; the machine that spends it cannot ask for more. `beam peers` shows what each peer may open here, and a later pairing can narrow a peer's grant but never widen it (to widen, `beam peer forget` it and pair again).
+
 On the other machine:
 
 ```sh
@@ -61,7 +63,7 @@ A peer is named by its label or its peer id. `beam peer rename`, `beam peer forg
 
 Read this before pairing with anything.
 
-- **Pairing grants a shell as the user running the node.** Treat it exactly like granting SSH access. `beam revoke <peer>` takes it back immediately: the connection is destroyed rather than asked to close, so a revoked peer gets no window to open one more stream.
+- **A paired peer may open the stream kinds its grant names, and nothing else.** It is not an account and holds no privilege the user running the node does not already have. The default grant includes `pty` and `exec`, so by default pairing grants a shell as that user — treat it exactly like granting SSH access, and use `--grant msg` for a machine that only needs to report in. `beam revoke <peer>` takes the whole of it back immediately: the connection is destroyed rather than asked to close, so a revoked peer gets no window to open one more stream.
 - **The transport carries no encryption of its own.** Streams run over a plain WebSocket, so everything you type into a remote shell and everything it prints back crosses the network in the clear. Mutual authentication is mandatory and covers the connection upgrade itself, so nobody can impersonate either side or reuse a captured ticket to connect. It does not protect the connection afterwards: there is no session key and no per-frame MAC, so an attacker who can write to the socket can inject or alter frames — and so run commands — as the authenticated peer, not merely read the traffic.
 - **`beam serve --tailscale-serve` is how you encrypt it.**
 

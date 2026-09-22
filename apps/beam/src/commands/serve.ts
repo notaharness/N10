@@ -1,6 +1,6 @@
 /**
- * `beam serve [--port N] [--hostname ADDR] [--label NAME] [--no-pair]
- * [--tailscale-serve]` (D9).
+ * `beam serve [--port N] [--hostname ADDR] [--label NAME] [--grant LIST]
+ * [--no-pair] [--tailscale-serve]` (D9).
  *
  * Returns once the node is fully bound and listening — the process then
  * stays alive because of the open server sockets, not because this
@@ -8,6 +8,7 @@
  * can end it early with `io.signal`.
  */
 
+import { isStreamScope, STREAM_SCOPES, type StreamScope } from '@n10/beam';
 import { parseArgs } from '../args.js';
 import type { Io } from '../io.js';
 import { startNode, type NodeHandle } from '../node.js';
@@ -69,6 +70,41 @@ function requireLoopbackForTailscale(hostname: string | undefined): void {
   );
 }
 
+/**
+ * `--grant pty,exec,msg` — what the pairing URL this run prints will let
+ * the machine that spends it do here. Omitted grants all three, so a
+ * `beam serve` that says nothing about scopes pairs exactly as it always
+ * did. This flag is the whole of the CLI's say in the matter, because the
+ * grant belongs to the token: a peer never asks for scopes, it is handed
+ * them (docs/beam.md).
+ */
+function parseGrant(value: string | undefined): readonly StreamScope[] {
+  if (value === undefined) return STREAM_SCOPES;
+  const names = value
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  if (names.length === 0) {
+    throw new UsageError(
+      `--grant needs at least one of ${STREAM_SCOPES.join(
+        ', '
+      )}, or omit it to grant all three`
+    );
+  }
+  const scopes: StreamScope[] = [];
+  for (const name of names) {
+    if (!isStreamScope(name)) {
+      throw new UsageError(
+        `--grant does not know "${name}"; it takes a comma-separated list of ${STREAM_SCOPES.join(
+          ', '
+        )}`
+      );
+    }
+    scopes.push(name);
+  }
+  return scopes;
+}
+
 /** Brings the tailnet proxy up now that `listen()` has resolved the real
  * port, and points the node's advertised endpoint at the MagicDNS name so
  * `pair` and every reconnect after it resolve over the tailnet rather than
@@ -92,15 +128,23 @@ async function publishOverTailscale(
 function reportBinding(
   handle: NodeHandle,
   io: Io,
-  viaTailscale: boolean
+  viaTailscale: boolean,
+  granted: readonly StreamScope[]
 ): void {
   io.stdout.write(
     `${handle.identity.label} (${handle.identity.peerId}) bound to http://${handle.host.hostname}:${handle.host.port}\n`
   );
   if (viaTailscale || LOOPBACK_HOSTNAMES.has(handle.host.hostname)) return;
+  // What the URL below is worth to whoever captures it, which is now a
+  // question with more than one answer: a `msg`-only grant is not a shell,
+  // and calling it one trains a reader to ignore this warning.
+  const shell = granted.includes('pty') || granted.includes('exec');
   io.stdout.write(
     `warning: bound beyond loopback — anything on ${handle.host.hostname} that can reach this ` +
-      `address and obtains the pairing URL below gets a shell as this user.\n`
+      `address and obtains the pairing URL below ` +
+      (shell
+        ? 'gets a shell as this user.\n'
+        : `pairs as a peer granted ${granted.join(', ')}.\n`)
   );
 }
 
@@ -134,9 +178,10 @@ export async function runServe(
   deps: ServeDeps = {}
 ): Promise<number> {
   const parsed = parseArgs(args, {
-    valueFlags: ['port', 'hostname', 'label'],
+    valueFlags: ['port', 'hostname', 'label', 'grant'],
     booleanFlags: ['no-pair', 'tailscale-serve'],
   });
+  const granted = parseGrant(parsed.values.get('grant'));
   const viaTailscale = parsed.booleans.has('tailscale-serve');
   if (viaTailscale) requireLoopbackForTailscale(parsed.values.get('hostname'));
 
@@ -167,21 +212,24 @@ export async function runServe(
     }
   }
 
-  reportBinding(handle, io, viaTailscale);
+  reportBinding(handle, io, viaTailscale, granted);
   installShutdown(handle, io, tailscale);
 
   if (!parsed.booleans.has('no-pair')) {
     // Over tailscale the URL a person copies must carry the MagicDNS
     // origin, not the host's own loopback bind address: it is the endpoint
     // the pairing peer stores and dials for every later reconnect.
-    const token = handle.host.issuePairingToken();
+    const token = handle.host.issuePairingToken(granted);
     const url = tailscale
       ? `${tailscale.origin}/pair#token=${token}`
       : `${handle.host.baseUrl}/pair#token=${token}`;
     // Printed last (docs/beam.md, and this brief): it is the line a person
-    // copies, so it is the line left on screen after everything else.
+    // copies, so it is the line left on screen after everything else. What
+    // it grants goes above it, not after it, for the same reason.
     io.stdout.write(
-      `pairing URL (share with the machine you are pairing, valid 10 minutes):\n${url}\n`
+      `pairing URL (grants ${granted.join(
+        ', '
+      )}; share with the machine you are pairing, valid 10 minutes):\n${url}\n`
     );
   }
 
