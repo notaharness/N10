@@ -29,24 +29,46 @@ import { armContextMenuChoice } from './setup/menu.js';
  */
 
 /**
- * Wait for the app to offer the agent's pane back for relaunching.
+ * Wait until the host says this branch's agent has finished.
  *
- * This is the exit as a user meets it, and it is deliberately not
- * tmux's retained "Pane is dead" notice. That notice is written only
- * once tmux has reaped the pane's process, while `pane_dead` flips
- * earlier and independently, when the pane's file descriptor closes.
- * Short of CPU — a two-core runner, a loaded laptop — the two come
- * apart for good: the pane reads dead with the process left unreaped,
+ * Not the rail's "Relaunch agent" button, and deliberately so. That
+ * button reads `hasSession && !running`, and `running` reaches the
+ * renderer through a query polled every two seconds — so it is equally
+ * true in the window between the launch creating the session and the
+ * first poll that catches it alive. A wait on the button alone lands
+ * in that window on a loaded machine and hands the test back an agent
+ * that is still starting: the assertions that follow then describe a
+ * live session and fail for the wrong reason.
+ *
+ * `listSessions()` is answered by the host from its own registry with
+ * no cache in front of it, and a name only appears there once the
+ * session has been created — so a session that is present and not
+ * running has genuinely exited. The button is then waited on second,
+ * because that is the exit as the user meets it.
+ *
+ * It is deliberately not tmux's retained "Pane is dead" notice either.
+ * That notice is written only once tmux has reaped the pane's process,
+ * while `pane_dead` flips earlier and independently, when the pane's
+ * file descriptor closes. Short of CPU the two come apart for good:
+ * the pane reads dead with the process left unreaped, so
  * `pane_dead_status`, `pane_dead_signal` and `pane_dead_time` stay
- * empty, and the notice is never written into the pane at all. No
- * capture and no repaint can produce text tmux did not write, so a test
- * that waits for it waits forever. The agent exits in milliseconds, but
- * the app hears about it several hops away — the session is created in
- * a utility process and the backend polls the pane every 500ms — so the
- * wait still carries its own budget.
+ * empty and the notice is never written into the pane at all. No
+ * capture and no repaint can produce text tmux did not write.
  */
-function expectAgentExited(page: Page): Promise<void> {
-  return expect(
+async function expectAgentExited(page: Page, branch: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const sessions = await page.evaluate(() => window.n10.listSessions());
+        return (
+          sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
+          true
+        );
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(false);
+  await expect(
     page.getByRole('button', { name: 'Relaunch agent', exact: true })
   ).toBeVisible({ timeout: 30_000 });
 }
@@ -60,25 +82,12 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expectAgentExited(page);
+    await expectAgentExited(page, 'short-lived');
 
     // The exit swaps the pane for tmux's retained frame, so what the
     // agent printed has to survive that swap. A capture that came back
     // empty would clear the terminal and leave the user with nothing.
     await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
-
-    await expect
-      .poll(
-        async () => {
-          const sessions = await page.evaluate(() => window.n10.listSessions());
-          return (
-            sessions.find((s) => sessionBranch(s.name) === 'short-lived')
-              ?.running ?? true
-          );
-        },
-        { timeout: 20_000 }
-      )
-      .toBe(false);
   });
 
   test('typing into an exited agent reports the failed delivery without a renderer exception', async ({
@@ -87,7 +96,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expectAgentExited(page);
+    await expectAgentExited(page, 'short-lived');
 
     await focusTerminal(page);
     await page.keyboard.type('hello');
@@ -102,7 +111,7 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expectAgentExited(page);
+    await expectAgentExited(page, 'short-lived');
     // Wait for the application to agree that the retained agent exited.
     // The activity map used by the close path is polled once a second.
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
@@ -176,12 +185,16 @@ test.describe('An agent command that does not exist', () => {
     await createWorktree(page, 'broken-agent');
     await launchAgentFromRail(page);
 
-    // The shell's complaint reaches the terminal, and the session ends.
-    // Asserting on attachment rather than visibility: the text lands in
-    // the terminal's scrollback, which need not be in view.
+    // The shell's complaint is on screen, and the session ends. On
+    // screen, not merely in the DOM: an agent whose command is missing
+    // is gone in milliseconds, so the pane has to follow the session
+    // appearing rather than the poll that reports it running — miss
+    // that and the terminal is never put in front, the complaint is
+    // written into a pane nobody is shown, and the launch fails in
+    // silence with the diff still up.
     await expect(
-      page.getByText(/not found|no such file|ENOENT/i).first()
-    ).toBeAttached({ timeout: 30_000 });
+      visibleText(page, /not found|no such file|ENOENT/i)
+    ).toBeVisible({ timeout: 30_000 });
     await expect
       .poll(
         async () => {
