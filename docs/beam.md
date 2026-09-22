@@ -237,6 +237,21 @@ the far process is running its event loop. It does not prove the far _applicatio
 progress: one that has wedged while its event loop spins still pongs. Catching that is the
 mailbox's ack timeout's business, one layer up.
 
+**Any inbound frame answers the ping.** A pong is an ordinary WebSocket frame, written in
+order behind whatever is already queued on the socket, and beam has no flow control (see the
+out-of-scope table). A peer whose output outruns the link therefore answers every ping
+correctly and still answers late — a remote pane filling the send buffer puts megabytes in
+front of the pong — and a monitor watching only for pongs reaps a machine that is not only
+alive but busy, which is worse than the failure it exists for. So a frame arriving from the
+peer settles the outstanding ping and every `checkAlive` in flight, exactly as a pong does.
+It is stronger evidence, not weaker: a pong proves the far `ws` layer ran, a frame proves
+that _and_ that something above it wrote. It says nothing new about the peer's reading side
+— a peer that writes without ever reading still looks alive here, exactly as one that pongs
+without reading always did, and that boundary is still the mailbox's.
+
+Evidence, not exemption: silence is still counted from the last thing that arrived, so a
+peer whose frames stop is dropped on the ordinary bound whatever backlog preceded them.
+
 `PeerConnection.checkAlive()` exposes the same probe as a one-shot question, for a caller
 about to rely on a connection that cannot wait out the periodic timer — the desktop's
 reconnect path asks it before deciding whether to redial through the connection it already

@@ -49,11 +49,19 @@ through the exported API in `src/index.ts`.
   pings every 10s and terminates the transport after 10s without a pong.
   A pong comes from the peer's `ws` layer, so it proves the far process's
   event loop is running, never that its application is making progress —
-  do not reach for this timer to catch an application-level stall. Tests
-  for it use real sockets (`src/test-support/hostile-peer.ts`): a peer
-  that accepts and never answers, and a peer process `SIGSTOP` can freeze
-  mid-stream. A fake `TransportSocket` cannot express either failure,
-  which is why this whole class went uncovered.
+  do not reach for this timer to catch an application-level stall. Any
+  inbound frame answers the ping too (`noteInbound`, called from
+  `connection.ts`'s `onData`): a pong is written in order behind whatever
+  is already queued, and with no flow control a peer whose output outruns
+  the link answers correctly and late, so a monitor watching only for
+  pongs reaps healthy, busy machines. Evidence, not exemption — the bound
+  still runs from the last thing that arrived. Tests use real sockets: a
+  peer that accepts and never answers and a peer process `SIGSTOP` can
+  freeze mid-stream (`src/test-support/hostile-peer.ts`), and a healthy
+  peer behind a metered link whose pongs queue behind megabytes of its
+  own output (`src/test-support/slow-link.ts`). A fake `TransportSocket`
+  cannot express any of them, which is why this whole class went
+  uncovered.
 - **Streams** (`pty-handler.ts`, `exec-handler.ts`): a handler is registered
   once on a `StreamRegistry` shared by every connection on a node, so its
   own bookkeeping must key on `(peer, streamId)`, never bare `streamId` —
