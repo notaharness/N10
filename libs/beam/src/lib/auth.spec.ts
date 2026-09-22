@@ -114,7 +114,8 @@ describe('MutualAuth', () => {
   function proveWith(
     overrides: { peerId?: string; challenge?: string; signature?: string } = {}
   ) {
-    const challenge = overrides.challenge ?? auth.issueChallenge(clientPeerId);
+    const challenge =
+      overrides.challenge ?? auth.issueChallenge(clientPeerId);
     const signature = overrides.signature ?? clientProof(challenge);
     return auth.proveSession({
       peerId: overrides.peerId ?? clientPeerId,
@@ -214,7 +215,9 @@ describe('MutualAuth', () => {
     // A nonce `/challenge/:peerId` minted for `other`, presented by the
     // client with a signature that is otherwise perfectly valid.
     const mintedForOther = auth.issueChallenge(otherPeerId);
-    const error = captureError(() => proveWith({ challenge: mintedForOther }));
+    const error = captureError(() =>
+      proveWith({ challenge: mintedForOther })
+    );
     expect(error.kind).toBe('stale-challenge');
     // Refused without being spent: `other` can still use its own nonce,
     // so presenting it elsewhere is not a way to burn it.

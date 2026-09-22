@@ -98,7 +98,7 @@ export function startMaliciousMiddle(
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
-      const port = typeof address === 'string' ? 0 : address?.port ?? 0;
+      const port = typeof address === 'string' ? 0 : (address?.port ?? 0);
       resolve({
         baseUrl: `http://127.0.0.1:${port}`,
         identity,

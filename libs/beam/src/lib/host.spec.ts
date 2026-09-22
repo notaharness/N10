@@ -74,10 +74,7 @@ function wsUrlFor(
   url.searchParams.set('ticket', ticket);
   const proof =
     overrides.proof ??
-    signNonce(
-      client.privateKeyPem,
-      wsTranscript(partiesFor(h, client), ticket)
-    );
+    signNonce(client.privateKeyPem, wsTranscript(partiesFor(h, client), ticket));
   if (proof) url.searchParams.set('proof', proof);
   return url.toString();
 }

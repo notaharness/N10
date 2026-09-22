@@ -37,7 +37,10 @@ describe('handshake transcripts', () => {
   it('names the host, so one host’s proof is not another’s', () => {
     for (const build of builders) {
       expect(build(parties, 'payload')).not.toBe(
-        build({ ...parties, hostPeerId: 'ffffffffffffffff' }, 'payload')
+        build(
+          { ...parties, hostPeerId: 'ffffffffffffffff' },
+          'payload'
+        )
       );
     }
   });
