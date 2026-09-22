@@ -232,11 +232,15 @@ describe('RemoteTmuxBackend (D4)', () => {
     expect(chunks.some((c) => c.includes('replayed screen'))).toBe(true);
   });
 
-  it('marks a re-attach as a reconnect, so the opener does not reuse a transport that just died', async () => {
-    // The first attach has no evidence against the pooled connection; a
-    // re-attach does — the stream on it just died. An opener told
-    // nothing cannot tell the two apart and hands the automatic retries,
-    // and the manual Reconnect behind them, the same dead socket.
+  it('re-attaches over the pooled connection when only the stream ended', async () => {
+    // A stream closing says nothing about the connection it rode on.
+    // The remote `tmux attach-session` client exits when the user
+    // detaches with `C-b d`, and the hosted process exits when it is
+    // done, and both reach this backend as the same bare close — over a
+    // connection that is working and shared with every other pane on
+    // that machine plus its mailbox. Asking the opener to verify it
+    // costs a round trip on every detach, and acting on a verification
+    // that a busy link fails costs all of those streams.
     run.mockImplementation(async (argv: string[]) => {
       if (argv.includes('has-session'))
         return { stdout: '', stderr: '', code: 1 };
@@ -257,9 +261,110 @@ describe('RemoteTmuxBackend (D4)', () => {
     await vi.advanceTimersByTimeAsync(500);
     await flushMicrotasks();
 
+    // Still re-attached — the pane recovers exactly as before.
     expect(backend.connectionState).toBe('connected');
     expect(calls).toHaveLength(2);
+    expect(calls[1][0].reconnect).toBe(false);
+  });
+
+  it('asks the opener to verify the connection once the machine stops answering', async () => {
+    // The poller talks to the machine, not to one stream, so it going
+    // quiet is evidence about the connection itself — the case the
+    // verification exists for.
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) throw new Error('connection lost');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const calls = (machine.ptyOpener.open as ReturnType<typeof vi.fn>).mock
+      .calls;
+    await flushMicrotasks();
+    // The poller wants two consecutive failed polls before it calls a
+    // machine unreachable.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(backend.connectionState).toBe('reconnecting');
+
+    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+
+    expect(calls).toHaveLength(2);
     expect(calls[1][0].reconnect).toBe(true);
+  });
+
+  it('asks the opener to verify after an attach over that connection has failed', async () => {
+    // The other evidence this backend gets first-hand: the retry after
+    // a failed attach must not hand the next one the same transport
+    // unchecked, or three retries and the manual Reconnect behind them
+    // are all spent on a socket that can never answer.
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const open = machine.ptyOpener.open as ReturnType<typeof vi.fn>;
+    const calls = open.mock.calls;
+    open.mockRejectedValueOnce(new Error('attach failed'));
+
+    opens[0]!.close();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0].reconnect).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushMicrotasks();
+
+    expect(calls).toHaveLength(3);
+    expect(calls[2][0].reconnect).toBe(true);
+  });
+
+  it('stops asking once a re-attach has held for the stability window', async () => {
+    // The flag has to clear, or one bad minute makes every later detach
+    // pay for a verification round trip forever.
+    run.mockImplementation(async (argv: string[]) => {
+      if (argv.includes('has-session'))
+        return { stdout: '', stderr: '', code: 1 };
+      if (argv.includes('list-sessions')) return aliveListing('wt');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const backend = await createRemoteTmuxBackend(
+      spec,
+      { mode: 'create', label: 'wt', tags: {} },
+      machine,
+      poller
+    );
+    const open = machine.ptyOpener.open as ReturnType<typeof vi.fn>;
+    const calls = open.mock.calls;
+    open.mockRejectedValueOnce(new Error('attach failed'));
+
+    opens[0]!.close();
+    await vi.advanceTimersByTimeAsync(1500);
+    await flushMicrotasks();
+    expect(calls[2][0].reconnect).toBe(true);
+    expect(backend.connectionState).toBe('connected');
+
+    // Held past the window, then an ordinary detach.
+    await vi.advanceTimersByTimeAsync(2000);
+    await flushMicrotasks();
+    opens[opens.length - 1]!.close();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+
+    expect(calls[3][0].reconnect).toBe(false);
   });
 
   it('reconnect() retries immediately after automatic reconnection has given up', async () => {
