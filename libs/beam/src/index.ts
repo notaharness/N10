@@ -170,7 +170,9 @@ export {
 } from './lib/host.js';
 
 export {
+  DEFAULT_DIAL_TIMEOUT_MS,
   dial,
+  DialTimeoutError,
   fetchDescriptor,
   pair,
   parsePairUrl,

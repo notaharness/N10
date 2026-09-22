@@ -177,6 +177,39 @@ export async function pair(
   return { baseUrl, peer };
 }
 
+/**
+ * How long a whole `dial()` may take before it gives up.
+ *
+ * The failure this exists for is not a refused connection — that already
+ * fails fast — but a host whose kernel completes the TCP handshake while
+ * the process behind it never answers: a suspended machine, an app
+ * wedged before its HTTP server runs, a NAT holding the path open. The
+ * fetches then hang until undici's own header timeout, which is about
+ * five minutes, and `transport.connect` has no bound at all.
+ *
+ * Five minutes was survivable while every caller hung alone. It stopped
+ * being survivable once callers started sharing one in-flight dial per
+ * peer: a single hung dial is then every pane's hung dial, and the
+ * manual Reconnect behind them joins the same promise rather than
+ * escaping it. A dial that fails is recoverable — the caller retries,
+ * with backoff, and the UI can say so. A dial that never settles is not.
+ *
+ * Generous against the cost of being wrong: three round trips plus a
+ * WebSocket upgrade over a slow link, with a suspended-then-resumed
+ * laptop's worth of slack on top.
+ */
+export const DEFAULT_DIAL_TIMEOUT_MS = 30_000;
+
+/** Thrown when a dial exhausts its budget. Distinguishable on purpose:
+ * a caller that retries wants to tell "the host said no" from "the host
+ * said nothing", and only the second is worth backing off from. */
+export class DialTimeoutError extends Error {
+  constructor(readonly stage: string, readonly timeoutMs: number) {
+    super(`dial timed out after ${timeoutMs}ms (${stage})`);
+    this.name = 'DialTimeoutError';
+  }
+}
+
 export interface DialOptions {
   identity: Identity;
   peers: PeerTable;
@@ -191,6 +224,62 @@ export interface DialOptions {
    * Defaults on: a host that vanishes rather than closing otherwise
    * leaves this side reporting it as connected indefinitely. */
   liveness?: LivenessOptions | false;
+  /** Budget for the whole dial, across both HTTP requests and the
+   * WebSocket upgrade. Default `DEFAULT_DIAL_TIMEOUT_MS`. */
+  timeoutMs?: number;
+}
+
+/** `fetch` surfaces an `AbortSignal.timeout` as a `TimeoutError`, and
+ * undici sometimes only as the `cause` of the error it throws. Both
+ * spellings mean the same thing here. */
+function isAbort(error: unknown): boolean {
+  const named = (value: unknown): string | undefined =>
+    value instanceof Error ? value.name : undefined;
+  const name = named(error);
+  const cause = named((error as { cause?: unknown } | null)?.cause);
+  return (
+    name === 'TimeoutError' ||
+    name === 'AbortError' ||
+    cause === 'TimeoutError' ||
+    cause === 'AbortError'
+  );
+}
+
+/**
+ * Bound a promise that has no cancellation of its own. `transport.connect`
+ * is the case: `Transport` is deliberately three methods, and a socket
+ * that opens after this side gave up is a socket nobody holds — so the
+ * late winner is terminated rather than left connected to a host that
+ * thinks it has a client.
+ */
+function withTimeout<T>(
+  work: Promise<T>,
+  ms: number,
+  stage: string,
+  abandon: (value: T) => void
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      reject(new DialTimeoutError(stage, ms));
+    }, ms);
+    timer.unref?.();
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        if (settled) {
+          abandon(value);
+          return;
+        }
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        if (!settled) reject(error as Error);
+      }
+    );
+  });
 }
 
 /**
@@ -208,7 +297,38 @@ export async function dial(
   if (!peer) throw new Error(`unknown peer: ${hostPeerId}`);
   if (peer.revoked) throw new Error(`peer ${peer.peerId} has been revoked`);
 
-  const challengeRes = await fetch(
+  // One budget for the whole dial, spent down step by step, rather than
+  // one per step: a caller that waits on this wants to know how long the
+  // *dial* can take, and three independent timeouts multiply.
+  const budgetMs = options.timeoutMs ?? DEFAULT_DIAL_TIMEOUT_MS;
+  const expiresAt = Date.now() + budgetMs;
+  const remaining = (stage: string): number => {
+    const left = expiresAt - Date.now();
+    if (left <= 0) throw new DialTimeoutError(stage, budgetMs);
+    return left;
+  };
+  // `AbortSignal.timeout` aborts the request itself, socket included, so
+  // a hung fetch stops holding a connection open as well as stops being
+  // waited on — which a race against a timer would not achieve. Its
+  // `TimeoutError` is re-thrown as this module's own, so every way a
+  // dial can run out of time is one type the caller can test for.
+  const boundedFetch = async (
+    stage: string,
+    url: URL,
+    init?: RequestInit
+  ): Promise<Response> => {
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(remaining(stage)),
+      });
+    } catch (error) {
+      throw isAbort(error) ? new DialTimeoutError(stage, budgetMs) : error;
+    }
+  };
+
+  const challengeRes = await boundedFetch(
+    'challenge',
     new URL(`/challenge/${options.identity.peerId}`, baseUrl)
   );
   if (!challengeRes.ok)
@@ -217,16 +337,20 @@ export async function dial(
 
   const clientChallenge = randomSecret(16);
   const signature = signNonce(options.identity.privateKeyPem, challenge);
-  const sessionRes = await fetch(new URL('/session', baseUrl), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      peerId: options.identity.peerId,
-      challenge,
-      signature,
-      clientChallenge,
-    }),
-  });
+  const sessionRes = await boundedFetch(
+    'session',
+    new URL('/session', baseUrl),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        peerId: options.identity.peerId,
+        challenge,
+        signature,
+        clientChallenge,
+      }),
+    }
+  );
   if (!sessionRes.ok)
     throw new Error(
       `session request failed (${
@@ -252,7 +376,12 @@ export async function dial(
     signNonce(options.identity.privateKeyPem, `${WS_PROOF_PREFIX}${ticket}`)
   );
   wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  const socket = await transport.connect(wsUrl.toString());
+  const socket = await withTimeout(
+    transport.connect(wsUrl.toString()),
+    remaining('upgrade'),
+    'upgrade',
+    (late) => late.terminate()
+  );
 
   const connection = createConnection({
     peerId: peer.peerId,
