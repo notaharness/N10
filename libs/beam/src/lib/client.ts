@@ -5,13 +5,13 @@
  * ours.
  */
 
-import {
-  AuthError,
-  verifyHostSignature,
-  signNonce,
-  WS_PROOF_PREFIX,
-} from './auth.js';
+import { AuthError, verifyHostSignature, signNonce } from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
+import {
+  sessionTranscript,
+  wsTranscript,
+  type HandshakeParties,
+} from './handshake-transcript.js';
 import { createConnection, type PeerConnection } from './connection.js';
 import type { HostDescriptor } from './host.js';
 import { DESCRIPTOR_PATH, PROTOCOL_VERSION } from './host.js';
@@ -335,8 +335,20 @@ export async function dial(
     throw new Error(`challenge request failed: ${challengeRes.status}`);
   const { challenge } = (await challengeRes.json()) as { challenge: string };
 
+  // Every signature this dial produces names both machines and its own
+  // context, so none of them is worth anything to a third host. Without
+  // that a host this machine dials is a signing oracle over whatever
+  // string it cares to call a challenge: it can hand over a nonce it just
+  // fetched from a host it is *not* paired with and relay the answer.
+  const parties: HandshakeParties = {
+    hostPeerId: peer.peerId,
+    clientPeerId: options.identity.peerId,
+  };
   const clientChallenge = randomSecret(16);
-  const signature = signNonce(options.identity.privateKeyPem, challenge);
+  const signature = signNonce(
+    options.identity.privateKeyPem,
+    sessionTranscript(parties, challenge)
+  );
   const sessionRes = await boundedFetch(
     'session',
     new URL('/session', baseUrl),
@@ -361,7 +373,12 @@ export async function dial(
     ticket: string;
     hostSignature: string;
   };
-  verifyHostSignature(peer.publicKeyPem, clientChallenge, hostSignature);
+  verifyHostSignature(
+    peer.publicKeyPem,
+    parties,
+    clientChallenge,
+    hostSignature
+  );
 
   const transport = options.transport ?? new WebSocketTransport();
   const wsUrl = new URL('/ws', baseUrl);
@@ -369,11 +386,11 @@ export async function dial(
   // The transport is not encrypted, so the ticket travels where anyone on
   // the path can read it. Possession of it therefore cannot be the whole
   // of the authorisation: the upgrade also proves the private key the host
-  // already holds a record of. See WS_PROOF_PREFIX for why the ticket is
-  // not signed bare.
+  // already holds a record of. See handshake-transcript.ts for why the
+  // ticket is not signed bare.
   wsUrl.searchParams.set(
     'proof',
-    signNonce(options.identity.privateKeyPem, `${WS_PROOF_PREFIX}${ticket}`)
+    signNonce(options.identity.privateKeyPem, wsTranscript(parties, ticket))
   );
   wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = await withTimeout(

@@ -7,7 +7,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { signNonce, verifySignature, WS_PROOF_PREFIX } from './auth.js';
+import { signNonce, verifySignature } from './auth.js';
+import {
+  hostTranscript,
+  sessionTranscript,
+  wsTranscript,
+} from './handshake-transcript.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
 import { DESCRIPTOR_PATH, Host } from './host.js';
@@ -52,8 +57,13 @@ async function startHost(
   return host;
 }
 
+/** The two machines every handshake signature names. */
+function partiesFor(h: Host, client: ClientIdentity) {
+  return { hostPeerId: h.identity.peerId, clientPeerId: client.peerId };
+}
+
 /** The `/ws` URL a legitimate client builds: the ticket, plus a signature
- * over `beam-ws:<ticket>` proving the key the host stored at pairing. */
+ * over the ws transcript proving the key the host stored at pairing. */
 function wsUrlFor(
   h: Host,
   client: ClientIdentity,
@@ -64,7 +74,7 @@ function wsUrlFor(
   url.searchParams.set('ticket', ticket);
   const proof =
     overrides.proof ??
-    signNonce(client.privateKeyPem, `${WS_PROOF_PREFIX}${ticket}`);
+    signNonce(client.privateKeyPem, wsTranscript(partiesFor(h, client), ticket));
   if (proof) url.searchParams.set('proof', proof);
   return url.toString();
 }
@@ -80,7 +90,10 @@ async function ticketFor(h: Host, client: ClientIdentity): Promise<string> {
     body: JSON.stringify({
       peerId: client.peerId,
       challenge,
-      signature: signNonce(client.privateKeyPem, challenge),
+      signature: signNonce(
+        client.privateKeyPem,
+        sessionTranscript(partiesFor(h, client), challenge)
+      ),
       clientChallenge: 'x',
     }),
   });
@@ -402,7 +415,10 @@ describe('Host HTTP surface', () => {
     expect(challengeRes.status).toBe(200);
     const { challenge } = (await challengeRes.json()) as { challenge: string };
 
-    const signature = signNonce(client.privateKeyPem, challenge);
+    const signature = signNonce(
+      client.privateKeyPem,
+      sessionTranscript(partiesFor(h, client), challenge)
+    );
     const sessionRes = await fetch(`${h.baseUrl}/session`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -419,7 +435,11 @@ describe('Host HTTP surface', () => {
       hostSignature: string;
     };
     expect(
-      verifySignature(h.identity.publicKeyPem, 'nonce-x', hostSignature)
+      verifySignature(
+        h.identity.publicKeyPem,
+        hostTranscript(partiesFor(h, client), 'nonce-x'),
+        hostSignature
+      )
     ).toBe(true);
 
     const socket = new WebSocket(wsUrlFor(h, client, ticket));
@@ -468,7 +488,7 @@ describe('Host HTTP surface', () => {
     const forgedChallenge = 'never-issued-by-this-host';
     const validSignatureOverForgedChallenge = signNonce(
       client.privateKeyPem,
-      forgedChallenge
+      sessionTranscript(partiesFor(h, client), forgedChallenge)
     );
     const staleRes = await session({
       peerId: client.peerId,
@@ -506,7 +526,10 @@ describe('Host HTTP surface', () => {
     ).json()) as {
       challenge: string;
     };
-    const signature2 = signNonce(client.privateKeyPem, challenge2);
+    const signature2 = signNonce(
+      client.privateKeyPem,
+      sessionTranscript(partiesFor(h, client), challenge2)
+    );
     h.peers.revoke(client.peerId);
     const revokedRes = await session({
       peerId: client.peerId,
@@ -546,21 +569,7 @@ describe('Host HTTP surface', () => {
       publicKeyPem: client.publicKeyPem,
       endpoints: [],
     });
-    const { challenge } = (await (
-      await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
-    ).json()) as { challenge: string };
-    const signature = signNonce(client.privateKeyPem, challenge);
-    const sessionRes = await fetch(`${h.baseUrl}/session`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        peerId: client.peerId,
-        challenge,
-        signature,
-        clientChallenge: 'x',
-      }),
-    });
-    const { ticket } = (await sessionRes.json()) as { ticket: string };
+    const ticket = await ticketFor(h, client);
     const socket = new WebSocket(wsUrlFor(h, client, ticket));
     await new Promise<void>((resolve, reject) => {
       socket.once('open', () => resolve());
@@ -672,14 +681,17 @@ describe('Host HTTP surface', () => {
       await upgrades(
         await ticketFor(h, client).then((t) =>
           wsUrlFor(h, client, t, {
-            proof: signNonce(attacker.privateKeyPem, `${WS_PROOF_PREFIX}${t}`),
+            proof: signNonce(
+              attacker.privateKeyPem,
+              wsTranscript(partiesFor(h, client), t)
+            ),
           })
         )
       )
     ).toBe(false);
 
-    // A signature over the bare ticket is not a signature over
-    // `beam-ws:<ticket>`: the prefix keeps this proof and /session's
+    // A signature over the bare ticket is not a signature over the ws
+    // transcript: the context tag keeps this proof and /session's
     // challenge proof from standing in for one another.
     expect(
       await upgrades(
@@ -716,7 +728,7 @@ describe('Host HTTP surface', () => {
         wsUrlFor(h, client, ticket, {
           proof: signNonce(
             attacker.privateKeyPem,
-            `${WS_PROOF_PREFIX}${ticket}`
+            wsTranscript(partiesFor(h, client), ticket)
           ),
         })
       )

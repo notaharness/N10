@@ -13,10 +13,19 @@ report kinds or `@orchestra-*` tags. `apps/beam`, `apps/desktop` and the
 Orchestra plugin's shell scripts are the only intended consumers, all
 through the exported API in `src/index.ts`.
 
-- **Identity and trust** (`identity.ts`, `peer-table.ts`, `auth.ts`): a
+- **Identity and trust** (`identity.ts`, `peer-table.ts`, `auth.ts`,
+  `handshake-transcript.ts`): a
   `peerId` is always derived from a public key (`derivePeerId`), never
   asserted over the wire — `pair()` re-derives the host's claimed id and
-  rejects a mismatch rather than trusting it (see `client.ts`). Revocation
+  rejects a mismatch rather than trusting it (see `client.ts`). Nothing in
+  the handshake ever signs a value the far side chose: every signature
+  covers `<context>:<hostPeerId>:<clientPeerId>:<payload>`, and every
+  challenge is minted for one named peer, so no proof moves between hosts,
+  between peers, or between `/session` and `/ws`. Add a new signature by
+  adding a context to `handshake-transcript.ts`, never by signing a bare
+  string — a signature over opaque bytes makes every paired peer an oracle
+  for whoever it dials, which is what `relay-impersonation.spec.ts` and
+  `src/test-support/malicious-middle.ts` exist to keep closed. Revocation
   must be effective everywhere a peer is checked: `/challenge`, `/session`,
   the WS upgrade (ticket alone is not enough — the peer's current state is
   re-checked at upgrade time), and any already-live connection.
