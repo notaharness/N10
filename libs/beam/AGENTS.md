@@ -9,7 +9,9 @@ format and behavior.
 
 No n10, git, tmux or Orchestra imports: this library knows nothing about
 worktrees, agents, report kinds or `@orchestra-*` tags. Lint-enforced —
-`eslint.config.mjs` gives `scope:beam` an empty `onlyDependOnLibsWithTags`,
+`eslint.config.mjs` gives `scope:beam` + `type:lib` an empty
+`onlyDependOnLibsWithTags` (both tags, since `apps/beam` is `scope:beam` too
+and exists to consume this library),
 so `@nx/enforce-module-boundaries` refuses a dependency on any workspace
 library at all, not merely on the ones that look n10-specific. `apps/beam`, `apps/desktop` and the
 Orchestra plugin's shell scripts are the only intended consumers, all

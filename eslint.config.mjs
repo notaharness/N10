@@ -94,8 +94,12 @@ export default tseslint.config(
             // docs/beam.md both stated this as lint-enforced while it was
             // only ever true by discipline; the constraint is here now so
             // the claim and the check are the same thing.
+            //
+            // Both tags, because `apps/beam` carries `scope:beam` too and
+            // exists precisely to consume the library: the rule is about
+            // what the publishable unit may import, not about the scope.
             {
-              sourceTag: 'scope:beam',
+              allSourceTags: ['scope:beam', 'type:lib'],
               onlyDependOnLibsWithTags: [],
             },
           ],
