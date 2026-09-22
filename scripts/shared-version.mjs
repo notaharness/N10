@@ -1,11 +1,15 @@
-// The one version both published packages carry.
+// The one version every published package carries.
 //
-// `@notaharness/n10` (TUI) and `@notaharness/n10-desktop`
-// are two front-ends over the same core and are released together, so a
-// user can compare the two numbers and know what they have. Keeping
-// that true by hand doesn't survive contact with a release, so each
-// package's publish-prep calls `assertVersionsMatch()` and refuses to
-// prepare a mismatched pair.
+// `@notaharness/n10` (TUI) and `@notaharness/n10-desktop` are two
+// front-ends over the same core, so a user can compare their numbers and
+// know what they have. `@notaharness/beam` is a different kind of thing:
+// a machine-to-machine transport binary with no UI, and the only way a
+// user gets beam at all. It belongs here because the desktop embeds
+// `libs/beam` and talks to that standalone binary on the far machine —
+// one number across all three says which pairing and stream protocol
+// both ends of a connection were cut from. Keeping that true by hand
+// doesn't survive contact with a release, so each package's publish-prep
+// calls `assertVersionsMatch()` and refuses to prepare a mismatched set.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -16,6 +20,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PACKAGES = [
   { label: 'TUI', path: 'apps/cli/package.json' },
   { label: 'desktop', path: 'apps/desktop/package.json' },
+  { label: 'beam', path: 'apps/beam/package.json' },
 ];
 
 function readVersion(relPath) {
@@ -35,8 +40,8 @@ export function assertVersionsMatch() {
       .map((p) => `  ${p.version}  ${p.label} (${p.path})`)
       .join('\n');
     throw new Error(
-      `The TUI and desktop versions must match — they ship as one release.\n${list}\n` +
-        `Set both to the same version, commit, then publish.`
+      `The TUI, desktop and beam versions must match — they ship as one release.\n${list}\n` +
+        `Set them all to the same version, commit, then publish.`
     );
   }
   return first.version;

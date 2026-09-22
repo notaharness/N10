@@ -694,19 +694,33 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   to close, and the muxer stops serving frames the moment the connection is reaped — a revoked
   peer gets no window in which to open one more shell. A scope is the same kind of check in the
   same place: read per `Open`, so taking one away needs no reconnect either.
-- The WebSocket transport is not encrypted, and after the upgrade there is no session key and
-  no per-frame MAC. WebRTC data channels are encrypted (DTLS); plain WS is not. Mutual
-  authentication is mandatory on both, and the handshake's transcript binding is what makes
-  it hold across three parties. Against a **passive** network attacker that is enough: it can
-  read traffic but cannot impersonate either side, and a ticket read off the wire is not
-  enough to connect, because `/ws` also requires a signature over the `beam-ws` transcript
-  from the key the host stored at pairing. An **active on-path** attacker is not defended
-  against. Nothing authenticates the frames of an established connection, so one that can
-  write to the socket can inject, alter or drop frames on it — opening streams, and so
-  running commands, as the authenticated peer. Authentication bounds who may _open_ a
-  connection, not who may write on one. Run over Tailscale or tailcat when the network is not
-  trusted; on plain WS, treat write access to the path as equivalent to the peer's own
-  access.
+- The WebSocket transport is not encrypted, and it is the only transport that exists today —
+  the WebRTC data channels that would bring DTLS are a seam, not an option a caller can pick
+  (see "Deliberately out of scope"). After the upgrade there is no session key and no
+  per-frame MAC. Mutual authentication is mandatory, and the handshake's transcript binding
+  is what makes it hold across three parties. Against a **passive** network attacker that is
+  enough: it can read traffic but cannot impersonate either side, and a ticket read off the
+  wire is not enough to connect, because `/ws` also requires a signature over the `beam-ws`
+  transcript from the key the host stored at pairing. An **active on-path** attacker is not
+  defended against. Nothing authenticates the frames of an established connection, so one
+  that can write to the socket can inject, alter or drop frames on it — opening streams, and
+  so running commands, as the authenticated peer. Authentication bounds who may _open_ a
+  connection, not who may write on one. On plain WS, treat write access to the path as
+  equivalent to the peer's own access.
+- **`beam serve --tailscale-serve` is the supported way to get encryption**, not a suggestion
+  to arrange one yourself. It binds the node on loopback as usual and then publishes it with
+  `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, so tailscaled terminates TLS
+  with the tailnet's MagicDNS certificate and peers reach the node as
+  `https://<name>.<tailnet>.ts.net` over HTTPS and WSS. The endpoint the pairing peer stores,
+  and the pairing URL printed, both carry that name, so every later reconnect resolves over
+  the tailnet rather than at an address only this machine can reach. It refuses to combine
+  with `--hostname`, which would leave the unencrypted port listening on that interface
+  alongside the TLS one. The mapping is removed when the node shuts down; a node that is
+  killed leaves it behind, and the next run refuses a port it did not map rather than
+  overwriting it, unless the leftover already points at the same local port. What is still
+  true without the flag: mutual authentication, revocation and the loopback default all work
+  exactly as described above — what is missing is confidentiality and frame integrity, and
+  nothing else supplies them.
 - Default bind is loopback. Exposing the node on other interfaces requires an explicit
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout

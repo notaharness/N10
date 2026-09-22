@@ -1,6 +1,11 @@
 /**
- * `beam connect <peer> [pty|pty:<program>] [--transport ws|webrtc] [-- argv...]`
+ * `beam connect <peer> [pty|pty:<program>] [--transport ws] [-- argv...]`
  * (D9): stdin/stdout into a pty stream on that machine.
+ *
+ * `ws` is the only transport that exists. The WebRTC seam is described in
+ * docs/beam.md; the help text offers only what this command accepts, and a
+ * caller that names another transport is told it is unimplemented rather
+ * than that it is a usage mistake.
  */
 
 import { parseArgs } from '../args.js';
@@ -91,7 +96,7 @@ export async function runConnect(args: string[], io: Io): Promise<number> {
   const [nameOrId, streamArg] = parsed.positionals;
   if (!nameOrId) {
     throw new UsageError(
-      'usage: beam connect <peer> [pty|pty:<program>] [--transport ws|webrtc] [-- argv...]'
+      'usage: beam connect <peer> [pty|pty:<program>] [--transport ws] [-- argv...]'
     );
   }
   requireWsTransport(parsed.values.get('transport') ?? 'ws');

@@ -25,8 +25,11 @@ Usage: beam <command> [options]
 
 Commands:
   serve [--port N] [--hostname ADDR] [--label NAME] [--grant LIST] [--no-pair]
+        [--tailscale-serve]
       Start a node: accept connections, serve the local inbox socket, drain queued messages.
       --grant limits the pairing URL to some of pty,exec,msg; omitted, it grants all three.
+      --tailscale-serve publishes the loopback node over the tailnet with "tailscale serve",
+      so peers reach it as https://<magicdns-name>/ with TLS terminated by tailscale.
   pair <pair-url> [--label NAME] [--endpoint URL]... [--force]
       Pair with the machine that printed the URL.
   peers [--json]
@@ -36,7 +39,7 @@ Commands:
   revoke <peer>
   status [--json]
       This machine's identity, whether a node is running, bind address, peer summary.
-  connect <peer> [pty|pty:<program>] [--transport ws|webrtc] [-- argv...]
+  connect <peer> [pty|pty:<program>] [--transport ws] [-- argv...]
       stdin/stdout into a pty stream on that machine.
   exec <peer> [--cwd PATH] [--env K=V]... -- argv...
       Run argv there. stdout and stderr stay separate; the remote exit code becomes this one's.
