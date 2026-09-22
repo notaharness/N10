@@ -1,12 +1,17 @@
 /**
- * `beam peers [--json]` — D9/D6/D7: LABEL, PEER ID, STATE, ENDPOINT, QUEUED.
+ * `beam peers [--json]` — D9/D6/D7: LABEL, PEER ID, STATE, GRANTS,
+ * ENDPOINT, QUEUED.
  */
 
 import { parseArgs } from '../args.js';
 import { printJson } from '../fmt/json.js';
 import { renderTable } from '../fmt/table.js';
 import type { Io } from '../io.js';
-import { collectPeerRows, describeState } from './peer-status.js';
+import {
+  collectPeerRows,
+  describeScopes,
+  describeState,
+} from './peer-status.js';
 
 export async function runPeers(args: string[], io: Io): Promise<number> {
   const parsed = parseArgs(args, { booleanFlags: ['json'] });
@@ -26,11 +31,15 @@ export async function runPeers(args: string[], io: Io): Promise<number> {
     row.label,
     row.peerId,
     describeState(row.state) + (row.revoked ? ' (revoked)' : ''),
+    describeScopes(row.scopes),
     row.endpoint,
     row.queueDepth > 0 ? String(row.queueDepth) : '',
   ]);
   io.stdout.write(
-    renderTable(['LABEL', 'PEER ID', 'STATE', 'ENDPOINT', 'QUEUED'], table)
+    renderTable(
+      ['LABEL', 'PEER ID', 'STATE', 'GRANTS', 'ENDPOINT', 'QUEUED'],
+      table
+    )
   );
   return 0;
 }

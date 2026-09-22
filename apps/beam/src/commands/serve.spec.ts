@@ -45,6 +45,22 @@ describe('beam serve', () => {
     expect(text).toMatch(/gets a shell as this user/);
   });
 
+  it('says what the URL grants, and does not call a msg-only pairing a shell', async () => {
+    // The beyond-loopback warning is the one line a reader is meant to
+    // act on. Telling them a `msg`-only pairing hands out a shell trains
+    // them to ignore it.
+    const code = await runServe(
+      ['--port', '0', '--hostname', '0.0.0.0', '--grant', 'msg'],
+      io
+    );
+    expect(code).toBe(0);
+    const text = io.stdoutText();
+    expect(text).toMatch(/warning/i);
+    expect(text).not.toMatch(/gets a shell/);
+    expect(text).toContain('pairs as a peer granted msg');
+    expect(text).toContain('pairing URL (grants msg;');
+  });
+
   it('--no-pair omits the pairing URL', async () => {
     const code = await runServe(['--port', '0', '--no-pair'], io);
     expect(code).toBe(0);

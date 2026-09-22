@@ -24,12 +24,13 @@ export const USAGE = `beam — pairs machines and carries pty, exec and message 
 Usage: beam <command> [options]
 
 Commands:
-  serve [--port N] [--hostname ADDR] [--label NAME] [--no-pair]
+  serve [--port N] [--hostname ADDR] [--label NAME] [--grant LIST] [--no-pair]
       Start a node: accept connections, serve the local inbox socket, drain queued messages.
+      --grant limits the pairing URL to some of pty,exec,msg; omitted, it grants all three.
   pair <pair-url> [--label NAME] [--endpoint URL]... [--force]
       Pair with the machine that printed the URL.
   peers [--json]
-      List known peers: label, peer id, state, endpoint, queued.
+      List known peers: label, peer id, state, what they may open here, endpoint, queued.
   peer rename <peer> <label>
   peer forget <peer>
   revoke <peer>
