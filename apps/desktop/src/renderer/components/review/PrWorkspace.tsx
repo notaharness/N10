@@ -131,7 +131,9 @@ export function PrWorkspace({
     setMode,
   });
 
-  useAgentFocus(running, active, () => setMode('agent'));
+  useAgentFocus({ hasSession: Boolean(sessionName), running, active }, () =>
+    setMode('agent')
+  );
   // Whole-file diffs can be megabytes; the parse runs in the diff
   // worker so opening a tab never blocks the UI thread on it. The query
   // is keyed on the patch content, so what it hands back always belongs

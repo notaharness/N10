@@ -8,6 +8,7 @@ import {
   buildCommentRows,
   buildFileEntries,
   diffIsPending,
+  focusesAgent,
   groupDraftsByFile,
   groupThreadsByFile,
   navIndexOf,
@@ -16,6 +17,7 @@ import {
   stepComment,
   unpostedDrafts,
   visibleComments,
+  type AgentPresence,
   type CommentRow,
   type Mode,
 } from './review-model.js';
@@ -72,6 +74,69 @@ function line(type: DiffLine['type']): DiffLine {
 function files(...names: string[]): [string, DiffLine[]][] {
   return names.map((n) => [n, []]);
 }
+
+// ── focusesAgent ─────────────────────────────────────────────────
+
+describe('focusesAgent', () => {
+  const NONE: AgentPresence = {
+    hasSession: false,
+    running: false,
+    active: true,
+  };
+
+  it('hands the pane to an agent that died before any poll saw it running', () => {
+    // A command that is not on PATH is gone in milliseconds, and
+    // `running` is polled — so the session can appear already finished.
+    // The shell's complaint is in that terminal and nowhere else.
+    expect(
+      focusesAgent(NONE, { hasSession: true, running: false, active: true })
+    ).toBe(true);
+  });
+
+  it('hands the pane to an agent that is up by the time it is seen', () => {
+    expect(
+      focusesAgent(NONE, { hasSession: true, running: true, active: true })
+    ).toBe(true);
+  });
+
+  it('leaves the pane alone when nothing about the agent changed', () => {
+    const live: AgentPresence = {
+      hasSession: true,
+      running: true,
+      active: true,
+    };
+    expect(focusesAgent(live, live)).toBe(false);
+  });
+
+  it('leaves the pane alone when a running agent exits', () => {
+    // The user may be reading the diff by then; an exit is not a reason
+    // to pull them off it.
+    expect(
+      focusesAgent(
+        { hasSession: true, running: true, active: true },
+        { hasSession: true, running: false, active: true }
+      )
+    ).toBe(false);
+  });
+
+  it('returns to a working agent when its tab comes back to the front', () => {
+    expect(
+      focusesAgent(
+        { hasSession: true, running: true, active: false },
+        { hasSession: true, running: true, active: true }
+      )
+    ).toBe(true);
+  });
+
+  it('does not return to an agent that has already finished', () => {
+    expect(
+      focusesAgent(
+        { hasSession: true, running: false, active: false },
+        { hasSession: true, running: false, active: true }
+      )
+    ).toBe(false);
+  });
+});
 
 // ── resolveMode ──────────────────────────────────────────────────
 

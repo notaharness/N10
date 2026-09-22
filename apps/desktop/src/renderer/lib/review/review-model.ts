@@ -59,6 +59,40 @@ export function resolveMode(mode: Mode, ctx: ModeContext): Mode {
   return 'diff';
 }
 
+/** What a tab's agent looks like from the pane's point of view. */
+export interface AgentPresence {
+  /** A session exists for this tab — running, or retained with its
+   *  final frame. */
+  hasSession: boolean;
+  /** The host last reported that session's process as alive. */
+  running: boolean;
+  /** This tab is the one on screen. */
+  active: boolean;
+}
+
+/**
+ * Whether a change in the tab's agent hands the pane to the terminal.
+ *
+ * Two things do: an agent having been *launched*, and the user coming
+ * back to a tab whose agent is working. The first is the session
+ * appearing, not the session being reported as running — `running` is
+ * polled, and an agent that dies on startup (a command that is not on
+ * PATH) can be gone before a poll ever sees it alive. Keyed on
+ * `running` alone the pane then never leaves the diff, and the shell's
+ * complaint about the missing command is written into a terminal that
+ * was never put on screen: the launch fails silently. A session that
+ * appears already finished still owns the pane, because its retained
+ * last frame is the only account of what happened.
+ */
+export function focusesAgent(
+  prev: AgentPresence,
+  next: AgentPresence
+): boolean {
+  if (next.hasSession && !prev.hasSession) return true;
+  if (next.running && !prev.running) return true;
+  return next.active && !prev.active && next.running;
+}
+
 /**
  * Whether the viewer should show its loading state: either the patch
  * itself is still in flight, or a patch has arrived and the worker has
