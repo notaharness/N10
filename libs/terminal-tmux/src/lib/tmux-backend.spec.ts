@@ -19,6 +19,10 @@ const mock = vi.hoisted(() => ({
   /** When true, tmuxPaneStateAsync answers `{ status: 'failed' }` —
    *  n10 could not talk to tmux this tick — regardless of `state`. */
   readFailed: false,
+  /** node-pty's answer to an ioctl on a client whose file descriptor is
+   *  already closed — what a detached or killed tmux client leaves
+   *  behind until the re-attach replaces it. */
+  resizeThrows: false,
   data: vi.fn(),
   spawn: vi.fn(),
   dispose: vi.fn(),
@@ -41,7 +45,10 @@ vi.mock('@n10/terminal-pty', () => ({
     offData = vi.fn();
     dispose = mock.dispose;
     write = mock.write;
-    resize = mock.resize;
+    resize = (cols: number, rows: number) => {
+      if (mock.resizeThrows) throw new Error('ioctl(2) failed, EBADF');
+      mock.resize(cols, rows);
+    };
   },
 }));
 vi.mock('./tmux-cli.js', async (original) => {
@@ -130,9 +137,14 @@ beforeEach(() => {
   mock.paneStateGated = false;
   mock.paneStateResolvers.length = 0;
   mock.readFailed = false;
+  mock.resizeThrows = false;
   mock.spawn.mockReset();
   mock.dispose.mockReset();
   mock.data.mockReset();
+  // Left unreset, a resize from the previous test counts as this
+  // one's — which is exactly the assertion the reconnect-window test
+  // makes.
+  mock.resize.mockReset();
 });
 afterEach(() => {
   for (const backend of backends.splice(0)) backend.dispose();
@@ -373,6 +385,28 @@ describe('hosted process lifecycle', () => {
     expect(mock.data).toHaveBeenCalledTimes(2);
     expect(mock.data).toHaveBeenLastCalledWith(data);
     expect(backend.processState?.running).toBe(true);
+  });
+  it('resizes while the client is gone without throwing, and re-attaches at the new size', async () => {
+    const backend = await launch();
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(backend.connectionState).toBe('reconnecting');
+    // The departed client's file descriptor is closed; node-pty answers
+    // an ioctl on it with EBADF, and this call comes from a window
+    // resize handler.
+    mock.resizeThrows = true;
+    expect(() => backend.resize(120, 48)).not.toThrow();
+    expect(mock.resize).not.toHaveBeenCalled();
+    mock.resizeThrows = false;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(backend.connectionState).toBe('connected');
+    // The size was not lost by not being forwarded: the replacement
+    // client is made with it.
+    expect(mock.spawn.mock.calls[1]?.[2]).toMatchObject({
+      cols: 120,
+      rows: 48,
+    });
+    expect([backend.cols, backend.rows]).toEqual([120, 48]);
   });
   it('bounds failed client reconnection attempts and cancels them on disposal', async () => {
     const backend = await launch();
