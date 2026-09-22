@@ -30,7 +30,7 @@ export function OrchestraInstall() {
         />
         <div className="relative">
           <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-            Give your agent an orchestra
+            Install Orchestra
           </h2>
           <div className="mt-10 grid gap-6 md:grid-cols-2">
             {routes.map((route) => (
@@ -56,9 +56,9 @@ export function OrchestraInstall() {
             ))}
           </div>
           <p className="text-fd-muted-foreground mx-auto mt-10 max-w-xl text-center text-sm text-pretty">
-            Needs tmux 3.x, Git, and an authenticated claude or codex CLI for
-            each kind of player. Beam is optional, and only for players on other
-            machines.
+            Requires tmux 3.x, Git, and an authenticated claude or codex CLI for
+            each player type. Beam is optional and only needed for players on
+            other machines.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Link

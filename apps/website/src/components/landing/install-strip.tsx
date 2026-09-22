@@ -45,7 +45,9 @@ export function InstallStrip() {
         ))}
       </div>
       <ul className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <li className="text-fd-muted-foreground mr-1 text-sm">Works with</li>
+        <li className="text-fd-muted-foreground mr-1 text-sm">
+          Supported agents
+        </li>
         {worksWith.map((name) => (
           <li
             key={name}

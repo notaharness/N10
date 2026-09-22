@@ -102,7 +102,7 @@ export function OrchestraStage({ className }: { className?: string }) {
         >
           {show.log.length === 0 && (
             <li className="text-fd-muted-foreground">
-              {playing ? 'five players working…' : 'press play to run the show'}
+              {playing ? 'five players working…' : 'press play to start'}
             </li>
           )}
           {show.log.map((line) => (

@@ -11,13 +11,12 @@ export function BeamHero() {
             @notaharness/beam
           </span>
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-6xl lg:text-5xl xl:text-6xl">
-            Run agents where the power is
+            Run agents on another machine
           </h1>
           <p className="text-fd-muted-foreground max-w-xl text-lg text-pretty">
-            Pair your laptop with a powerful workstation or headless build box,
-            then use it like it&apos;s local: open a real terminal, run one
-            command, or send a message that waits for it to come back online. No
-            SSH keys. No tunnels to configure.
+            Pair your laptop with a workstation or headless build box. Open a
+            terminal, run a command or queue a message without setting up SSH
+            keys or tunnels.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Link href="/docs/beam" className={buttonVariants({ size: 'lg' })}>

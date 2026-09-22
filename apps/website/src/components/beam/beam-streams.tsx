@@ -3,21 +3,21 @@ import { BeamStreamsDiagram } from '@/components/beam/beam-streams-diagram';
 const streams = [
   {
     name: 'beam connect',
-    title: 'A real, interactive terminal',
+    title: 'Open an interactive terminal',
     description:
-      "Open a real terminal on the other machine. Resize it, run a full shell, or attach a tmux client. It works like the terminal you already use — it's just running somewhere else.",
+      'Open a terminal on the paired machine, resize it, run a shell or attach a tmux client.',
   },
   {
     name: 'beam exec',
-    title: 'One command. One result.',
+    title: 'Run one command',
     description:
-      'Run a single command on the other machine and get its output and exit code back — just like ssh host cmd. Scripts that already shell out to SSH can switch with barely any changes.',
+      'Run one command on the paired machine and receive its output and exit code, like ssh host cmd. Scripts that use SSH can switch with few changes.',
   },
   {
     name: 'beam msg',
-    title: 'Messages that can wait',
+    title: 'Queue a message',
     description:
-      'Send a short message even when the other machine is asleep or off the network. Beam keeps it on disk and delivers it when that machine returns, so nothing gets lost along the way.',
+      'Send a short message while the paired machine is asleep or offline. Beam stores it on disk and delivers it when the machine returns.',
   },
 ];
 
@@ -25,7 +25,7 @@ export function BeamStreams() {
   return (
     <section className="mx-auto w-full max-w-5xl px-4 py-12">
       <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-        Three ways to reach a paired machine
+        Three ways to use a paired machine
       </h2>
       <div className="mt-8">
         <BeamStreamsDiagram />

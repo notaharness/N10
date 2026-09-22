@@ -190,8 +190,8 @@ export function BeamOverviewDiagram() {
         </text>
       </svg>
       <p className="text-fd-muted-foreground mt-4 text-center text-sm">
-        Beam is the connection in the middle. Everything on either side — tmux,
-        your worktrees, the agent itself — works exactly like it does today.
+        Beam connects the machines. Your tmux sessions, worktrees and agents
+        keep working as they do now.
       </p>
     </div>
   );

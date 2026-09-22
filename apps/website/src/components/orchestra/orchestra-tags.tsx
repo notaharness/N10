@@ -44,13 +44,13 @@ const tools = [
     name: 'n10',
     href: '/',
     blurb:
-      'Reads the same tags to list every player in its sidebar, next to the worktrees it started itself. Launch a player from n10 Desktop, or adopt one Orchestra spawned — same session either way. On the desktop, n10 is also the relay that receives reports from other machines.',
+      'n10 reads the tags and lists players beside its own worktrees. Players launched by n10 Desktop and Orchestra use the same sessions, and n10 Desktop relays reports from other machines.',
   },
   {
     name: 'Beam',
     href: '/beam',
     blurb:
-      'Adds --machine to every Orchestra script. Name a paired machine and the same tmux and Git commands run there instead; the player’s reports come back over the same pairing, and wait on disk if your laptop is closed.',
+      'Beam adds --machine to every Orchestra script. The tmux and Git commands run on the named paired machine, and reports return over the pairing or wait on disk while your laptop is closed.',
   },
 ];
 
@@ -60,18 +60,16 @@ export function OrchestraTags() {
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 md:grid-cols-12 md:gap-14 sm:py-20">
         <div className="md:col-span-5">
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            A player is just a tmux session
+            Each player is a tmux session
           </h2>
           <p className="text-fd-muted-foreground mt-4 leading-relaxed text-pretty">
-            Everything Orchestra knows about a player lives on its tmux session
-            as a handful of user options. No state files, no daemon. The tags
-            die with the session, and anything that can reach the tmux server
-            can read them.
+            Orchestra stores player state as user options on its tmux session.
+            There are no state files or daemons, the tags end with the session,
+            and anything connected to the tmux server can read them.
           </p>
           <p className="text-fd-muted-foreground mt-4 leading-relaxed text-pretty">
-            That is the whole interoperability story. n10 and Beam speak the
-            same tags, so the three tools compose without knowing about each
-            other&apos;s internals.
+            n10 and Beam use the same tags. The tools work together without
+            depending on each other&apos;s internals.
           </p>
           <div className="mt-8 flex flex-col gap-6">
             {tools.map((tool) => (

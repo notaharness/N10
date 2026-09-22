@@ -2,17 +2,17 @@ const steps = [
   {
     title: 'Pair once',
     description:
-      "Run beam serve on the machine you want to reach. Open the link it prints on your laptop, then confirm the fingerprint. That's it — the machines now know and trust each other.",
+      'Run beam serve on the machine you want to reach. Open its link on your laptop and confirm the fingerprint to pair the machines.',
   },
   {
-    title: 'Connect whenever you need to',
+    title: 'Connect when needed',
     description:
-      'Either machine can dial the other — whichever direction the network allows. If neither is reachable, anything you send waits and arrives as soon as they reconnect.',
+      'Either machine can dial the other, depending on what the network allows. If neither is reachable, sent items wait until they reconnect.',
   },
   {
-    title: 'Run the agent over there',
+    title: 'Run the agent remotely',
     description:
-      'n10 and Orchestra work exactly as before: start tmux, check out a worktree, and launch an agent. Beam simply carries those calls to the other machine instead of running them locally.',
+      'n10 and Orchestra still start tmux, check out a worktree and launch an agent. Beam runs those calls on the paired machine instead of locally.',
   },
 ];
 
@@ -20,7 +20,7 @@ export function BeamHow() {
   return (
     <section className="mx-auto w-full max-w-5xl px-4 py-12">
       <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-        How it works
+        How Beam works
       </h2>
       <div className="mt-8 grid gap-6 sm:grid-cols-3">
         {steps.map((step, i) => (

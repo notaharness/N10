@@ -5,9 +5,9 @@ const features: Feature[] = [
     media: 'worktrees',
     label: 'Worktrees',
     href: '/docs/guides/worktrees',
-    title: 'Work on several branches at once',
+    title: 'Work on multiple branches at once',
     description:
-      "Each branch gets its own Git worktree and agent session. The sidebar shows each worktree's pull request state, CI results, review status and conflict count, so you can keep several features in progress without stashing changes.",
+      'Each branch gets its own Git worktree and agent session, so you do not need to stash changes. The sidebar shows pull request state, CI results, review status and conflicts.',
   },
   {
     media: 'review',
@@ -15,15 +15,15 @@ const features: Feature[] = [
     href: '/docs/guides/agent-reviews',
     title: "Review an agent's draft comments",
     description:
-      'Ask an agent to review a pull request. It adds draft comments to the relevant lines in the diff, and you work through them in severity order — edit, discard, skip or post each one, attributed to you.',
+      'Ask an agent to review a pull request and add draft comments to its diff. Work through them by severity, then edit, discard, skip or post each comment under your name.',
   },
   {
     media: 'plan',
     label: 'Plans',
     href: '/docs/guides/plans',
-    title: 'Turn review comments into an agent task',
+    title: 'Send review comments to an agent',
     description:
-      'Select the review comments you want an agent to address and add them to a plan. Preview the full prompt before sending it to your agent as a single task.',
+      'Add selected review comments to a plan. Check the full prompt, then send it to your agent as one task.',
   },
   {
     media: 'babysit',
@@ -31,15 +31,15 @@ const features: Feature[] = [
     href: '/docs/guides/babysit',
     title: 'Babysit a pull request',
     description:
-      'Right-click a pull request and choose Babysit to keep your agent updated on CI results, unresolved review comments and merge conflicts, grouped and sent when the agent is idle.',
+      'Right-click a pull request and choose Babysit. n10 groups CI results, unresolved review comments and merge conflicts, then sends them when the agent is idle.',
   },
   {
     media: 'review-in-place',
     label: 'Code review',
     href: '/docs/guides/reviewing-code',
-    title: 'Review code without leaving n10',
+    title: 'Review pull requests in n10',
     description:
-      "Read a pull request's description, browse its diff and submit your review in n10 — reply to comments, resolve or reopen threads, and switch between split and unified diff views.",
+      'Read the description, browse the diff and submit a review. Reply to comments, resolve or reopen threads, and use split or unified diffs.',
   },
   {
     media: 'theme',
@@ -52,15 +52,14 @@ const features: Feature[] = [
     media: 'tui',
     label: 'Terminal UI',
     href: '/docs/terminal-ui',
-    title: 'The terminal UI',
+    title: 'Use the terminal UI',
     alt: 'The terminal UI showing pull request status, inline review threads, and a plan ready to send to an agent',
     description: (
       <>
         Run <code>n10</code> from your repository root to open the terminal UI.
-        It shares the desktop app&apos;s core, configuration and worktrees, so
-        you can use either interface with the same projects. Most development
-        now focuses on the desktop app; some features, such as whole-file diffs,
-        are only available there.
+        It shares projects, configuration and worktrees with the desktop app.
+        Most development now focuses on the desktop app, and some features, such
+        as whole-file diffs, are only there.
       </>
     ),
   },

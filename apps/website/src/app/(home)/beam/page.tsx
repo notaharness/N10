@@ -11,17 +11,17 @@ import { Footer } from '@/components/landing/footer';
 export const metadata: Metadata = {
   title: 'Beam',
   description:
-    'Pair two machines and run terminals, commands and messages between them — the transport n10 and Orchestra use to run agents on another machine.',
+    'Pair two machines and run terminals, commands and messages between them. n10 and Orchestra use Beam to run agents on another machine.',
 };
 
 export default function BeamPage() {
   return (
     <main className="flex flex-1 flex-col">
       <BeamHero />
+      <BeamHow />
       <div className="px-4">
         <BeamOverviewDiagram />
       </div>
-      <BeamHow />
       <BeamStreams />
       <div className="px-4">
         <BeamQueueDiagram />

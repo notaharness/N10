@@ -25,8 +25,8 @@ export function BeamCta() {
             <CopyButton text={INSTALL} label="Copy the Beam install command" />
           </div>
           <p className="text-fd-muted-foreground mx-auto mt-5 max-w-md text-sm text-pretty">
-            Beam is still early. If the docs and reality don&apos;t match,
-            please open an issue.
+            Beam is still early. Open an issue if its behaviour does not match
+            the docs.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link href="/docs/beam" className={buttonVariants()}>

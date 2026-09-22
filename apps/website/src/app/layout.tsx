@@ -16,10 +16,10 @@ const mono = Geist_Mono({
 export const metadata: Metadata = {
   title: {
     template: '%s | n10',
-    default: 'n10 — run coding agents across Git worktrees',
+    default: 'n10 | Run coding agents across Git worktrees',
   },
   description:
-    'Run AI coding agents across Git worktrees, track pull requests, and review code from a desktop app or terminal UI.',
+    'Run coding agents in Git worktrees. Track pull requests and review code from the desktop app or terminal UI.',
   metadataBase: new URL('https://n10.is'),
 };
 

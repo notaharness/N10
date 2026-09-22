@@ -2,17 +2,17 @@ const notes = [
   {
     title: 'Built into n10 and Orchestra',
     description:
-      "Once two machines are paired, n10 Desktop's launch dialogs let you choose a paired machine just as you'd choose a local repository. On the command line, Orchestra's scripts offer a matching --machine flag.",
+      'After pairing, n10 Desktop can launch on a paired machine instead of a local repository. Orchestra scripts provide the same choice with --machine.',
   },
   {
-    title: 'Pair with the same care as an SSH key',
+    title: 'Treat pairing like an SSH key',
     description:
-      'Both machines prove their identity before anything is sent, preventing a third party on the network from impersonating either side. Pair only machines you trust, and revoke access at any time with beam revoke.',
+      'Both machines prove their identity before sending anything, which prevents another machine from impersonating either one. Pair only trusted machines and remove access with beam revoke.',
   },
   {
-    title: 'More than an n10 dependency',
+    title: 'Use Beam on its own',
     description:
-      'Beam ships as a standalone package with its own CLI. It knows nothing about Git or tmux, so you can build on it directly from a plain shell script.',
+      'Beam is also a standalone package with its own CLI. It does not depend on Git or tmux, so shell scripts can use it directly.',
   },
 ];
 

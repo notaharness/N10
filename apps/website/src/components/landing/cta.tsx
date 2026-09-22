@@ -12,7 +12,8 @@ export function Cta() {
             n10 is still early
           </h2>
           <p className="text-fd-muted-foreground mx-auto mt-4 max-w-md text-pretty">
-            We use it every day, but expect rough edges and breaking changes.
+            We use it every day, but it still has rough edges and breaking
+            changes.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link href="/docs" className={buttonVariants()}>
@@ -22,7 +23,7 @@ export function Cta() {
               href="/orchestra"
               className={buttonVariants({ variant: 'outline' })}
             >
-              Pair with Orchestra
+              Use Orchestra
             </Link>
           </div>
         </div>

@@ -20,9 +20,9 @@ export function ProvidersTable() {
             Version control providers
           </h2>
           <p className="text-fd-muted-foreground mt-4 leading-relaxed text-pretty">
-            GitLab, Bitbucket and other providers are not currently supported.
-            Providers share an interface in <code>libs/vcs/</code> —
-            contributions adding support for other providers are welcome.
+            GitLab, Bitbucket and other providers are not supported yet.
+            Provider integrations use the interface in <code>libs/vcs/</code>,
+            and contributions are welcome.
           </p>
         </div>
         <div className="min-w-0 md:col-span-7">
