@@ -752,10 +752,16 @@ different things in the two: this register's `D3` is the `'error'`-listener and 
 rule, while the other's is "one session poller per machine"; this register's `D4` is an
 unprobed peer reporting `unknown`, the other's is connection state and process state coming
 from different sources. So **write the register into every new citation** — `beam.md D5`,
-`decisions.md D5` — rather than a bare `D5`. Existing bare citations resolve by where they
-sit: inside `libs/beam` they are this register's, and any citation that names `decisions.md`
-belongs to the other one, wherever it sits. `D8`, `D10`, `D13` and `D14` are the other
-register's and have no entry here.
+`decisions.md D5` — rather than a bare `D5`.
+
+Existing citations resolve like this. One that names `decisions.md` is the other register's,
+wherever it sits. A bare number inside `libs/beam` is this one's. A bare number anywhere else
+has to be read by subject, and both do appear outside: `apps/desktop`'s
+`beam-node-probe.ts` opens with this register's D6 (reachability states) and cites the other
+register's D8 eleven lines later, and `apps/beam` cites this register's D9 (a rejection
+naming its peer, usually written `D9/D11`) alongside the other's D9 (its own command
+surface). `D8`, `D10`, `D13` and `D14` are the other register's throughout and have no entry
+here.
 
 | #   | Decision                                                                                                                                                                                                                                                  | Why                                                                                                                                                                                                                                                                                                                                          |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

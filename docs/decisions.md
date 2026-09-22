@@ -332,9 +332,15 @@ different sources" in the other.
 | **machine integration** | this section   | wiring beam into n10: remote tmux, the desktop's node, the UI's gating | `libs/terminal-tmux`, `apps/desktop`, `apps/beam`'s command surface |
 
 **Write the register into every new citation** — `beam.md D5`, `decisions.md
-D5` — rather than a bare `D5`. Existing bare citations resolve by where they
-sit: inside `libs/beam` they are beam's, and a citation that names
-`decisions.md` is this register's wherever it sits.
+D5` — rather than a bare `D5`.
+
+Existing citations resolve like this. One that names `decisions.md` is this
+register's, wherever it sits. A bare number inside `libs/beam` is beam's. A
+bare number anywhere else has to be read by subject, and both registers do
+appear outside `libs/beam`: `apps/desktop/src/main/beam-node-probe.ts` opens
+with beam's D6 and cites this register's D8 eleven lines later, and
+`apps/beam` cites beam's D9 (a rejection naming its peer, usually written
+`D9/D11`) alongside this register's D9 (its own command surface).
 
 ### The machine integration register
 
