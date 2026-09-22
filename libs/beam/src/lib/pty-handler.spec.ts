@@ -230,11 +230,21 @@ describe('createPtyStreamHandler', () => {
         'printenv BEAM_CALLER_ID BEAM_CALLER_LABEL BEAM_PEER_ID BEAM_DIR BEAM_INBOX\n'
       )
     );
-    const output = await waitFor(fake.text, (t) => t.includes('caller-id-123'));
-    expect(output).toContain('caller-id-123');
-    expect(output).toContain('laptop');
-    expect(output).toContain('this-node-id');
-    expect(output).toContain('/tmp/beam-test-dir');
+    // printenv writes the five values in order, and a pty read can split
+    // between them. Gate on all of them, not just the first: waiting only
+    // for BEAM_CALLER_ID lets the assertions below run against a partial
+    // read, which fails on the later values and — worse — checks the
+    // forbidden names against output that has barely started.
+    const expected = [
+      'caller-id-123',
+      'laptop',
+      'this-node-id',
+      '/tmp/beam-test-dir',
+    ];
+    const output = await waitFor(fake.text, (t) =>
+      expected.every((value) => t.includes(value))
+    );
+    for (const value of expected) expect(output).toContain(value);
     for (const forbidden of ['PRIVATE_KEY', 'BEAM_TICKET', 'BEAM_TOKEN']) {
       expect(output).not.toContain(forbidden);
     }
