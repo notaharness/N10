@@ -6,6 +6,8 @@
  */
 
 import { parseOpenPayload } from './open-params.js';
+import { openRefusal } from './open-gate.js';
+import { streamCloseError, type StreamScope } from './peer-scopes.js';
 import {
   FrameDecoder,
   FrameType,
@@ -48,6 +50,16 @@ export interface MuxerOptions {
   /** Who is on the other end of this connection; stamped onto every stream
    * this Muxer creates (D1/A1/A4). */
   peer?: StreamContext;
+  /**
+   * What that peer is entitled to open here. Asked on every inbound `Open`
+   * rather than captured once, so it reads the peer table as it is at that
+   * moment: a grant narrowed by a re-pair, or a `reload-peers` picking one
+   * up from another process, takes effect on the live connection, the same
+   * way revocation does. Omitted (tests, and a caller with no peer table)
+   * means unconstrained, so nothing that worked before this existed stops
+   * working.
+   */
+  scopes?: () => readonly StreamScope[];
 }
 
 export class Muxer {
@@ -59,6 +71,7 @@ export class Muxer {
   private readonly registry: StreamRegistry;
   private readonly sendBytes: (bytes: Uint8Array) => void;
   private readonly peer: StreamContext;
+  private readonly scopes?: () => readonly StreamScope[];
   private readonly ids: StreamIdAllocator;
   private disposed = false;
 
@@ -66,6 +79,7 @@ export class Muxer {
     this.registry = registry;
     this.sendBytes = options.sendBytes;
     this.peer = options.peer ?? UNKNOWN_PEER;
+    this.scopes = options.scopes;
     this.ids = new StreamIdAllocator(options.role);
     this.sink = {
       sendData: (streamId, data) =>
@@ -270,32 +284,23 @@ export class Muxer {
   }
 
   private handleOpen(frame: Frame): void {
-    // Opening a stream spawns a process. `receive` already drops everything
-    // once disposed; this is the second lock on the same door, because this
-    // is the one frame type whose effect outlives the connection, and
-    // `dispose` has already run its reaping pass by the time we get here.
-    if (this.disposed) {
-      this.sendFrame(
-        FrameType.Close,
-        frame.streamId,
-        encoder.encode('connection is closed')
-      );
-      return;
-    }
-    if (!this.ids.belongsToPeer(frame.streamId)) {
-      this.sendFrame(
-        FrameType.Close,
-        frame.streamId,
-        encoder.encode("stream id is not the opener's to allocate")
-      );
-      return;
-    }
-    if (this.streams.has(frame.streamId)) {
-      this.sendFrame(
-        FrameType.Close,
-        frame.streamId,
-        encoder.encode('stream id already open')
-      );
+    const { name, params } = parseOpenPayload(decodeText(frame));
+    // One list, in open-gate.ts: a connection already reaped, a stream id
+    // that is not the opener's to allocate, an id already in use, and a
+    // stream kind this peer was not granted. Everything refusable about an
+    // Open lives there, because this is the frame whose effect — a spawned
+    // process — outlives the connection.
+    const refusal = openRefusal(
+      {
+        disposed: this.disposed,
+        ownedByPeer: this.ids.belongsToPeer(frame.streamId),
+        alreadyOpen: this.streams.has(frame.streamId),
+        granted: this.scopes?.(),
+      },
+      name
+    );
+    if (refusal) {
+      this.sendFrame(FrameType.Close, frame.streamId, encoder.encode(refusal));
       return;
     }
     // `seq` counts every frame on this stream, not just Data (SeqSender
@@ -303,7 +308,6 @@ export class Muxer {
     // Open frame's seq too, or it will expect the first Data frame to start
     // back at 0 and flag it as a gap.
     this.tracker.feed(frame.streamId, frame.seq);
-    const { name, params } = parseOpenPayload(decodeText(frame));
     const handler = this.registry.resolve(name);
     if (!handler) {
       this.sendFrame(
@@ -350,7 +354,10 @@ export class Muxer {
       const reject = stream.readyReject;
       stream.readyResolve = null;
       stream.readyReject = null;
-      reject(new Error(reason ?? 'stream was closed before it opened'));
+      // A refusal for want of a scope comes back as its own error type, so
+      // the caller never has to tell it from a dead transport by reading a
+      // message: one is permanent, the other is worth retrying.
+      reject(streamCloseError(reason, stream.name));
       return;
     }
     stream.emitClose(reason);
