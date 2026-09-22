@@ -91,6 +91,15 @@ export {
 } from './lib/transport.js';
 
 export {
+  DEFAULT_PING_INTERVAL_MS,
+  DEFAULT_PONG_TIMEOUT_MS,
+  startLiveness,
+  type LivenessMonitor,
+  type LivenessOptions,
+  type LivenessProbe,
+} from './lib/liveness.js';
+
+export {
   createConnection,
   type CreateConnectionOptions,
   type PeerConnection,

@@ -202,6 +202,48 @@ Capabilities are advertised in the descriptor and in the handshake, so new strea
 additive: a caller checks the capability before opening. Current names: `pty`, `pty:<program>`,
 `exec`, `msg`.
 
+## Liveness
+
+A transport that ends politely — a process exiting, a `close()` — reaches every layer above
+it at once: the kernel sends a FIN and `onClose` fires. A machine that is switched off,
+suspended, unplugged or frozen mid-syscall sends nothing at all, and the socket stays
+ESTABLISHED on this side for as long as nothing writes to it. Everything downstream trusts
+`ConnectionRegistry`, so that is not degradation but confident wrongness: a UI says
+connected, a reachability prober skips the peer _because_ it has a connection, and the
+mailbox flusher retries against a socket that can never answer. Suspending a peer's process
+with `SIGSTOP` reproduces it exactly — nothing about the connection changes until the
+process is actually killed.
+
+So each side asks. Every connection, dialed or accepted, sends a WebSocket ping every **10
+seconds** and destroys the transport when a ping goes unanswered for **10 seconds**. A peer
+that has gone away is therefore noticed in 10–20 seconds, while a peer that merely stalls
+for less than the timeout — a long GC, a loaded machine, a laptop catching up — is not
+dropped at all. The interval is also well inside the idle timeout of a typical NAT, so the
+pings keep the path open as a side effect.
+
+`terminate()`, not `close()`, for the same reason revocation uses it: there is nobody there
+to complete a close handshake, and `ws` would wait out its 30s close timeout first. What the
+far side observes, if it ever runs again, is an abnormal closure (1006) — no close frame,
+its streams reaped, its `pty` and `exec` children killed by their handlers' close paths.
+Indistinguishable, deliberately, from the machine at this end going away.
+
+Both ends run it, and the accepting side has the most to lose by not: a host whose client
+vanished holds that client's shells open, their processes running and their slots in the
+per-peer `pty` and `exec` budgets until the peer reconnects and `ConnectionRegistry.add`
+supersedes the old connection — which for a machine that is not coming back is never.
+
+A pong is answered by the peer's WebSocket layer, not by its application, so a pong proves
+the far process is running its event loop. It does not prove the far _application_ is making
+progress: one that has wedged while its event loop spins still pongs. Catching that is the
+mailbox's ack timeout's business, one layer up.
+
+`PeerConnection.checkAlive()` exposes the same probe as a one-shot question, for a caller
+about to rely on a connection that cannot wait out the periodic timer — the desktop's
+reconnect path asks it before deciding whether to redial through the connection it already
+has. A transport with no probe of its own gets no monitor and answers `checkAlive` with
+`false`: `TransportSocket.ping`/`onPong` are optional, and an unverifiable connection is
+reported as suspect rather than as healthy.
+
 ## Streams
 
 ### `pty`, `pty:<program>`
@@ -332,8 +374,12 @@ The alternative — withholding the wire ack until a subscriber takes the messag
 against a machine that already has the message.
 
 **Flush triggers**: a connection to the peer becoming live (either direction), node start,
-and a bounded retry while a connection stays up. No timers are needed for offline peers —
-there is nothing to try.
+and a retry while a connection stays up. The retry is bounded by the connection, not by a
+count: an envelope that is not acked is sent again every 2 seconds for as long as the
+connection lasts. Liveness is what bounds that in turn — a peer that stops answering has its
+transport destroyed within the ping timeout, the drain loop then finds no connection and
+stops, and the envelope stays queued for the next one. No timers are needed for offline
+peers — there is nothing to try.
 
 **A lost counter with an empty backlog is the one hole left.** `SeqCounter` reconciles every
 `next()` against the highest seq already on that peer's own disk, so a counter file that is
@@ -556,13 +602,13 @@ loud rather than silent — both stated in full under "Durable mailbox" above.
 
 ## Deliberately out of scope, doors left open
 
-| Later                                     | What keeps it possible                                                                                                                                                                                                                                                                                                 |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam — `send`, `close`, `terminate`, `onData`, `onClose`, where `terminate` is the abrupt drop revocation needs; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure                                      |
-| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                                                                                                                                                                            |
-| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                                                                                                                                                                         |
-| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                                                                                                                                                                        |
-| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`                                                                                                                                                                                                                                                |
-| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                                                                                                                                                                                                                                                        |
-| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts                                                                                                                                                                                                                                                  |
-| backpressure and flow control             | deliberately absent: nothing in the wire format or the stream API promises it, and `exec`'s pump bounds only this process's own read-side buffering, so a fast producer can still grow the transport's send queue. `Control` already carries per-stream messages, so a credit scheme fits without a wire-format change |
+| Later                                     | What keeps it possible                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam — `send`, `close`, `terminate`, `onData`, `onClose`, plus the optional `ping`/`onPong` pair liveness rides on, where `terminate` is the abrupt drop revocation and a silent peer both need; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure |
+| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                                                                                                                                                                                                                       |
+| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                                                                                                                                                                                                                    |
+| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                                                                                                                                                                                                                   |
+| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`                                                                                                                                                                                                                                                                                           |
+| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                                                                                                                                                                                                                                                                                                   |
+| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts                                                                                                                                                                                                                                                                                             |
+| backpressure and flow control             | deliberately absent: nothing in the wire format or the stream API promises it, and `exec`'s pump bounds only this process's own read-side buffering, so a fast producer can still grow the transport's send queue. `Control` already carries per-stream messages, so a credit scheme fits without a wire-format change                                            |

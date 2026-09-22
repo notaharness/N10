@@ -29,6 +29,7 @@ import {
   type RouteContext,
 } from './host-routes.js';
 import type { Identity } from './identity.js';
+import type { LivenessOptions } from './liveness.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
 import { MAX_TRANSPORT_MESSAGE_BYTES } from './protocol.js';
 import { PAIRING_TOKEN_TTL_MS, SingleUseSecrets } from './secrets.js';
@@ -51,6 +52,11 @@ export interface HostOptions {
   capabilities?: string[];
   now?: () => number;
   log?: (message: string) => void;
+  /** Ping/pong liveness for every connection this host accepts
+   * (`liveness.ts`). A client that vanishes mid-session otherwise leaves
+   * its shells, its `exec` children and its per-peer budget held until
+   * it reconnects and `ConnectionRegistry.add` supersedes it. */
+  liveness?: LivenessOptions | false;
 }
 
 export class Host {
@@ -63,6 +69,7 @@ export class Host {
   private readonly portOption: number;
   private readonly log: (message: string) => void;
   private readonly ctx: RouteContext;
+  private readonly liveness?: LivenessOptions | false;
   private server: Server | null = null;
   private wss: WebSocketServer | null = null;
 
@@ -74,6 +81,7 @@ export class Host {
     this.hostnameOption = options.hostname ?? '127.0.0.1';
     this.portOption = options.port ?? 0;
     this.log = options.log ?? ((message) => console.log(`[beam] ${message}`));
+    this.liveness = options.liveness;
     this.ctx = {
       identity: this.identity,
       peers: this.peers,
@@ -262,6 +270,7 @@ export class Host {
         role: 'acceptor',
         socket: wrapWebSocket(ws),
         registry: this.registry,
+        liveness: this.liveness,
       });
       this.connections.add(connection);
       this.peers.touch(peerId);

@@ -16,6 +16,7 @@ import { createConnection, type PeerConnection } from './connection.js';
 import type { HostDescriptor } from './host.js';
 import { DESCRIPTOR_PATH, PROTOCOL_VERSION } from './host.js';
 import { derivePeerId, type Identity } from './identity.js';
+import type { LivenessOptions } from './liveness.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
 import { randomSecret } from './secrets.js';
 import { StreamRegistry } from './stream-registry.js';
@@ -186,6 +187,10 @@ export interface DialOptions {
    * host side. */
   connections?: ConnectionRegistry;
   transport?: Transport;
+  /** Ping/pong liveness for the dialed connection (`liveness.ts`).
+   * Defaults on: a host that vanishes rather than closing otherwise
+   * leaves this side reporting it as connected indefinitely. */
+  liveness?: LivenessOptions | false;
 }
 
 /**
@@ -255,6 +260,7 @@ export async function dial(
     role: 'initiator',
     socket,
     registry: options.registry ?? new StreamRegistry(),
+    liveness: options.liveness,
   });
   (options.connections ?? new ConnectionRegistry()).add(connection);
   options.peers.touch(peer.peerId);
