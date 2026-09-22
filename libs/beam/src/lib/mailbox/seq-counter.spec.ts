@@ -99,3 +99,50 @@ describe('SeqCounter', () => {
     expect(reopened.next(PEER_X)).toBe(4); // not max(0, 2) + 1 again.
   });
 });
+
+/**
+ * The corruption *shapes* `seq.json` can actually take on a real disk, not
+ * just the hand-written one above. `save()` is write-temp-then-rename with
+ * no `fsync` on either the file or the directory, so a power loss can leave
+ * the rename durable while the data behind it is not — and the file the
+ * reader then finds is empty, or truncated, or full of zero bytes. Every
+ * one of them has to reach the same refusal (D2): a counter that restarts
+ * reissues numbers the receiver already accepted, and the sender then
+ * reports `delivered` for mail nobody will ever get.
+ */
+describe('SeqCounter: the corruption shapes a crash can leave behind', () => {
+  /** Put exactly `contents` where `seq.json` lives and hand back the read
+   * that has to refuse it. Writes the file directly rather than through a
+   * SeqCounter, so a case that leaves the file corrupt cannot make the
+   * *next* case fail in its setup instead of its assertion. */
+  function withFile(contents: string | Buffer): () => SeqCounter {
+    mkdirSync(join(dir, 'mailbox'), { recursive: true });
+    writeFileSync(join(dir, 'mailbox', 'seq.json'), contents);
+    return () => new SeqCounter(dir);
+  }
+
+  it('an empty file — the one a crash between rename and flush leaves — throws', () => {
+    expect(withFile('')).toThrow(MailboxCorruptionError);
+  });
+
+  it('a file of NUL bytes, the other common torn-write remnant, throws', () => {
+    expect(withFile(Buffer.alloc(64))).toThrow(MailboxCorruptionError);
+  });
+
+  it('a truncated but still JSON-looking file throws', () => {
+    expect(withFile('{"00000000000000c0":')).toThrow(MailboxCorruptionError);
+  });
+
+  it('valid JSON of the wrong shape — an array, a string, null — throws rather than being read as a counter map', () => {
+    for (const contents of ['[]', '"1"', 'null', '7']) {
+      expect(withFile(contents)).toThrow(MailboxCorruptionError);
+    }
+  });
+
+  it('the positive control: a well-formed counter file is read, not refused', () => {
+    // Without this, every assertion above would also pass against a
+    // constructor that threw unconditionally.
+    const read = withFile(JSON.stringify({ [PEER_X]: 41 }));
+    expect(read().next(PEER_X)).toBe(42);
+  });
+});

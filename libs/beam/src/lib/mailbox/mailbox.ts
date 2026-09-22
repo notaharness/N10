@@ -2,7 +2,9 @@
  * The durable mailbox: one queue per peer, drained over whichever
  * connection to that peer is live, with strictly sequential delivery and
  * receiver-side dedup. See docs/beam.md's "Durable mailbox" section, which
- * this implements, and decisions.md D7/D9.
+ * this implements, and beam.md D7/D9 — beam's own register, not the
+ * machine-integration one in docs/decisions.md, whose D9 is a different
+ * decision about a different subject.
  */
 
 import { randomUUID } from 'node:crypto';
