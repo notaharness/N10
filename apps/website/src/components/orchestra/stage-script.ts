@@ -15,15 +15,48 @@ export interface PlayerSpec {
   /** Degrees around the arc from straight in front of the podium. */
   angle: number;
   session: string;
+  branch: string;
+  agent: string;
   remote?: boolean;
 }
 
 export const PLAYERS: PlayerSpec[] = [
-  { id: 'a', angle: -66, session: 'shop-feature-search' },
-  { id: 'b', angle: -33, session: 'shop-fix-flaky-restore' },
-  { id: 'c', angle: 0, session: 'shop-feature-palette' },
-  { id: 'd', angle: 33, session: 'shop-chore-deps' },
-  { id: 'e', angle: 66, session: 'shop-feature-export', remote: true },
+  {
+    id: 'a',
+    angle: -66,
+    session: 'shop-feature-search',
+    branch: 'feature/search',
+    agent: 'claude',
+  },
+  {
+    id: 'b',
+    angle: -33,
+    session: 'shop-fix-flaky-restore',
+    branch: 'fix/flaky-restore',
+    agent: 'codex',
+  },
+  {
+    id: 'c',
+    angle: 0,
+    session: 'shop-feature-palette',
+    branch: 'feature/palette',
+    agent: 'claude',
+  },
+  {
+    id: 'd',
+    angle: 33,
+    session: 'shop-chore-deps',
+    branch: 'chore/deps',
+    agent: 'gemini',
+  },
+  {
+    id: 'e',
+    angle: 66,
+    session: 'shop-feature-export',
+    branch: 'feature/export',
+    agent: 'codex',
+    remote: true,
+  },
 ];
 
 export type Event =

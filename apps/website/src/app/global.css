@@ -648,11 +648,6 @@
   }
 }
 
-.orchestra-baton {
-  animation: orchestra-baton 1.2s ease-in-out infinite alternate;
-  animation-play-state: var(--orchestra-play);
-}
-
 .orchestra-baton-line {
   stroke: var(--color-fd-foreground);
   stroke-width: 1.5;
@@ -663,13 +658,124 @@
   fill: var(--n10-sand);
 }
 
-@keyframes orchestra-baton {
+/* Figures. Bodies take --orchestra-figure; heads and arms are one
+ * neutral tone so every figure reads as the same kind of person. */
+.orchestra-figure-shadow {
+  fill: rgb(30 25 10 / 0.16);
+}
+
+.dark .orchestra-figure-shadow {
+  fill: rgb(0 0 0 / 0.5);
+}
+
+.orchestra-figure-body {
+  fill: var(--orchestra-figure);
+  stroke: rgb(0 0 0 / 0.18);
+  stroke-width: 0.8;
+}
+
+.orchestra-figure-head {
+  fill: color-mix(
+    in oklab,
+    var(--color-fd-foreground) 78%,
+    var(--color-fd-background)
+  );
+}
+
+.orchestra-arm,
+.orchestra-arm line {
+  stroke: color-mix(
+    in oklab,
+    var(--color-fd-foreground) 78%,
+    var(--color-fd-background)
+  );
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.orchestra-bowtie {
+  fill: var(--n10-sand);
+}
+
+/* A player at work bows: the right arm saws, the left holds. */
+.orchestra-figure[data-playing='true'] .orchestra-arm--right {
+  animation: orchestra-bow 0.7s ease-in-out infinite alternate;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-bow {
   from {
-    transform: rotate(-32deg);
+    transform: rotate(-18deg);
   }
   to {
-    transform: rotate(14deg);
+    transform: rotate(22deg);
   }
+}
+
+/* The conductor beats a four: down, in, out, up. Each beat is a
+ * quarter of the bar, with a flick at the bottom of the downbeat. */
+.orchestra-figure--conductor .orchestra-arm--right {
+  animation: orchestra-conduct 2.4s ease-in-out infinite;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-conduct {
+  0% {
+    transform: rotate(-70deg);
+  }
+  22% {
+    transform: rotate(40deg);
+  }
+  27% {
+    transform: rotate(28deg);
+  }
+  50% {
+    transform: rotate(-5deg) translate(-8px, 0);
+  }
+  75% {
+    transform: rotate(10deg) translate(10px, 0);
+  }
+  100% {
+    transform: rotate(-70deg);
+  }
+}
+
+.orchestra-figure--conductor .orchestra-arm--left {
+  animation: orchestra-conduct-left 4.8s ease-in-out infinite;
+  animation-play-state: var(--orchestra-play);
+}
+
+@keyframes orchestra-conduct-left {
+  50% {
+    transform: rotate(35deg);
+  }
+}
+
+.orchestra-badge rect {
+  fill: currentColor;
+}
+
+.orchestra-badge text {
+  fill: var(--color-fd-background);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.orchestra-nameplate text {
+  fill: var(--color-fd-foreground);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--color-fd-background);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.orchestra-nameplate text.orchestra-nameplate-agent {
+  fill: var(--color-fd-muted-foreground);
 }
 
 /* A lectern's screen: bouncing bars while its player works, tinted by

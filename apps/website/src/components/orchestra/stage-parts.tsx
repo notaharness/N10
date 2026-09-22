@@ -24,11 +24,16 @@ import {
   type PlayerSpec,
   type Status,
 } from '@/components/orchestra/stage-script';
+import {
+  AGENT_COLOR,
+  Figure,
+  Nameplate,
+} from '@/components/orchestra/stage-figures';
 import type { Flight } from '@/components/orchestra/use-show';
 
 /** The pieces of the stage: see orchestra-stage.tsx for the scene. */
 export const PODIUM: Vec2 = [8, 8];
-export const TIER_R = 5.6;
+export const TIER_R = 6.3;
 /** The arc opens toward the viewer, who sits toward +x +y — turned a
  * little off the diagonal so no box is seen exactly square-on. */
 export const FACING = (38 * Math.PI) / 180;
@@ -101,8 +106,15 @@ export function Podium() {
     d: 2.8,
     h: 0.35,
   };
-  const desk: Placed = { cx, cy, heading: FACING + Math.PI / 2 };
-  const [bx, by] = project([cx, cy, 1.55]);
+  // The conductor stands at the back of the platform facing the
+  // players (and so the viewer); the desk is between them.
+  const back = FACING + Math.PI;
+  const stand: Vec2 = [cx + Math.cos(back) * 0.55, cy + Math.sin(back) * 0.55];
+  const desk: Placed = {
+    cx: cx + Math.cos(FACING) * 0.55,
+    cy: cy + Math.sin(FACING) * 0.55,
+    heading: FACING + Math.PI / 2,
+  };
   const [gx, gy] = project([cx, cy, 0.36]);
   return (
     <g>
@@ -115,29 +127,17 @@ export function Podium() {
         ry="5"
         className="orchestra-beat orchestra-beat--late"
       />
-      <Faces faces={turnedBox(desk, 1.3, 0.8, 1.2, 0.35)} />
+      <Figure
+        ground={[stand[0], stand[1]]}
+        color="var(--color-fd-foreground)"
+        playing
+        conductor
+      />
+      <Faces faces={turnedBox(desk, 1.1, 0.5, 0.95, 0.35)} />
       <polygon
-        points={toPoints(panel(desk, 1.2, 0.3, 1.55, 0.06, 0.02))}
+        points={toPoints(panel(desk, 1.0, 0.2, 1.3, 0.05, 0.02))}
         className="orchestra-podium-top"
       />
-      <g
-        className="orchestra-baton"
-        style={{ transformOrigin: `${bx}px ${by - 6}px` }}
-      >
-        <line
-          x1={bx}
-          y1={by - 6}
-          x2={bx + 22}
-          y2={by - 30}
-          className="orchestra-baton-line"
-        />
-        <circle
-          cx={bx + 22}
-          cy={by - 30}
-          r="2"
-          className="orchestra-baton-tip"
-        />
-      </g>
     </g>
   );
 }
@@ -173,6 +173,19 @@ export function Lectern({
   ];
   const bars = [0.2, 0.35, 0.5, 0.65, 0.8];
   const centre = project(inQuad(lid, 0.5, 0.5));
+  // The player stands on the viewer's side of the stand, a little to
+  // its right so the screen stays in view past their shoulder.
+  const fwd: Vec2 = [-Math.sin(at.heading), Math.cos(at.heading)];
+  const side: Vec2 = [Math.cos(at.heading), Math.sin(at.heading)];
+  const standing: Vec2 = [
+    at.cx + fwd[0] * 1.0 + side[0] * 0.55,
+    at.cy + fwd[1] * 1.0 + side[1] * 0.55,
+  ];
+  const plate: Vec2 = [at.cx + fwd[0] * 1.6, at.cy + fwd[1] * 1.6];
+  const badge =
+    status === 'working'
+      ? null
+      : { glyph: STATUS_GLYPH[status], color: KIND_COLOR[STATUS_KIND[status]] };
   const vars = {
     '--orchestra-kind': KIND_COLOR[STATUS_KIND[status]],
   } as CSSProperties;
@@ -199,6 +212,13 @@ export function Lectern({
           {STATUS_GLYPH[status]}
         </text>
       )}
+      <Figure
+        ground={standing}
+        color={AGENT_COLOR[spec.agent] ?? BEAM_COLORS.sage}
+        playing={status === 'working'}
+        badge={badge}
+      />
+      <Nameplate ground={plate} branch={spec.branch} agent={spec.agent} />
     </g>
   );
 }

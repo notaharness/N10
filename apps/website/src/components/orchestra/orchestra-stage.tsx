@@ -67,7 +67,7 @@ export function OrchestraStage({ className }: { className?: string }) {
     <figure className={className}>
       <div className="relative">
         <svg
-          viewBox={`${px - 330} ${py - 125} 660 262`}
+          viewBox={`${px - 330} ${py - 125} 660 292`}
           className="orchestra-stage h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
@@ -118,7 +118,7 @@ export function OrchestraStage({ className }: { className?: string }) {
           <Icon className="size-4" aria-hidden />
         </button>
       </div>
-      <figcaption className="orchestra-log n10-frame bg-fd-card mx-auto mt-2 max-w-2xl rounded-xl px-4 py-3 font-mono text-xs">
+      <figcaption className="orchestra-log n10-frame bg-fd-card mx-auto mt-4 max-w-2xl rounded-xl px-4 py-3 font-mono text-xs">
         <ol
           className="flex min-h-[5.5rem] flex-col justify-end gap-1.5"
           aria-live="polite"
