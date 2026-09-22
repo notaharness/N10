@@ -20,7 +20,7 @@ import type { SessionBackend, SessionSpec } from '@n10/terminal';
 import { PtySession } from '@n10/terminal-pty';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 import { createTmuxBackend } from './tmux-backend.js';
-import { tmuxHasSession, tmuxKillSession } from './tmux-cli.js';
+import { tmuxHasSession, tmuxKillSession, tmuxShowOption } from './tmux-cli.js';
 
 function tmuxAvailable(): boolean {
   try {
@@ -156,6 +156,12 @@ describe.skipIf(SKIP)('attaching, detaching and re-attaching', () => {
     expect(display(name, '#{pane_pid}')).toBe(panePid);
     expect(backend.processState?.running).toBe(true);
     expect(backend.connectionState).toBe('connected');
+    // A reconnect makes a client, not a session, so nothing about the
+    // session's identity is rewritten on the way back in. Routed
+    // through the launch path instead it would reinstall options over
+    // the tags n10 and Orchestra find each other by, and the agent
+    // would come back as somebody else's.
+    expect(tmuxShowOption(name, '@test-agent')).toBe('first');
   });
 
   it('re-attaches after its client was killed, and the session still takes input', async () => {
