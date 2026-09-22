@@ -8,6 +8,7 @@
  * than that it is a usage mistake.
  */
 
+import { decodePtyExit } from '@n10/beam';
 import { parseArgs } from '../args.js';
 import { dialPeer } from '../dial-peer.js';
 import type { Io } from '../io.js';
@@ -91,6 +92,40 @@ export async function withRawStdin<T>(
   }
 }
 
+/** What this command exits with once the pty stream ends.
+ *
+ * A `pty` stream closes for one good reason and several bad ones, and the
+ * exit code is the only thing a script driving `beam connect` can read. A
+ * close that decodes as the far process exiting is the session finishing:
+ * exit 0, per the documented 0-success / 1-runtime-failure / 2-usage
+ * contract — `exec` is the one command that hands back a remote code, and
+ * that is a documented exception rather than the rule here.
+ *
+ * Everything else is the connection dying under a live shell: the
+ * transport ending, ending mid-frame, a handler throwing, a scope
+ * withdrawn. Those used to exit 0 as well, which told a script the shell
+ * ran to completion when it was cut off partway. They exit 1, and say so
+ * on stderr — `exec.ts`'s `ended without an exit code` path, for the same
+ * reason. */
+export function ptyExitCode(reason: string | undefined, io: Io): number {
+  const exit = decodePtyExit(reason);
+  if (!exit) {
+    io.stderr.write(
+      `beam: connection to the remote terminal ended: ${
+        reason ?? 'stream closed'
+      }\n`
+    );
+    return 1;
+  }
+  // A process killed by a signal did not finish either, and `exec` already
+  // reports that as a runtime failure rather than folding it into a code.
+  if (exit.signal) {
+    io.stderr.write(`beam: remote process ended on signal ${exit.signal}\n`);
+    return 1;
+  }
+  return 0;
+}
+
 export async function runConnect(args: string[], io: Io): Promise<number> {
   const parsed = parseArgs(args, { valueFlags: ['transport'] });
   const [nameOrId, streamArg] = parsed.positionals;
@@ -122,7 +157,7 @@ export async function runConnect(args: string[], io: Io): Promise<number> {
     stream.onData((data) => io.stdout.write(Buffer.from(data)));
     try {
       return await new Promise<number>((resolve) =>
-        stream.onClose(() => resolve(0))
+        stream.onClose((reason) => resolve(ptyExitCode(reason, io)))
       );
     } finally {
       io.stdin.removeListener?.(

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { runConnect, withRawStdin } from './connect.js';
-import { makeFakeIoWithBeamDir } from '../test-support/fake-io.js';
+import { ptyExitCode, runConnect, withRawStdin } from './connect.js';
+import {
+  makeFakeIo,
+  makeFakeIoWithBeamDir,
+  type FakeIo,
+} from '../test-support/fake-io.js';
 import { RuntimeError, USAGE } from '../usage.js';
 
 interface FakeRawStdin {
@@ -146,5 +150,51 @@ describe('connect transports', () => {
     await expect(rejection).rejects.toThrow(
       /--transport webrtc is not implemented/
     );
+  });
+});
+
+describe('ptyExitCode', () => {
+  function io(): { io: FakeIo; stderr: () => string } {
+    const fake = makeFakeIo({});
+    return { io: fake, stderr: () => fake.stderrText() };
+  }
+
+  it('a clean remote exit is success, whatever the remote code was', () => {
+    // `connect`'s documented contract is 0 success / 1 runtime failure / 2
+    // usage — `exec` is the one command that hands back a remote code, and
+    // that is a documented exception rather than the rule.
+    for (const reason of [
+      'process exited (code 0)',
+      'process exited (code 3)',
+    ]) {
+      const { io: fake, stderr } = io();
+      expect(ptyExitCode(reason, fake)).toBe(0);
+      expect(stderr()).toBe('');
+    }
+  });
+
+  it('every way the stream can end that is not the process ending is a failure, and is reported', () => {
+    // The reasons the muxer, the connection and the open gate actually
+    // write. Each used to come back as 0, telling a script the shell ran
+    // to completion.
+    for (const reason of [
+      undefined,
+      'connection closed',
+      'connection closed: truncated frame',
+      'closed locally',
+      'stream handler failed: boom',
+      'scope-not-granted:pty',
+      'too many live pty sessions',
+    ]) {
+      const { io: fake, stderr } = io();
+      expect(ptyExitCode(reason, fake)).toBe(1);
+      expect(stderr()).toContain('connection to the remote terminal ended');
+    }
+  });
+
+  it('a process killed by a signal is a failure too, and names the signal', () => {
+    const { io: fake, stderr } = io();
+    expect(ptyExitCode('process exited (code 0, signal 15)', fake)).toBe(1);
+    expect(stderr()).toContain('signal 15');
   });
 });
