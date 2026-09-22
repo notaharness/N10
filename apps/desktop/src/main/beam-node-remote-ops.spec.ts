@@ -61,6 +61,43 @@ function fakeConnection(alive: boolean): PeerConnection & {
   };
 }
 
+/** A connection whose liveness answer the test decides, and decides
+ *  *when* — the window `connectionFor` is awaiting in is the whole
+ *  subject of the tests below. */
+function probedConnection(): PeerConnection & {
+  terminated: string[];
+  answer: (alive: boolean) => void;
+  asked: () => boolean;
+} {
+  const terminated: string[] = [];
+  let settle: (alive: boolean) => void = () => undefined;
+  let asked = false;
+  const pending = new Promise<boolean>((resolve) => {
+    settle = resolve;
+  });
+  return {
+    peerId: PEER,
+    terminated,
+    openStream: vi.fn(),
+    onStream: vi.fn(),
+    onClose: vi.fn(),
+    close: vi.fn(),
+    terminate: (reason?: string) => terminated.push(reason ?? ''),
+    checkAlive: () => {
+      asked = true;
+      return pending;
+    },
+    answer: (alive: boolean) => settle(alive),
+    asked: () => asked,
+  };
+}
+
+/** Let a pending `connectionFor` run through its post-probe registry
+ *  read without advancing any timer. */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+}
+
 type RemoteOpsDial = NonNullable<
   ConstructorParameters<typeof RemoteOps>[0]['dial']
 >;
@@ -152,6 +189,57 @@ describe('RemoteOps.connectionFor', () => {
     expect(calls).toHaveLength(1);
     expect(used).not.toBe(zombie);
     expect(connections.get(PEER)).toBe(used);
+  });
+
+  it('uses the connection the registry holds now, not the one it held before the probe', async () => {
+    // The probe takes seconds, and the peer can arrive inside them: its
+    // own reconnect and mail-dial paths dial us, and
+    // `ConnectionRegistry.add` closes what it supersedes — which
+    // resolves the probe on the old connection with `false`. Acting on
+    // that answer terminates a connection that is already gone and
+    // dials a third, and `add` closes the fresh second one, reaping the
+    // streams panes had just reopened on it.
+    const superseded = probedConnection();
+    connections.add(superseded);
+    const { dial, calls } = stubDial();
+    const ops = opsWith(dial);
+
+    const pending = ops.connectionFor(PEER, { reconnect: true });
+    await flush();
+    expect(superseded.asked()).toBe(true);
+
+    const fresh = fakeConnection(true);
+    connections.add(fresh);
+    superseded.answer(false);
+
+    expect(await pending).toBe(fresh);
+    expect(calls).toEqual([]);
+    expect(superseded.terminated).toEqual([]);
+    expect(connections.get(PEER)).toBe(fresh);
+  });
+
+  it('dials when the connection it was probing went away and nothing replaced it', async () => {
+    // The other side of the same read: gone is gone, and there is
+    // nothing to terminate.
+    const departing = probedConnection();
+    connections.add(departing);
+    const { dial, calls, release } = stubDial();
+    const ops = opsWith(dial);
+
+    const pending = ops.connectionFor(PEER, { reconnect: true });
+    await flush();
+    connections.add(fakeConnection(true));
+    // Whatever the registry now holds is not what was probed; emptying
+    // it leaves this reconnect with nothing to reuse.
+    (
+      connections as unknown as { connections: Map<string, unknown> }
+    ).connections.delete(PEER);
+    departing.answer(false);
+    release();
+
+    await pending;
+    expect(calls).toHaveLength(1);
+    expect(departing.terminated).toEqual([]);
   });
 
   it('leaves a connection that does not answer alone when the caller is not reconnecting', async () => {

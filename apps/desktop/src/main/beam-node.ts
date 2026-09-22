@@ -32,6 +32,7 @@ import {
   resolveBeamDir,
   StreamRegistry,
   type Identity,
+  type LivenessOptions as BeamLivenessOptions,
   type NodeEnvContext,
 } from '@n10/beam';
 import type {
@@ -41,7 +42,7 @@ import type {
   PairPreviewResult,
 } from '../host/contract-machines.js';
 import { classifyPairError, withTimeout } from './beam-node-errors.js';
-import { dialIfMailIsWaiting } from './beam-node-mail-dial.js';
+import { QueuedMailDialer } from './beam-node-mail-dial.js';
 import { ReachabilityProber } from './beam-node-probe.js';
 import { machineList } from './beam-node-view.js';
 import { RemoteOps } from './beam-node-remote-ops.js';
@@ -58,6 +59,11 @@ export interface BeamNodeOptions {
   probeTimeoutMs?: number;
   hostname?: () => string;
   log?: (message: string) => void;
+  /** Ping/pong bounds for every connection this node accepts
+   *  (`@n10/beam`'s `liveness.ts`). Left to the library's own defaults
+   *  in production; a test that needs the monitor to be visibly running,
+   *  or visibly not the reason something was dropped, sets it. */
+  liveness?: BeamLivenessOptions | false;
 }
 
 const DEFAULT_PROBE_INTERVAL_MS = 20_000;
@@ -79,6 +85,7 @@ export class BeamNode {
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private readonly probeTimeoutMs: number;
+  private readonly liveness?: BeamLivenessOptions | false;
   private readonly prober: ReachabilityProber;
   private host: Host | null = null;
   private pairingUrl: string | null = null;
@@ -96,12 +103,14 @@ export class BeamNode {
    *  resolves a target and calls back with the ack once delivery
    *  actually succeeds. Public for the same reason `remote` is. */
   readonly mail: InboundMailSubscriber;
+  private readonly mailDialer: QueuedMailDialer;
   private disposed = false;
 
   constructor(options: BeamNodeOptions = {}) {
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => undefined);
     this.probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+    this.liveness = options.liveness;
     this.beamDir = options.beamDir ?? resolveBeamDir();
     this.identity = loadOrCreateIdentity(
       this.beamDir,
@@ -129,13 +138,19 @@ export class BeamNode {
     });
     this.connections.onConnect(() => this.notify());
     this.connections.onDisconnect(() => this.notify());
-    // Before the first `sync()`: its probes can call back into
-    // `dialForQueuedMail`, which dials through `remote`.
+    // Both before the first `sync()`: its probes call back into the
+    // mail dialer, which dials through `remote`.
     this.remote = new RemoteOps({
       getIdentity: () => this.identity,
       peers: this.peers,
       connections: this.connections,
       registry: this.registry,
+    });
+    this.mailDialer = new QueuedMailDialer({
+      connections: this.connections,
+      status: () => this.mailbox.status(),
+      connect: (id) => this.remote.connectionFor(id),
+      log: this.log,
     });
     this.prober.sync();
     this.mail = new InboundMailSubscriber(this.mailbox, this.peers);
@@ -145,12 +160,7 @@ export class BeamNode {
    *  for it (`beam-node-mail-dial.ts`). */
   private onPeerReachable(peerId: string): void {
     if (this.disposed) return;
-    dialIfMailIsWaiting(peerId, {
-      connections: this.connections,
-      status: () => this.mailbox.status(),
-      connect: (id) => this.remote.connectionFor(id),
-      log: this.log,
-    });
+    this.mailDialer.onReachable(peerId);
   }
 
   private envContext(): NodeEnvContext {
@@ -216,6 +226,7 @@ export class BeamNode {
         port: 0,
         now: this.now,
         log: this.log,
+        liveness: this.liveness,
       });
       await host.listen();
       // Only known once listening (an ephemeral `port: 0` resolves here) —
@@ -342,6 +353,7 @@ export class BeamNode {
     this.connections.get(peerId)?.terminate('peer forgotten');
     this.peers.remove(peerId);
     this.prober.forget(peerId);
+    this.mailDialer.forget(peerId);
     this.prober.sync();
     this.notify();
   }

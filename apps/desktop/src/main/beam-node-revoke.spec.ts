@@ -38,6 +38,11 @@ beforeEach(() => {
     beamDir: dirNode,
     hostname: () => 'workbox',
     probeIntervalMs: 10_000,
+    // Deliberately fast, and deliberately answered (see
+    // `stubbornTransport`). A revoke has to be what drops this peer,
+    // and the way to know that is to have the liveness monitor running
+    // hard the whole time and watch it not drop anything.
+    liveness: { intervalMs: 100, timeoutMs: 300 },
   });
 });
 
@@ -56,12 +61,26 @@ async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
   }
 }
 
+/** A client-to-server pong frame: FIN + opcode 0xA, zero-length, and
+ *  masked as every frame from a client must be. Four zero bytes are a
+ *  valid mask, and masking nothing with it is still nothing. */
+const MASKED_PONG = Buffer.from([0x8a, 0x80, 0, 0, 0, 0]);
+/** FIN + opcode 0x9. The only thing the host sends this peer, since no
+ *  stream is ever opened on the connection. */
+const PING_OPCODE = 0x89;
+
 /**
  * A transport whose `close()` does nothing at all: the peer end of a
  * WebSocket that has been asked to go away and has decided not to. The
  * socket is raw, so nothing underneath answers the close handshake
  * either — only the machine at the far end destroying the transport
  * ends this connection.
+ *
+ * It does answer pings, though, hand-rolled on the raw socket. Without
+ * that, the only reason this peer outlives the 1.5s race below is that
+ * the host's pong bound is longer than 1.5s, and the tests would start
+ * passing for the wrong reason the day that bound was shortened —
+ * reading "revocation dropped it" off a timer that dropped it anyway.
  */
 function stubbornTransport(): { transport: Transport; closed: Promise<void> } {
   let resolveClosed: () => void = () => undefined;
@@ -96,6 +115,12 @@ function stubbornTransport(): { transport: Transport; closed: Promise<void> } {
             reject(new Error(`upgrade refused: ${status}`));
             return;
           }
+          // Past the handshake every byte from the host is a ping:
+          // nothing here opens a stream, so there is no other frame it
+          // could be.
+          socket.on('data', (frame: Buffer) => {
+            if (frame[0] === PING_OPCODE) socket.write(MASKED_PONG);
+          });
           resolve({
             send: () => undefined,
             // Everything after the 101 is ignored, the close frame
@@ -144,6 +169,19 @@ function dropped(closed: Promise<void>): Promise<string> {
 }
 
 describe('revoking a machine that will not close', () => {
+  it('leaves a peer that has not been revoked alone, however uncooperative', async () => {
+    // The control the two assertions below need: a peer that answers
+    // the transport's own question keeps its connection across many
+    // ping intervals, so "revocation dropped it" is a statement about
+    // revocation rather than about a timer.
+    const peer = await attachStubbornPeer();
+
+    expect(await dropped(peer.closed)).toBe('still up');
+    expect(
+      node.listMachines().find((m) => m.peerId === peer.peerId)?.state
+    ).toBe('connected');
+  });
+
   it('drops its connection instead of asking it to leave', async () => {
     const peer = await attachStubbornPeer();
 

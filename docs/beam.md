@@ -259,6 +259,25 @@ has. A transport with no probe of its own gets no monitor and answers `checkAliv
 `false`: `TransportSocket.ping`/`onPong` are optional, and an unverifiable connection is
 reported as suspect rather than as healthy.
 
+Two things a caller acting on that answer has to get right, because a failed check
+terminates a connection every pane on that machine shares with its mailbox:
+
+- **Ask only on evidence about the connection.** A stream ending is not evidence — a remote
+  tmux client exits when the user detaches, and a hosted process exits when it is done, both
+  over a connection that is working. What is evidence is the machine failing to answer
+  control-plane commands, or an open over that connection failing.
+- **Re-read the registry after the await.** The answer is about the connection it was asked
+  of, not about the peer. The registry can swap connections inside the window: the peer
+  dialing in supersedes what is there, `ConnectionRegistry.add` closes the connection it
+  superseded, and closing it resolves its own probe with `false`. A caller that acts on the
+  snapshot it took beforehand terminates a connection that is already gone and dials past a
+  fresh one, which `add` then closes — reaping the streams that had just reopened on it.
+
+The budget for such a check is set for a link that is merely slow rather than one that is
+idle. A busy connection passes immediately, since the frames it is carrying answer the
+question as well as a pong would; what has to fit inside the window is a link with nothing
+on it but a high round trip.
+
 ### Bounding a dial
 
 `dial()` carries its own budget, `DEFAULT_DIAL_TIMEOUT_MS` (30s), across both HTTP requests

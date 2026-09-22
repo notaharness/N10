@@ -13,8 +13,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { OutboundQueue, type Envelope } from '@n10/beam';
+import { OutboundQueue, type Envelope, type PeerStatus } from '@n10/beam';
 import { BeamNode } from './beam-node.js';
+import { QueuedMailDialer } from './beam-node-mail-dial.js';
 import type { PairConfirmResult } from '../host/contract-machines.js';
 
 let dirA: string;
@@ -108,5 +109,132 @@ describe('a node with mail waiting for a peer', () => {
     await new Promise((r) => setTimeout(r, 300));
 
     expect(stateOf(b, machine.peerId)).toBe('reachable');
+  });
+});
+
+/** A peer with mail waiting and no connection — the only state in which
+ *  this dialer does anything at all. */
+function waiting(peerId: string, queueDepth = 1): PeerStatus[] {
+  return [
+    {
+      peerId,
+      label: 'workbox',
+      revoked: false,
+      state: 'reachable',
+      queueDepth,
+    },
+  ];
+}
+
+describe('a peer that refuses the dial', () => {
+  const PEER = 'bbbbbbbbbbbbbbbb';
+
+  function dialerThatFails() {
+    const attempts: number[] = [];
+    const dialer = new QueuedMailDialer({
+      connections: { get: () => undefined },
+      status: () => waiting(PEER),
+      connect: () => {
+        attempts.push(Date.now());
+        return Promise.reject(new Error('challenge request failed: 403'));
+      },
+      log: () => undefined,
+    });
+    return { dialer, attempts };
+  }
+
+  /** Let the rejected dial's handlers run. */
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  }
+
+  it('is not dialed on every probe once it has started refusing', async () => {
+    // A machine that has revoked us answers the prober's unauthenticated
+    // descriptor request — it is running, it is reachable — and then
+    // 403s the challenge behind every dial, for as long as the
+    // revocation stands. The mail has to stay queued (a revocation can
+    // be lifted), so the only thing left to change is how often we ask.
+    const { dialer, attempts } = dialerThatFails();
+
+    for (let tick = 0; tick < 40; tick += 1) {
+      dialer.onReachable(PEER);
+      await settle();
+    }
+
+    // Doubling up to the cap: ticks 1, 2, 4, 7, 12, 21, 30, 39 — eight
+    // attempts where every tick would have made forty.
+    expect(attempts.length).toBeLessThan(10);
+    expect(attempts.length).toBeGreaterThan(0);
+  });
+
+  it('tries again immediately once it stops refusing', async () => {
+    // Backing off must not become giving up: the peer is still holding
+    // this machine's mail, and the retry is the only thing that will
+    // ever deliver it.
+    let refuse = true;
+    const attempts: string[] = [];
+    const dialer = new QueuedMailDialer({
+      connections: { get: () => undefined },
+      status: () => waiting(PEER),
+      connect: (peerId) => {
+        attempts.push(peerId);
+        return refuse
+          ? Promise.reject(new Error('challenge request failed: 403'))
+          : Promise.resolve({});
+      },
+      log: () => undefined,
+    });
+
+    for (let tick = 0; tick < 20; tick += 1) {
+      dialer.onReachable(PEER);
+      await settle();
+    }
+    const whileRefusing = attempts.length;
+    refuse = false;
+
+    // Enough ticks to get past the skip the last failure bought.
+    for (let tick = 0; tick < 10; tick += 1) {
+      dialer.onReachable(PEER);
+      await settle();
+    }
+    const afterSuccess = attempts.length;
+    expect(afterSuccess).toBeGreaterThan(whileRefusing);
+
+    // And the count of consecutive failures is back to zero with it, so
+    // a single later refusal costs one skipped tick rather than the
+    // eight the earlier run had climbed to.
+    refuse = true;
+    dialer.onReachable(PEER);
+    await settle();
+    const afterOneFailure = attempts.length;
+    expect(afterOneFailure).toBe(afterSuccess + 1);
+
+    refuse = false;
+    dialer.onReachable(PEER);
+    await settle();
+    expect(attempts.length).toBe(afterOneFailure); // the one skip
+    dialer.onReachable(PEER);
+    await settle();
+    expect(attempts.length).toBe(afterOneFailure + 1);
+  });
+
+  it('never dials a peer with nothing queued, however reachable', async () => {
+    const attempts: string[] = [];
+    const dialer = new QueuedMailDialer({
+      connections: { get: () => undefined },
+      status: () => waiting(PEER, 0),
+      connect: (peerId) => {
+        attempts.push(peerId);
+        return Promise.resolve({});
+      },
+      log: () => undefined,
+    });
+
+    for (let tick = 0; tick < 5; tick += 1) {
+      dialer.onReachable(PEER);
+      await settle();
+    }
+
+    expect(attempts).toEqual([]);
   });
 });

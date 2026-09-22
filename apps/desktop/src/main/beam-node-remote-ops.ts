@@ -42,10 +42,18 @@ export interface RemoteOpsDeps {
 }
 
 /** How long a connection about to be reused for a reconnect has to
- *  answer a ping. A round trip over a working link is milliseconds; this
- *  only has to be short enough that verifying costs less than the
- *  reconnect attempt it protects. */
-const VERIFY_TIMEOUT_MS = 2_000;
+ *  answer.
+ *
+ *  A round trip over an idle link is milliseconds, and this only has to
+ *  be short enough that verifying costs less than the reconnect attempt
+ *  it protects — but the cost of being wrong is not symmetric. Failing
+ *  this check terminates a connection every pane on that machine shares
+ *  with the mailbox, so the budget is set for the link that is merely
+ *  slow rather than for the one that is idle. Any inbound frame answers
+ *  it as well as a pong does (`liveness.ts`), so a connection carrying
+ *  a busy pane's output passes immediately; what has to fit inside this
+ *  window is a link with nothing on it but a high round trip. */
+const VERIFY_TIMEOUT_MS = 8_000;
 
 export class RemoteOps {
   private readonly ptyStreams = new Map<string, BeamStream>();
@@ -76,7 +84,19 @@ export class RemoteOps {
     const existing = this.deps.connections.get(peerId);
     if (existing && !options?.reconnect) return existing;
     if (existing) {
-      if (await existing.checkAlive(VERIFY_TIMEOUT_MS)) return existing;
+      const alive = await existing.checkAlive(VERIFY_TIMEOUT_MS);
+      // The registry can swap connections while the probe is in flight,
+      // and increasingly does: the peer's own reconnect and mail-dial
+      // paths dial us, `ConnectionRegistry.add` closes what it
+      // supersedes, and closing the old connection resolves this probe
+      // with `false`. Acting on that answer would terminate a
+      // connection that is already gone and dial a third, which `add`
+      // then closes — reaping the streams panes had just reopened on
+      // the second. So the registry decides, not the snapshot taken
+      // before the await.
+      const current = this.deps.connections.get(peerId);
+      if (current !== existing) return current ?? this.dialOnce(peerId);
+      if (alive) return existing;
       existing.terminate('no answer before a reconnect');
     }
     return this.dialOnce(peerId);
