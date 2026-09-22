@@ -55,14 +55,22 @@ A peer is named by its label or its peer id. `beam peer rename`, `beam peer forg
 
 - **Node.js 20+.**
 - **A build toolchain on Linux.** `node-pty` ships prebuilt binaries for macOS and Windows, but not Linux, so npm compiles it during install. On Debian/Ubuntu: `sudo apt install build-essential python3`. macOS needs the Xcode command line tools (`xcode-select --install`).
-- **Network reachability** between the machines, for whichever side accepts connections. beam does not punch through NAT for you; run it over Tailscale or a LAN.
+- **Network reachability** between the machines, for whichever side accepts connections. beam does not punch through NAT for you; run it over Tailscale (see `--tailscale-serve` below) or a LAN.
 
 ## Security
 
 Read this before pairing with anything.
 
 - **Pairing grants a shell as the user running the node.** Treat it exactly like granting SSH access. `beam revoke <peer>` takes it back immediately: the connection is destroyed rather than asked to close, so a revoked peer gets no window to open one more stream.
-- **The transport is plaintext.** Streams run over a plain WebSocket, so everything you type into a remote shell and everything it prints back crosses the network in the clear. Mutual authentication is mandatory and covers the connection upgrade itself, so an attacker on the path cannot impersonate either side or reuse what they capture to connect — but they can read the traffic. Confidentiality has to come from underneath: run beam over Tailscale, or another network layer you trust, unless the path between the machines is already one you trust. An encrypted WebRTC transport is a seam in the design rather than something you can select: `--transport ws` is the only one that exists today.
+- **The transport carries no encryption of its own.** Streams run over a plain WebSocket, so everything you type into a remote shell and everything it prints back crosses the network in the clear. Mutual authentication is mandatory and covers the connection upgrade itself, so nobody can impersonate either side or reuse a captured ticket to connect. It does not protect the connection afterwards: there is no session key and no per-frame MAC, so an attacker who can write to the socket can inject or alter frames — and so run commands — as the authenticated peer, not merely read the traffic.
+- **`beam serve --tailscale-serve` is how you encrypt it.**
+
+  ```sh
+  beam serve --tailscale-serve
+  ```
+
+  The node binds loopback and is published with `tailscale serve`, which terminates TLS using your tailnet's MagicDNS certificate. Peers reach it at `https://<machine>.<tailnet>.ts.net` over HTTPS and WSS, and that is the name in the pairing URL and in the endpoint the other machine stores, so reconnects go over the tailnet too. It needs the `tailscale` CLI, a logged-in node, and HTTPS certificates enabled for the tailnet (an admin toggle, under DNS in the admin console) — each missing piece is named on failure. The mapping is removed when the node exits. Without the flag, everything else in this list still holds; only confidentiality and frame integrity are missing, and nothing else supplies them.
+
 - **The default bind is loopback.** Accepting connections from elsewhere takes an explicit `--hostname`, and the node prints what it bound.
 - **Keys and state stay local.** The private key never leaves the machine. Identity, the peer table and the mailbox live in `$BEAM_CONFIG_DIR`, else `$XDG_CONFIG_HOME/beam`, else `~/.config/beam`, written `0600`. Queued message payloads are stored unencrypted at rest and are never executed by beam.
 - **Re-pairing never silently replaces a key.** A pairing that would change the key stored for a known peer is refused unless you pass `--force`, and you are told which peer it would replace.

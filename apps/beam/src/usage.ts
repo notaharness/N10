@@ -24,8 +24,10 @@ export const USAGE = `beam — pairs machines and carries pty, exec and message 
 Usage: beam <command> [options]
 
 Commands:
-  serve [--port N] [--hostname ADDR] [--label NAME] [--no-pair]
+  serve [--port N] [--hostname ADDR] [--label NAME] [--no-pair] [--tailscale-serve]
       Start a node: accept connections, serve the local inbox socket, drain queued messages.
+      --tailscale-serve publishes the loopback node over the tailnet with "tailscale serve",
+      so peers reach it as https://<magicdns-name>/ with TLS terminated by tailscale.
   pair <pair-url> [--label NAME] [--endpoint URL]... [--force]
       Pair with the machine that printed the URL.
   peers [--json]
