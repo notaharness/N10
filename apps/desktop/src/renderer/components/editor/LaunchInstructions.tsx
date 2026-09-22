@@ -14,8 +14,9 @@ export function ReviewInstructions({
   return (
     <>
       <p className="text-muted-foreground">
-        Review this pull request. Comments appear as drafts for you to edit and
-        post.
+        Review this pull request. The review runs in a session of its own, so an
+        agent working on this branch carries on. Comments appear as drafts for
+        you to edit and post.
       </p>
       <div className="space-y-2">
         <Label htmlFor="review-instructions">
@@ -39,18 +40,11 @@ export function ReviewInstructions({
     </>
   );
 }
-export function ReplacementNotice({
-  info,
-  mode,
-}: {
-  info?: SessionLaunchView;
-  mode: string;
-}) {
+export function ReplacementNotice({ info }: { info?: SessionLaunchView }) {
   return (
     <p role="note" className="border-l-2 border-primary bg-primary/10 p-3">
       This stops the running {info?.recordedAgentName ?? 'agent'} session and
-      starts {mode === 'review' ? 'a review' : 'a new conversation'} in this
-      worktree.
+      starts a new conversation in this worktree.
     </p>
   );
 }

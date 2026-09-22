@@ -19,6 +19,13 @@ writeFileSync(
     cwd: process.cwd(),
     pid: process.pid,
     tmux: process.env.TMUX ?? null,
+    // Enough of the environment to prove what the launch seam put
+    // there, without recording the whole of it into a fixture file.
+    env: Object.fromEntries(
+      ['CLAUDE_CONFIG_DIR', 'GIT_INDEX_FILE', 'GIT_OPTIONAL_LOCKS'].map(
+        (key) => [key, process.env[key] ?? null]
+      )
+    ),
   })
 );
 const report = join(

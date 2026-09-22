@@ -13,6 +13,7 @@ import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
+import * as agentConfigDirs from './services/agent-config-dirs.js';
 import * as foreignSessions from './services/foreign-sessions.js';
 import * as terminals from './services/terminals.js';
 import * as commentImages from './services/comment-images.js';
@@ -80,6 +81,12 @@ export function createHostApi(): N10HostApi {
     getSessionLaunchContext: (branch) =>
       Promise.resolve(sessions.getSessionLaunchContext(branch)),
     listAgentOptions: () => Promise.resolve(sessions.listAgentOptions()),
+    listAgentConfigDirs: () =>
+      Promise.resolve(agentConfigDirs.listAgentConfigDirs()),
+    registerAgentConfigDir: (dir) =>
+      Promise.resolve(agentConfigDirs.registerAgentConfigDir(dir)),
+    forgetAgentConfigDir: (dir) =>
+      Promise.resolve(agentConfigDirs.forgetAgentConfigDir(dir)),
     checkoutPlan: (req) => sessions.checkoutPlan(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
     listForeignSessions: () =>
@@ -243,6 +250,9 @@ export function registerHostHandlers(
     [IPC.launchReviewAgent]: api.launchReviewAgent as HostMethod,
     [IPC.getSessionLaunchContext]: api.getSessionLaunchContext as HostMethod,
     [IPC.listAgentOptions]: api.listAgentOptions as HostMethod,
+    [IPC.listAgentConfigDirs]: api.listAgentConfigDirs as HostMethod,
+    [IPC.registerAgentConfigDir]: api.registerAgentConfigDir as HostMethod,
+    [IPC.forgetAgentConfigDir]: api.forgetAgentConfigDir as HostMethod,
     [IPC.checkoutPlan]: api.checkoutPlan as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchWorktreeDiffText]: api.fetchWorktreeDiffText as HostMethod,

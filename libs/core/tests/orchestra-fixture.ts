@@ -63,6 +63,11 @@ export function orchestraFixture() {
     'GIT_INDEX_FILE',
     'GIT_CONFIG_COUNT',
     'GIT_CONFIG_PARAMETERS',
+    // A launch adds this only when a directory was chosen, but a
+    // session inherits the rest of its environment — so a developer
+    // who exports one would see it arrive and read that as n10 having
+    // sent it. Scrubbed so "nothing was added" is observable.
+    'CLAUDE_CONFIG_DIR',
   ])
     vi.stubEnv(key, undefined);
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');

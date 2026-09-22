@@ -3,7 +3,10 @@ import {
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,
 } from '@n10/review-comments';
-import { buildReviewLaunchRequest } from './review-prompt.js';
+import {
+  buildBackgroundReviewRequest,
+  buildReviewLaunchRequest,
+} from './review-prompt.js';
 
 const pr = {
   id: 42,
@@ -67,6 +70,35 @@ describe('buildReviewLaunchRequest', () => {
     it('says where thread ids come from', () => {
       expect(guidance()).toContain('--thread=<id>');
       expect(guidance()).toContain('(thread <id>)');
+    });
+  });
+
+  describe('buildBackgroundReviewRequest', () => {
+    const req = () => buildBackgroundReviewRequest(pr);
+
+    it('always starts a fresh conversation', () => {
+      // A review in its own session shares the worktree with the
+      // branch's agent, and `--continue` there would resume whatever
+      // that agent was last saying rather than a prior review.
+      expect(req().intent).toBe('seed');
+      expect(buildReviewLaunchRequest(pr).intent).toBe('continue-or-seed');
+    });
+
+    it('asks for the same review as the one in the worktree session', () => {
+      expect(req().prompt).toBe(buildReviewLaunchRequest(pr).prompt);
+    });
+
+    it('keeps the add-comment guidance', () => {
+      expect(req().systemGuidance).toContain('n10 util add-comment');
+    });
+
+    it('says the worktree is shared and asks for reads only', () => {
+      // Guidance, not enforcement: the session is an ordinary
+      // interactive agent and nothing stops it writing.
+      const guidance = req().systemGuidance ?? '';
+      expect(guidance).toMatch(/another agent may be editing/);
+      expect(guidance).toMatch(/do not modify, create or delete files/i);
+      expect(guidance).toMatch(/no add, commit/);
     });
   });
 });

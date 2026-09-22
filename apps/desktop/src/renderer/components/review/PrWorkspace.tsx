@@ -21,6 +21,9 @@ import { usePostDrafts } from '../../lib/data/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useCommentNavigator } from '../../lib/review/use-comment-navigator.js';
 import { usePlanCheckout } from '../../lib/plan/use-plan-checkout.js';
+import { useAgentFocus } from '../../lib/review/use-agent-focus.js';
+import { useWorktreeSessionPicker } from '../../lib/review/use-worktree-sessions.js';
+import { selectedSessionName } from '../../lib/review/worktree-sessions.js';
 import {
   buildFileEntries,
   diffIsPending,
@@ -53,32 +56,6 @@ const NO_FILES: [string, DiffLine[]][] = [];
  * What to show is decided in `lib/review-model.ts`; this component
  * wires that to the queries, the refs and the markup.
  */
-/**
- * The terminal takes over the pane whenever an agent starts, and
- * whenever the user comes back to a tab that already has one running —
- * the agent is what they returned for, not the diff.
- *
- * Written as state adjusted during render (React's own pattern for
- * "derive from a prop change") rather than an effect, so the pane never
- * paints the diff for one frame before switching.
- */
-function useAgentFocus(
-  running: boolean,
-  active: boolean,
-  onFocusAgent: () => void
-): void {
-  const [prevRunning, setPrevRunning] = useState(running);
-  if (running !== prevRunning) {
-    setPrevRunning(running);
-    if (running) onFocusAgent();
-  }
-  const [prevActive, setPrevActive] = useState(active);
-  if (active !== prevActive) {
-    setPrevActive(active);
-    if (active && running) onFocusAgent();
-  }
-}
-
 export function PrWorkspace({
   pr,
   branch,
@@ -90,6 +67,9 @@ export function PrWorkspace({
   busy,
   onLaunch,
   onStop,
+  onOpenTerminal,
+  worktreePath,
+  agentName,
 }: {
   /** Absent for a worktree without a PR: the rail degrades gracefully
    *  (no comments, drafts or review walkthrough — just Agent + Files). */
@@ -107,6 +87,13 @@ export function PrWorkspace({
   busy: boolean;
   onLaunch: () => void;
   onStop: () => void;
+  /** Open a plain shell in the branch's worktree; absent when there is
+   *  none yet. */
+  onOpenTerminal?: () => void;
+  /** The branch's checkout, for deciding which terminals are its own. */
+  worktreePath?: string;
+  /** Display name of the agent in the branch session. */
+  agentName?: string;
 }) {
   const { repo } = useRepo();
   const prId = pr?.id ?? 0;
@@ -132,8 +119,21 @@ export function PrWorkspace({
 
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
+  const {
+    sessions,
+    picked,
+    select: selectSession,
+  } = useWorktreeSessionPicker({
+    branchSession: sessionName,
+    branchAgentRunning: running,
+    branchAgentName: agentName,
+    worktreePath,
+    setMode,
+  });
 
-  useAgentFocus(running, active, () => setMode('agent'));
+  useAgentFocus({ hasSession: Boolean(sessionName), running, active }, () =>
+    setMode('agent')
+  );
   // Whole-file diffs can be megabytes; the parse runs in the diff
   // worker so opening a tab never blocks the UI thread on it. The query
   // is keyed on the patch content, so what it hands back always belongs
@@ -218,6 +218,7 @@ export function PrWorkspace({
     // A plan belongs to a pull request: it is a queue of *its* review
     // comments, and the prompt names them. A bare worktree has none.
     hasPlan: plan.count > 0,
+    hasPickedSession: picked !== null,
   });
 
   return (
@@ -261,13 +262,18 @@ export function PrWorkspace({
                   hasPr={Boolean(pr)}
                   overviewActive={effMode === 'overview'}
                   onOverview={() => setMode('overview')}
-                  running={running}
                   busy={busy}
                   hasSession={Boolean(sessionName)}
-                  agentActive={effMode === 'agent'}
-                  onSelectAgent={() => setMode('agent')}
+                  sessions={sessions}
+                  selectedSession={selectedSessionName(
+                    effMode,
+                    sessionName,
+                    picked
+                  )}
+                  onSelectSession={selectSession}
                   onLaunch={onLaunch}
                   onStop={onStop}
+                  onOpenTerminal={onOpenTerminal}
                   onHide={() => setRailHidden(true)}
                   drafts={drafts}
                   reviewActive={effMode === 'review'}
@@ -315,6 +321,7 @@ export function PrWorkspace({
               baseBranch={baseBranch}
               sessionName={sessionName}
               sessionEpoch={sessionEpoch}
+              pickedSession={picked?.name}
               active={active}
               files={files}
               filesByName={filesByName}

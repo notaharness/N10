@@ -9,8 +9,10 @@ import {
   hasPersistedTerminalSession,
   killSession as killSessionEntry,
   launchTerminalSession,
+  launchReviewSession,
   releaseExitedSession,
   type DiscoveredTerminal,
+  type ReviewSessionParams,
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
 import type {
@@ -52,6 +54,8 @@ const DEFAULT_ROWS = 40;
 interface KnownTerminal extends RelayEntry {
   kind: TerminalKind;
   cwd: string;
+  /** Set when this session is a review: the pull request id. */
+  review?: string;
 }
 
 const known = new Map<string, KnownTerminal>();
@@ -152,18 +156,75 @@ async function performStart(
     mode,
     fresh: size.fresh,
   });
-  const name = launched.name;
+  return adoptLaunched(requestedName, launched.name, kind, cwd);
+}
+
+/**
+ * Take ownership of a session core just spawned: remember it, watch
+ * for its end, and start relaying its output to the renderer. Shared
+ * by every kind of terminal this service starts, so a background
+ * review is listed, relayed and closed exactly like the rest.
+ */
+function adoptLaunched(
+  requestedName: string | undefined,
+  name: string,
+  kind: TerminalKind,
+  cwd: string,
+  review?: string
+): string {
   const prev = requestedName ? known.get(requestedName) : undefined;
   if (requestedName && name !== requestedName) known.delete(requestedName);
   const entry: KnownTerminal = {
     ...newRelayEntry(prev?.seq ?? 0),
     kind,
     cwd,
+    // Carried forward when a listing did not name it: a restart keeps
+    // reviewing the pull request it was started for.
+    ...(review ?? prev?.review ? { review: review ?? prev?.review } : {}),
   };
   known.set(name, entry);
   watchForEnd(name, entry);
   attachRelay(name, entry);
   return name;
+}
+
+/**
+ * Start a background review of a pull request.
+ *
+ * It is a terminal of this service's own making rather than the
+ * worktree's session, which is what lets it run beside the agent
+ * working on the branch. Registering it here is also how it surfaces:
+ * the listing the tab strip reconciles against is this service's, so
+ * the review appears as its own tab — with the retained pane holding
+ * its transcript — without anything having to watch it, and without
+ * taking the user off the diff where its comments are landing.
+ */
+export async function launchReviewTerminal(
+  params: ReviewSessionParams,
+  home: string = homedir()
+): Promise<TerminalSummary> {
+  assertLaunchableCwd(params.cwd);
+  const launched = await launchReviewSession({
+    ...params,
+    cols: clampDim(params.cols, DEFAULT_COLS),
+    rows: clampDim(params.rows, DEFAULT_ROWS),
+  });
+  // Adopted under its own name so the relay sequence carries forward.
+  // A review replaces the previous review of the same pull request and
+  // reuses its label, so a tab still mounted on the old one holds a
+  // watermark: numbering the replacement's output from 1 again would
+  // have the pane discard every chunk of it.
+  const name = adoptLaunched(
+    launched.name,
+    launched.name,
+    'agent',
+    params.cwd,
+    params.pullRequest
+  );
+  noteRepository(params.cwd);
+  const entry = known.get(name);
+  if (!entry) throw new Error(`Review ${name} ended during launch`);
+  return summarize(name, entry, home);
 }
 
 /** Exited agents retain their pane and tab; shells close when their process ends. */
@@ -194,6 +255,7 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
       : {}),
     kind: entry.kind,
     agent: getSession(name)?.agent,
+    ...(entry.review ? { review: entry.review } : {}),
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
     repo: terminalRepo(entry.cwd, isGitRepo),
@@ -231,6 +293,10 @@ export async function adoptTerminal(
   terminal: DiscoveredTerminal
 ): Promise<void> {
   await start(terminal.name, terminal.kind, terminal.path, {}, 'attach');
+  // tmux is the record: a review adopted after a restart is still a
+  // review, and its tag is how the listing knows.
+  const entry = known.get(terminal.name);
+  if (entry && terminal.review) entry.review = terminal.review;
   noteRepository(terminal.path);
 }
 

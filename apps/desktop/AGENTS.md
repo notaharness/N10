@@ -42,6 +42,11 @@ Every rule below has its reasoning in `docs/decisions.md`.
   the path is typed into the PTY.
 - Worktree removal shares core's sequence with the TUI. `stopSession` kills
   one held target or one resolved persisted target, never both.
+- A launched review is not a worktree launch (`services/review-launch.ts`):
+  it resolves the checkout and asks `terminals.ts` for a session of its own,
+  so the branch's agent keeps working. Being in that service's listing is
+  what makes it both a tab and a row in its worktree's session list.
+  Launches coalesce per pull request.
 
 ## Renderer
 
@@ -81,6 +86,10 @@ Every rule below has its reasoning in `docs/decisions.md`.
   in `sidebar-model.spec.ts`.
 - `applyPendingRemovals` drops a session row but keeps a PR row with
   `sessionName`/`running` cleared.
+- A worktree can hold several live sessions — its agent, a reviewer, shells.
+  `lib/review/worktree-sessions.ts` folds them into one ordered list for the
+  rail; the branch agent keeps the `'agent'` pane mode and the rest share
+  `'session'` with a picked name. Terminals are claimed by exact `cwd`.
 - Comment markdown paragraphs render as `<div>` (block images cannot nest in
   `<p>`); images are host-fetched with provider auth. `ErrorBoundary` wraps
   each tab.

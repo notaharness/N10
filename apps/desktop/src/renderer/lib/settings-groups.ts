@@ -24,7 +24,8 @@ export const GROUPS: SettingsGroupMeta[] = [
   {
     key: 'agent',
     label: 'Agent',
-    blurb: 'Which AI coding agent n10 launches.',
+    blurb:
+      'Which AI coding agent n10 launches, and the Claude configuration directories a launch can pick between.',
   },
   {
     key: 'sync',

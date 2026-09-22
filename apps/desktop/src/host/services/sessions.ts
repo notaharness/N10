@@ -1,6 +1,5 @@
 import { worktreeSessionKey, sessionLabel } from '@n10/core';
 import {
-  buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
@@ -30,7 +29,6 @@ import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
   PlanCheckoutRequest,
   PlanCheckoutResult,
-  ReviewLaunchRequest,
   SessionBuffer,
   SessionLaunchRequest,
   SessionSummary,
@@ -230,11 +228,10 @@ async function doLaunchAgent(
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
-  // Config comes from the repo root, like the TUI — per-project config
-  // is keyed by cwd hash, so reading from the worktree path resolved a
-  // different (empty) project bag.
-  // A per-launch agent pick from the session menu overrides the
-  // configured one; the resolver still owns the id → agent mapping.
+  // Config comes from the repo root, like the TUI (per-project config
+  // is keyed by cwd hash, so the worktree path would resolve an empty
+  // bag) — and a per-launch agent pick from the session menu overrides
+  // the configured one; the resolver still owns the id → agent mapping.
   const stored = readConfig(repoCwd);
   const config = req.agentId ? { ...stored, agentId: req.agentId } : stored;
   const before = getSession(name);
@@ -248,6 +245,7 @@ async function doLaunchAgent(
     mode: knownWorktreePath ? 'attach' : 'open',
     fresh: req.fresh,
     expected: req.expected,
+    machine: req.configDir ? { configDir: req.configDir } : undefined,
     request: {
       intent: req.intent,
       prompt: req.prompt,
@@ -263,30 +261,7 @@ export {
   listAgentOptions,
   getSessionLaunchContext,
 } from './session-launch-options.js';
-
-/**
- * Start (or resume) an AI review of `req.pr` with the shared review
- * prompt. Same flow as the TUI's "Start/Continue review" menu entry —
- * launchAgent resolves or creates the worktree.
- */
-export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
-  name: string;
-}> {
-  requireRepo();
-  const branch = req.pr.sourceBranch;
-  const request = buildReviewLaunchRequest(req.pr, req.instruction);
-  return launchAgent({
-    branch,
-    intent: 'seed',
-    fresh: true,
-    expected: req.expected,
-    agentId: req.agentId,
-    prompt: request.prompt,
-    systemGuidance: request.systemGuidance,
-    cols: req.cols,
-    rows: req.rows,
-  });
-}
+export { launchReviewAgent } from './review-launch.js';
 
 // Double-sends land here the way double-clicks land on launch: the
 // renderer disables the button while a send is in flight, but the
@@ -392,16 +367,15 @@ export function resizeSession(name: string, cols: number, rows: number): void {
   entry.pty.resize(cols, rows);
 }
 
+type ActivitySnapshot = ReturnType<typeof activitySnapshot>;
+
 /** Debounced agent-activity snapshots for every session this host has
  *  launched — the same registry the TUI's sidebar spinner reads. A
  *  shell terminal is excluded: it animates on whatever the user types
  *  (`ls`, a build) with no agent behind it, and the working-agent
  *  spinner would read that as an agent busy at work. */
-export function getSessionActivity(): Record<
-  string,
-  ReturnType<typeof activitySnapshot>
-> {
-  const out: Record<string, ReturnType<typeof activitySnapshot>> = {};
+export function getSessionActivity(): Record<string, ActivitySnapshot> {
+  const out: Record<string, ActivitySnapshot> = {};
   for (const name of [...ownSessionNames(), ...agentTerminalNames()]) {
     out[name] = activitySnapshot(name);
   }

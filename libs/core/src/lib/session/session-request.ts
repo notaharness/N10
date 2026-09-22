@@ -8,6 +8,15 @@ export type SessionRequest =
       kind: 'shell' | 'agent';
       repo: string;
       target?: string;
+      /**
+       * The branch this terminal runs against, when it has one. A
+       * background review does: it runs in the worktree of the branch
+       * it reviews and is tagged with it. It stays a terminal all the
+       * same — only a `worktree` session is that branch's player.
+       */
+      branch?: string;
+      /** The pull request id, for a background review session. */
+      review?: string;
     };
 
 export function worktreeRequest(key: string): SessionRequest {

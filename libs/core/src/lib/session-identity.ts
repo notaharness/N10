@@ -37,6 +37,16 @@ export const ORCHESTRA_TAG = {
   orchestrator: '@orchestra-orchestrator',
   /** Orchestra's: `<KIND> <ISO-8601 UTC>` of the last delivered report. */
   lastReport: '@orchestra-last-report',
+  /**
+   * n10's: the pull request a background review session is reviewing.
+   *
+   * A review runs beside the worktree's own agent rather than in it, so
+   * it is a terminal session (`@orchestra-session-type` `agent`) and
+   * never a `worktree` one — nothing may mistake it for the player on
+   * that branch. This tag is what tells it apart from an ordinary
+   * terminal: its absence is what makes a terminal ordinary.
+   */
+  review: '@orchestra-review',
 } as const;
 
 /** Every tag a listing asks tmux for, in the one fork. */
@@ -79,6 +89,8 @@ export interface TaggedSession {
   agent?: string;
   orchestrator?: string;
   lastReport?: string;
+  /** Set on background review sessions: the pull request id. */
+  review?: string;
 }
 
 /**
@@ -94,9 +106,6 @@ export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
   const repo = tags[ORCHESTRA_TAG.repo];
   if (!spawner || !type || !SESSION_TYPES.has(type)) return null;
   if (type === 'worktree' && !repo) return null;
-  const agent = tags[ORCHESTRA_TAG.agent];
-  const orchestrator = tags[ORCHESTRA_TAG.orchestrator];
-  const lastReport = tags[ORCHESTRA_TAG.lastReport];
   return {
     name: info.name,
     created: info.created,
@@ -107,10 +116,24 @@ export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
     repo: repo ?? '',
     type: type as SessionType,
     branch: tags[ORCHESTRA_TAG.branch] ?? '',
-    ...(agent ? { agent } : {}),
-    ...(orchestrator ? { orchestrator } : {}),
-    ...(lastReport ? { lastReport } : {}),
+    ...optionalTags(tags),
   };
+}
+
+/** The tags that may simply be absent. An empty one is unset, never a
+ *  sentinel, so it is left off rather than carried as `''`. */
+function optionalTags(
+  tags: Record<string, string>
+): Partial<
+  Pick<TaggedSession, 'agent' | 'orchestrator' | 'lastReport' | 'review'>
+> {
+  const keys = ['agent', 'orchestrator', 'lastReport', 'review'] as const;
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const value = tags[ORCHESTRA_TAG[key]];
+    if (value) out[key] = value;
+  }
+  return out;
 }
 
 /** The worktree session for a repository and branch: string equality
@@ -124,6 +147,29 @@ export function isWorktreeSessionFor(
     session.type === 'worktree' &&
     session.repo === repoRoot &&
     session.branch === branch
+  );
+}
+
+/**
+ * A background review session: an `agent` terminal carrying the review
+ * tag. Checked on the tag rather than on the name, like everything
+ * else here — and checked on the session type too, so a `worktree`
+ * session could never answer yes however it were tagged.
+ */
+export function isReviewSession(session: TaggedSession): boolean {
+  return session.type === 'agent' && Boolean(session.review);
+}
+
+/** The background review session for one pull request in one repository. */
+export function isReviewSessionFor(
+  session: TaggedSession,
+  repoRoot: string,
+  pullRequest: string
+): boolean {
+  return (
+    isReviewSession(session) &&
+    session.repo === repoRoot &&
+    session.review === pullRequest
   );
 }
 
@@ -149,17 +195,30 @@ export function registryNameOf(session: TaggedSession): string {
 /** The tags n10 writes on a session it creates. */
 export function sessionTags(
   repoRoot: string,
-  identity: { type: 'worktree'; branch: string } | { type: 'shell' | 'agent' }
+  identity: SessionIdentityTags
 ): Record<string, string> {
   return {
     [ORCHESTRA_TAG.spawner]: N10_SPAWNER,
     [ORCHESTRA_TAG.repo]: repoRoot,
     [ORCHESTRA_TAG.sessionType]: identity.type,
-    ...(identity.type === 'worktree'
-      ? { [ORCHESTRA_TAG.branch]: identity.branch }
+    ...(identity.branch ? { [ORCHESTRA_TAG.branch]: identity.branch } : {}),
+    ...(identity.type !== 'worktree' && identity.review
+      ? { [ORCHESTRA_TAG.review]: identity.review }
       : {}),
   };
 }
+
+/**
+ * What a session is being created as.
+ *
+ * A terminal may name a branch without being that branch's player: a
+ * background review runs in the worktree of the branch it reviews, and
+ * says so, while remaining a terminal session. Only the session type
+ * decides who owns the branch.
+ */
+export type SessionIdentityTags =
+  | { type: 'worktree'; branch: string; review?: undefined }
+  | { type: 'shell' | 'agent'; branch?: string; review?: string };
 
 // ── Labels ────────────────────────────────────────────────────────
 //
@@ -207,4 +266,11 @@ export function terminalSessionLabel(
   kind: 'shell' | 'agent'
 ): string {
   return sessionLabel(repoRoot, kind);
+}
+
+/** `<repo basename>-<branch>-review` — a label that reads as what it is
+ *  in `tmux ls`, beside the `<repo>-<branch>` session it runs alongside.
+ *  Still only a label: the review tag is the identity. */
+export function reviewSessionLabel(repoRoot: string, branch: string): string {
+  return sessionLabel(repoRoot, `${branch}-review`);
 }

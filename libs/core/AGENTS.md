@@ -24,6 +24,19 @@ The reasoning behind each rule is in `docs/decisions.md`.
   Replacing a live process requires its captured native incarnation and an
   atomic tmux guard. Unconfirmed restarts never interrupt a live winner.
   Untagged sessions are foreign. Never use config `projectKey` for tmux identity.
+- **Machine environment** (`session/machine-env.ts`): `additions` is the only
+  half of a session's environment that describes the launch, so it is filled
+  from capabilities, never from paths a caller hands over. The Claude config
+  directory is local-only — a remote launch is sent none and uses that host's
+  default; do not "fix" that by forwarding it. Registered directories are
+  tokens (`agents/agent-config-dirs.ts`), desktop-configured, and deliberately
+  absent from the shared settings catalog.
+- **Reviews** (`session/launch-review.ts`): a review is an ordinary interactive
+  agent in its own `agent` terminal tagged `@orchestra-review`, never a
+  `worktree` session, so nothing reads it as the branch's player. It always
+  seeds a fresh conversation (`--continue` in a shared worktree resumes the
+  working agent's). One per pull request: a live one is attached to, an exited
+  one restarted in place, never replaced.
 - **Agent restart** (`session/launch-session.ts`): continuation selects the
   recorded agent and its explicit resume adapter. Fresh launch selects the
   user's choice or configured default. Missing metadata must not silently

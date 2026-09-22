@@ -70,6 +70,17 @@ PATH and the agent adapter's environment additions; do not copy the entire
 process environment into command-line `-e` flags. `list-sessions -F` output is
 tab-separated; `tmux -u` preserves separators under non-UTF-8 locales.
 
+A dead pane carries less than it looks. `pane_dead` flips when the pane's file
+descriptor closes; `pane_dead_status`, `pane_dead_signal`, `pane_dead_time` and
+the retained `Pane is dead` notice arrive only once tmux has reaped the process,
+which is a separate event. Short of CPU — a two-core CI runner, a loaded
+laptop — tmux can leave the process unreaped indefinitely, so a pane reads dead
+with an empty status and no notice written into it, permanently. The notice is
+therefore not something a capture or a repaint can recover, and a missing exit
+status is reported as code 0. Do not gate exit reporting on the status arriving,
+and do not assert on the notice: an agent's own final output and the
+application's own exited state are the signals that always exist.
+
 Tests isolate HOME and the tmux socket, unset inherited TMUX, and validate that
 the socket belongs to the fixture before cleanup. Kill fixture sessions
 individually; never use `tmux kill-server` or the user's default server.
@@ -86,13 +97,14 @@ Linux, so it may work, but nothing here specifically supports it.
 Names are labels; tags carry identity. n10 and the Orchestra skill's bash
 scripts create ordinary tmux sessions using the same user options:
 
-| Session user option       | Meaning                               |
-| ------------------------- | ------------------------------------- |
-| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra` |
-| `@orchestra-repo`         | Canonical main checkout path          |
-| `@orchestra-session-type` | `worktree`, `shell` or `agent`        |
-| `@orchestra-branch`       | Exact branch for a worktree session   |
-| `@orchestra-agent`        | Agent used for the most recent launch |
+| Session user option       | Meaning                                  |
+| ------------------------- | ---------------------------------------- |
+| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra`    |
+| `@orchestra-repo`         | Canonical main checkout path             |
+| `@orchestra-session-type` | `worktree`, `shell` or `agent`           |
+| `@orchestra-branch`       | Exact branch for a worktree session      |
+| `@orchestra-agent`        | Agent used for the most recent launch    |
+| `@orchestra-review`       | Pull request a background review reviews |
 
 The shared names live in `session-identity.ts`. Creator/reporting metadata
 survives attachment and restart; a successful new process updates its agent
@@ -107,13 +119,88 @@ also require a repo tag. A familiar name alone never authorizes attachment or
 termination. Duplicate worktree identities resolve to the oldest session;
 extras are listed, never silently killed.
 
-Labels are `<repo>-<branch>`, `<repo>-shell` or `<repo>-agent`. The repo is the
+Labels are `<repo>-<branch>`, `<repo>-shell`, `<repo>-agent` or
+`<repo>-<branch>-review`. The repo is the
 canonical main checkout's basename; `/`, `.` and `:` become `-`. A label longer
 than 200 characters keeps its first 195 plus a four-digit hash suffix. Name
 collisions add `-2`, `-3`, and so on, always from the original preferred label.
 A duplicate-name race retries allocation without adopting the other session.
 Core registry keys are JSON tuples: `["worktree", repo, exactBranch]` or
 `["terminal", actualTmuxName]`. Display labels never address registry entries.
+
+## Launch environment and the machine it runs on
+
+A session's environment is `process.env` plus an `additions` map, and only the
+second half describes the launch rather than the orchestrating process.
+`session/machine-env.ts` is the one place that fills it, and it is handed
+capabilities rather than paths: a caller asks for "the work Claude
+configuration" or "an index of your own" and the answer is computed where the
+agent will run.
+
+Claude configuration directories are registered per machine and stored as
+tokens: a directory under `HOME` is kept as `~/.claude-work`, and one outside it
+stays absolute and names that machine only (`agents/agent-config-dirs.ts`). The
+default entry is `~/.claude`, which is also what an unconfigured machine has.
+An unselected directory contributes no `CLAUDE_CONFIG_DIR` at all, so whatever
+the host already has stays in force — a launch that inherits nothing is a
+launch that lands in the host's own default, which is the correct answer rather
+than a gap.
+
+**The selection is local-only, by design.** A remote machine has its own home,
+its own credentials and its own registered directories; it is sent no
+`CLAUDE_CONFIG_DIR` and uses its own default. Forwarding this host's answer is
+the bug, so the gate lives in `machineEnvAdditions` rather than in each caller.
+The directory list is desktop-configured and deliberately absent from the shared
+settings catalog in `settings/fields.ts`.
+
+## Several sessions in one worktree
+
+A worktree can hold more than one live session: the agent working on the
+branch, a reviewer running beside it, and any shells the user opens there. The
+review rail lists them and the content pane switches between them
+(`renderer/lib/review/worktree-sessions.ts`), which is the point of running
+them at once — watch the agent, flip to the reviewer, flip to a shell for
+ad-hoc work.
+
+They are different kinds of thing underneath: the branch agent is a `worktree`
+session keyed by branch, the rest are terminals keyed by their tmux name. The
+list exists so the rail does not have to care. Order is fixed — branch agent,
+reviewer, then shells — because a row that moves when another session starts is
+a row the user clicks by mistake. An exited session keeps its row and says so;
+its pane still holds the transcript.
+
+Sessions share the checkout, with no isolation between them. Two agents running
+git in one worktree is ordinary git concurrency: `.git/index` is locked by git
+itself, and the failure mode is a transient, visible lock error. A reviewer is
+asked by its prompt not to write to the tree; nothing enforces that, and the
+honest description is that it can.
+
+## Reviews
+
+A launched review runs in its own tmux session against the worktree, so it runs
+alongside the agent working on the branch rather than taking its session
+(`session/launch-review.ts`). It is an ordinary interactive agent — nothing
+headless, no tool restrictions — that happens to be a second session in the same
+checkout. Its prompt always starts a fresh conversation: `--continue` in a
+shared worktree would resume whatever the working agent was last saying.
+
+The session is an `agent` terminal, which already retains its pane after the
+process exits, carrying `@orchestra-review` with the pull request id. It is
+deliberately not a `worktree` session: that type means the agent that owns the
+branch, which Orchestra reads as a player.
+
+One review per pull request. Launching a review that already has a live session
+attaches to it — asking to review again means "show me the reviewer I have" —
+and one whose pane has exited restarts in place, keeping its name and its
+scrollback. Nothing kills a live agent to make room. Launches of one pull
+request coalesce, so a double-click joins the first rather than racing it. The
+replacement reuses the ended session's label, so it is adopted under its own
+name to carry the relay sequence forward; renumbering from 1 would have a
+mounted pane discard everything the new session printed.
+
+The comments are the review's product and appear in the diff viewer as it posts
+them. The session also joins the tab strip through the existing terminal
+listing, and is listed in its worktree's sessions in the review rail.
 
 ## Discovery, restart and terminal lifecycle
 

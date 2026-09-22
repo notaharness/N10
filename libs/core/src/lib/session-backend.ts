@@ -166,6 +166,9 @@ function classifySession(
             path,
             running: !session.paneDead,
             agent: session.agent,
+            ...(session.review
+              ? { review: session.review, branch: session.branch }
+              : {}),
           },
         }
       : null;

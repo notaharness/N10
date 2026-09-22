@@ -111,6 +111,13 @@ vi.mock('./services/drafts.js', () =>
 vi.mock('./services/babysit.js', () =>
   recorder('babysit', ['startBabysit', 'stopBabysit'])
 );
+vi.mock('./services/agent-config-dirs.js', () =>
+  recorder('agentConfigDirs', [
+    'listAgentConfigDirs',
+    'registerAgentConfigDir',
+    'forgetAgentConfigDir',
+  ])
+);
 vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
 );
@@ -188,6 +195,17 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['launchAgent', [{ branch: 'b' }], 'sessions.launchAgent'],
   ['launchReviewAgent', [{ pr: {} }], 'sessions.launchReviewAgent'],
   ['listAgentOptions', [], 'sessions.listAgentOptions'],
+  ['listAgentConfigDirs', [], 'agentConfigDirs.listAgentConfigDirs'],
+  [
+    'registerAgentConfigDir',
+    ['~/.claude-work'],
+    'agentConfigDirs.registerAgentConfigDir',
+  ],
+  [
+    'forgetAgentConfigDir',
+    ['~/.claude-work'],
+    'agentConfigDirs.forgetAgentConfigDir',
+  ],
   ['getSessionLaunchContext', ['feature'], 'sessions.getSessionLaunchContext'],
   [
     'checkoutPlan',

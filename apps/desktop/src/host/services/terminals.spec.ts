@@ -41,6 +41,8 @@ const state = vi.hoisted(() => ({
   // otherwise — the check itself is exercised by its own describe
   // block, with a controlled path list.
   missingDirs: new Set<string>(),
+  /** Review launches core was asked to make, in order. */
+  reviews: [] as { repo: string; branch: string; pullRequest: string }[],
 }));
 
 vi.mock('node:fs', () => ({
@@ -109,6 +111,37 @@ vi.mock('@n10/core', () => ({
     });
     return { name };
   },
+  launchReviewSession: async (spec: {
+    repo: string;
+    branch: string;
+    pullRequest: string;
+    cwd: string;
+    cols: number;
+    rows: number;
+  }) => {
+    await Promise.resolve();
+    state.nextId += 1;
+    const name =
+      state.allocatedName ?? `n10-${spec.branch}-review-${state.nextId}`;
+    state.reviews.push({
+      repo: spec.repo,
+      branch: spec.branch,
+      pullRequest: spec.pullRequest,
+    });
+    state.alive.add(name);
+    state.onExit.set(name, []);
+    state.sessions.set(name, {
+      exited: false,
+      pty: {
+        cols: spec.cols,
+        rows: spec.rows,
+        onData: (cb: (data: string) => void) => state.onData.set(name, cb),
+        onExit: (cb: (code: number) => void) =>
+          state.onExit.get(name)?.push(cb),
+      },
+    });
+    return { name };
+  },
   hasPersistedTerminalSession: (name: string) => state.tmuxHolds.has(name),
   getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {
@@ -143,6 +176,7 @@ beforeEach(async () => {
   state.missingDirs = new Set();
   state.tmuxHolds = new Set();
   state.broadcasts = [];
+  state.reviews = [];
   vi.resetModules();
   terminals = await import('./terminals.js');
   const relay = await import('./session-relay.js');
@@ -600,4 +634,114 @@ it('uses the allocated backend name for the tab and its lifecycle', async () => 
   expect(
     terminals.listTerminals(HOME).map((terminal) => terminal.name)
   ).toEqual(['n10-shell-3']);
+});
+
+/**
+ * A review runs beside the branch's agent rather than in its session,
+ * and nobody watches its pane. These assert the consequence rather
+ * than the call: that it reaches the listing the tab strip reconciles
+ * against, and that its transcript survives the run.
+ */
+describe('launchReviewTerminal', () => {
+  const REPO = '/home/dev/n10';
+  const WT = '/home/dev/n10/.claude/worktrees/feature-x';
+  const review = () =>
+    terminals.launchReviewTerminal(
+      {
+        repo: REPO,
+        branch: 'feature/x',
+        pullRequest: '42',
+        cwd: WT,
+        cols: 100,
+        rows: 30,
+        config: { vendorAuth: {}, vendorProject: {} },
+        request: { intent: 'seed', prompt: 'review it' },
+      } as Parameters<typeof terminals.launchReviewTerminal>[0],
+      HOME
+    );
+
+  it('is listed as the review it is, not as a bare agent terminal', async () => {
+    // The worktree's session list labels it from this, and a later
+    // launch uses it to return to the reviewer instead of starting one.
+    const summary = await review();
+    expect(summary.review).toBe('42');
+    expect(terminals.listTerminals(HOME)[0].review).toBe('42');
+  });
+
+  it('surfaces as its own terminal, in the listing the tabs are built from', async () => {
+    // A worktree is a repository root of its own, so the review tab is
+    // filed under the checkout it runs in — the same grouping any
+    // terminal opened there already gets.
+    state.repoRoots.add(WT);
+    const summary = await review();
+    // Not "the launcher was called": the tab strip reconciles against
+    // this listing, so being in it is what makes the review a tab.
+    expect(terminals.listTerminals(HOME)).toEqual([
+      expect.objectContaining({
+        name: summary.name,
+        kind: 'agent',
+        cwd: WT,
+        repo: WT,
+        running: true,
+      }),
+    ]);
+    expect(terminals.isTerminal(summary.name)).toBe(true);
+  });
+
+  it('does not displace a terminal already open on the same worktree', async () => {
+    const shell = await terminals.launchTerminal(
+      { kind: 'shell', cwd: WT },
+      HOME
+    );
+    const summary = await review();
+    expect(summary.name).not.toBe(shell.name);
+    expect(
+      terminals
+        .listTerminals(HOME)
+        .map((t) => t.name)
+        .sort()
+    ).toEqual([shell.name, summary.name].sort());
+    expect(state.killed).toEqual([]);
+  });
+
+  it('keeps its transcript after the run ends', async () => {
+    // Nobody was watching, so the pane's output is the record. An
+    // agent terminal whose tmux session survives keeps its entry.
+    const summary = await review();
+    state.tmuxHolds.add(summary.name);
+    state.onData.get(summary.name)?.('found a bug\r\n');
+    for (const cb of state.onExit.get(summary.name) ?? []) cb(0);
+    expect(terminals.terminalBuffer(summary.name)?.data).toContain(
+      'found a bug'
+    );
+    expect(state.released).toEqual([]);
+  });
+
+  it('carries the relay sequence across a replacement', async () => {
+    // The replacement reuses the ended review's label, so a mounted
+    // pane keeps its watermark. Restarting the numbering would make it
+    // drop every chunk the new review produced.
+    const first = await review();
+    state.onData.get(first.name)?.('first run\r\n');
+    const before = terminals.terminalBuffer(first.name)?.seq ?? 0;
+    expect(before).toBeGreaterThan(0);
+
+    state.allocatedName = first.name;
+    const second = await review();
+    state.onData.get(second.name)?.('second run\r\n');
+    expect(terminals.terminalBuffer(second.name)?.seq).toBeGreaterThan(before);
+  });
+
+  it('asks core to review the pull request in the worktree', async () => {
+    await review();
+    expect(state.reviews).toEqual([
+      { repo: REPO, branch: 'feature/x', pullRequest: '42' },
+    ]);
+  });
+
+  it('refuses a worktree that is not there', async () => {
+    state.missingDirs.add(WT);
+    await expect(review()).rejects.toThrow(/does not exist/);
+    expect(state.reviews).toEqual([]);
+  });
 });

@@ -2,6 +2,7 @@ import type { AppConfig } from '@n10/vcs-core';
 import type { NamedPtyEntry } from '../pty-registry.js';
 import { buildAgentLaunch } from '../session/launch-session.js';
 import { openSession } from '../session/open-session.js';
+import type { MachineEnvRequest } from '../session/machine-env.js';
 import { sessionIdentity } from '../session-key.js';
 import { getRepoRoot } from '../repo-root.js';
 import type { TerminalKind } from './terminal-name.js';
@@ -13,6 +14,9 @@ export interface TerminalLaunchParams {
   /** Start a fresh conversation with the directory's configured agent. */
   fresh?: boolean;
   kind: TerminalKind;
+  /** What the session wants from the machine it runs on — see
+   *  `machine-env.ts`. */
+  machine?: MachineEnvRequest;
   cwd: string;
   cols: number;
   rows: number;
@@ -36,6 +40,7 @@ export async function launchTerminalSession(
     mode: params.name ? params.mode : 'create',
     fresh: params.kind === 'agent' && params.fresh,
     intent: params.kind === 'agent' && params.fresh ? 'fresh' : 'continue',
+    machine: params.machine,
     cwd: params.cwd,
     cols: params.cols,
     rows: params.rows,

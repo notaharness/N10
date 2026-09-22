@@ -2,15 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { PullRequestInfo } from '@n10/vcs-core';
-import type {
-  AgentId,
-  SessionIncarnation,
-  SessionLaunchView,
-} from '../../../host/contract.js';
-import { useAgentOptions } from '../../lib/data/queries.js';
+import { useAgentConfigDirs, useAgentOptions } from '../../lib/data/queries.js';
 import { agentIdForLaunch } from '../../lib/agent-pick.js';
 import { ContinueContext } from './LaunchSessionContext.js';
 import { LaunchAgentPicker } from './LaunchAgentPicker.js';
+import { LaunchConfigDirPicker } from './LaunchConfigDirPicker.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -23,21 +19,21 @@ import {
 } from '../ui/dialog.js';
 import { ReviewInstructions, ReplacementNotice } from './LaunchInstructions.js';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group.js';
+import {
+  actionLabel,
+  agentPickerError,
+  canContinueSession,
+  isReplacing,
+  launchChoice,
+  launchDisabled,
+  resolvedConfigDir,
+  selectedMode,
+  shouldShowConfigDirPicker,
+  type LaunchChoice,
+  type Mode,
+} from './launch-dialog-model.js';
 
-export type LaunchChoice =
-  | {
-      kind: 'session';
-      fresh: boolean;
-      agentId?: AgentId;
-      expected?: SessionIncarnation;
-    }
-  | {
-      kind: 'review';
-      instruction?: string;
-      agentId?: AgentId;
-      expected?: SessionIncarnation;
-    };
-type Mode = 'continue' | 'new' | 'review';
+export type { LaunchChoice } from './launch-dialog-model.js';
 
 /** Session choices are based on a native snapshot, also used to guard replacement. */
 export function LaunchDialog({
@@ -66,6 +62,9 @@ export function LaunchDialog({
   const options = useAgentOptions(cwd);
   const agents = options.data ?? [];
   const [agentIndex, setAgentIndex] = useState(0);
+  const configDirs = useAgentConfigDirs();
+  const dirs = configDirs.data ?? [];
+  const [configDirToken, setConfigDirToken] = useState<string>();
   const info = context.data;
   const canContinue = canContinueSession(info);
   const mode = selectedMode(selected, canContinue);
@@ -77,6 +76,13 @@ export function LaunchDialog({
     mode,
     agents.length
   );
+  const showConfigDirPicker = shouldShowConfigDirPicker(
+    mode,
+    dirs,
+    agents,
+    agentIndex
+  );
+  const configDirValue = resolvedConfigDir(configDirToken, dirs);
   const go = () => {
     if (!info || disabled) return;
     onChoose(
@@ -84,7 +90,9 @@ export function LaunchDialog({
         mode,
         info,
         instruction,
-        agentIdForLaunch(agents, agentIndex)
+        agentIdForLaunch(agents, agentIndex),
+        showConfigDirPicker,
+        configDirValue
       )
     );
   };
@@ -118,13 +126,20 @@ export function LaunchDialog({
             <LaunchStatus
               fetching={context.isFetching}
               error={context.error}
-              agentError={mode === 'continue' ? null : options.error}
+              agentError={agentPickerError(mode, options.error)}
             />
             {mode !== 'continue' && (
               <LaunchAgentPicker
                 agents={agents}
                 index={agentIndex}
                 onChange={setAgentIndex}
+              />
+            )}
+            {showConfigDirPicker && (
+              <LaunchConfigDirPicker
+                dirs={dirs}
+                value={configDirValue}
+                onChange={setConfigDirToken}
               />
             )}
             {info && mode === 'continue' && <ContinueContext info={info} />}
@@ -140,7 +155,7 @@ export function LaunchDialog({
                 onSubmit={go}
               />
             )}
-            {replacing && <ReplacementNotice info={info} mode={mode} />}
+            {replacing && <ReplacementNotice info={info} />}
           </div>
         </div>
         <DialogFooter className="shrink-0 flex-wrap border-t px-5 py-4">
@@ -172,55 +187,6 @@ function Action({ value, children }: { value: Mode; children: string }) {
   );
 }
 
-function canContinueSession(info?: SessionLaunchView) {
-  return Boolean(info?.exists && (info.running || info.canResume));
-}
-function selectedMode(selected: Mode | null, canContinue: boolean): Mode {
-  if (selected === 'continue' && !canContinue) return 'new';
-  return selected ?? (canContinue ? 'continue' : 'new');
-}
-function launchDisabled(
-  info: SessionLaunchView | undefined,
-  fetching: boolean,
-  error: boolean,
-  mode: Mode,
-  agents: number
-) {
-  return !info || fetching || error || (mode !== 'continue' && agents === 0);
-}
-function launchChoice(
-  mode: Mode,
-  info: SessionLaunchView,
-  instruction: string,
-  agentId?: AgentId
-): LaunchChoice {
-  if (mode === 'review')
-    return {
-      kind: 'review',
-      agentId,
-      instruction: instruction.trim() || undefined,
-      expected: info.incarnation,
-    };
-  return {
-    kind: 'session',
-    agentId: mode === 'new' ? agentId : undefined,
-    fresh: mode === 'new',
-    expected: info.incarnation,
-  };
-}
-function actionLabel(
-  mode: Mode,
-  info: SessionLaunchView | undefined,
-  replacing: boolean
-) {
-  if (mode === 'continue')
-    return `${info?.running ? 'Open' : 'Continue with'} ${
-      info?.recordedAgentName ?? 'session'
-    }`;
-  const subject = mode === 'review' ? 'review' : 'new session';
-  return `${replacing ? 'Stop and start' : 'Start'} ${subject}`;
-}
-
 function LaunchStatus({
   fetching,
   error,
@@ -239,9 +205,6 @@ function LaunchStatus({
   );
 }
 
-function isReplacing(mode: Mode, info?: SessionLaunchView) {
-  return mode !== 'continue' && Boolean(info?.running);
-}
 function LaunchHeader({
   pr,
   branch,

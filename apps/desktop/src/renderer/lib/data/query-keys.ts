@@ -30,7 +30,12 @@ export const keys = {
   /** Not repo-scoped either: agents alive in *other* repositories, the
    *  same answer whichever repository is open. */
   foreignSessions: ['foreign-sessions'] as const,
+  /** Not repo-scoped either: registered Claude config directories are
+   *  a property of this machine, the same list whichever repository
+   *  is open. */
+  agentConfigDirs: ['agent-config-dirs'] as const,
   agentOptions: (cwd: string) => ['agent-options', cwd] as const,
+  worktrees: (cwd: string) => ['worktrees', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
   worktreeDiff: (cwd: string, branch: string, target: string) =>
@@ -61,6 +66,7 @@ const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
   keys.repo[0],
   keys.terminals[0],
   keys.foreignSessions[0],
+  keys.agentConfigDirs[0],
 ]);
 
 /**
@@ -70,13 +76,14 @@ const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
  * and in-flight mutation state goes too, so a worktree removal pending
  * in the old repo cannot hide a same-named row in the new one.
  *
- * Two entries are deliberately spared. The repo entry: the gate
+ * A few entries are deliberately spared. The repo entry: the gate
  * observes it, and removing it would drop that observer into its
  * pending state for a frame, flashing the loading screen between two
- * workspaces. And the two cross-repository listings — terminals, which
- * belong to directories rather than to the repository being left, and
- * agents alive in other repositories — since the tab strip is
- * reconciled against both wherever the user goes.
+ * workspaces. And the cross-repository listings — terminals, which
+ * belong to directories rather than to the repository being left,
+ * agents alive in other repositories, and registered Claude config
+ * directories, a property of the machine rather than the repo — since
+ * the tab strip and the launch dialog read them wherever the user goes.
  */
 export function resetRepoScopedCache(qc: QueryClient): void {
   qc.removeQueries({

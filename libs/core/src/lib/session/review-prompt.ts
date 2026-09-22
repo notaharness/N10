@@ -71,3 +71,37 @@ export function buildReviewLaunchRequest(
 
   return { intent: 'continue-or-seed', prompt, systemGuidance };
 }
+
+/**
+ * The same review, run in a session of its own.
+ *
+ * The request above resumes the worktree's own conversation, which is
+ * the right thing when the review *is* that session. A background
+ * review is a second session in the same checkout, so it always starts
+ * a fresh conversation: `--continue` there would resume whatever the
+ * working agent was last saying, not a prior review.
+ *
+ * The reviewer shares the worktree with that agent and is an ordinary
+ * interactive session — nothing stops it writing. The guidance below
+ * asks it not to; it does not prevent it, and the PR says as much.
+ */
+export function buildBackgroundReviewRequest(
+  pr: Parameters<typeof buildReviewLaunchRequest>[0],
+  additionalInstruction?: string
+): LaunchRequest {
+  const base = buildReviewLaunchRequest(pr, additionalInstruction);
+  return {
+    intent: 'seed',
+    prompt: base.prompt,
+    systemGuidance: `${base.systemGuidance ?? ''}\n\n${SHARED_WORKTREE_RULES}`,
+  };
+}
+
+const SHARED_WORKTREE_RULES =
+  `You are reviewing in a worktree that another agent may be editing at ` +
+  `the same time, in a session beside yours.\n\n` +
+  `- Read and review; do not modify, create or delete files in the checkout\n` +
+  `- Do not run git commands that write: no add, commit, checkout, switch, ` +
+  `stash, reset, merge or rebase\n` +
+  `- The tree may change under you while you read it. Review what you see ` +
+  `and say so if it shifts; do not try to stop it changing`;

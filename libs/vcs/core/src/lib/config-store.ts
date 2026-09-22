@@ -49,6 +49,7 @@ interface RawGlobalConfig {
   prPollInterval?: number;
   aiCommand?: string;
   agentId?: AgentId;
+  claudeConfigDirs?: string[];
   vendorAuth?: Record<string, Record<string, string>>;
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
@@ -140,6 +141,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     prPollInterval: global.prPollInterval,
     aiCommand: global.aiCommand,
     agentId: global.agentId,
+    claudeConfigDirs: global.claudeConfigDirs,
     vendor,
     vendorAuth,
     vendorProject,

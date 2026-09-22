@@ -255,6 +255,17 @@ export interface AppConfig {
   aiCommand?: string;
   /** Selected AI agent. Takes precedence over `aiCommand` when set. */
   agentId?: AgentId;
+  /**
+   * Claude configuration directories registered on *this machine*,
+   * besides the default `~/.claude`.
+   *
+   * Each entry is a token, not a path: `~/.claude-work` names a
+   * directory relative to whichever machine's home directory the agent
+   * ends up running under, and an entry that cannot be written that
+   * way stays absolute and is machine-local. `@n10/core`'s
+   * `agent-config-dirs.ts` owns the rule and the resolution.
+   */
+  claudeConfigDirs?: string[];
   vendor?: string;
   vendorAuth: Record<string, string>;
   vendorProject: Record<string, string>;
