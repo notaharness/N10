@@ -20,12 +20,14 @@ import {
   type FreezablePeer,
 } from '../test-support/hostile-peer.js';
 
-const INTERVAL_MS = 150;
-const TIMEOUT_MS = 400;
-/** Long enough to cover a scheduling hiccup on a loaded box, short enough
- * to stay well inside the pong timeout — the point is that a peer frozen
- * for less than the bound is not dropped. */
-const BRIEF_FREEZE_MS = 120;
+const INTERVAL_MS = 200;
+const TIMEOUT_MS = 600;
+/** Well inside the pong timeout: the point is that a peer frozen for less
+ * than the bound is not dropped. */
+const BRIEF_FREEZE_MS = 150;
+/** Watched for longer than a timeout after the thaw, so a monitor that
+ * stopped hearing pongs would be seen dropping the peer. */
+const OBSERVATION_MS = 1400;
 
 let peer: FreezablePeer;
 let connection: PeerConnection;
@@ -94,7 +96,7 @@ describe('a peer process frozen mid-stream', () => {
     peer.freeze();
 
     expect(await until(() => dialed.closes.length > 0)).toBe(true);
-    expect(dialed.closes[0]).toMatch(/no pong within 400ms/);
+    expect(dialed.closes[0]).toMatch(/no pong within 600ms/);
     expect(await connection.checkAlive(TIMEOUT_MS)).toBe(false);
   });
 
@@ -112,7 +114,7 @@ describe('a peer process frozen mid-stream', () => {
     await sleep(BRIEF_FREEZE_MS);
     peer.thaw();
 
-    await sleep(INTERVAL_MS * 4);
+    await sleep(OBSERVATION_MS);
     expect(dialed.closes).toEqual([]);
     expect(await dialed.echo()).toBe(true);
     expect(await connection.checkAlive(TIMEOUT_MS)).toBe(true);
