@@ -605,3 +605,128 @@ describe('IpcSocket', () => {
     });
   });
 });
+
+describe('IpcSocket: one silent subscriber must not stall the others', () => {
+  interface Recorder {
+    client: ReturnType<typeof connectClient>;
+    lines: Record<string, unknown>[];
+  }
+
+  let recorders: Recorder[] = [];
+
+  afterEach(() => {
+    for (const r of recorders) r.client.conn.destroy();
+    recorders = [];
+  });
+
+  /** A subscriber whose every delivered line is recorded as it arrives.
+   * Assertions read the array rather than awaiting one line at a time:
+   * "nothing arrived in this window" has to be answerable without leaving
+   * an abandoned waiter behind to swallow the next real line. */
+  async function subscriber(
+    path: string,
+    request: Record<string, unknown>
+  ): Promise<Recorder> {
+    const client = connectClient(path);
+    await waitForOpen(client.conn);
+    const lines: Record<string, unknown>[] = [];
+    const recorder: Recorder = { client, lines };
+    recorders.push(recorder);
+    void (async () => {
+      for (;;) {
+        try {
+          lines.push(await client.nextLine());
+        } catch {
+          return;
+        }
+      }
+    })();
+    client.send({ op: 'subscribe', ...request });
+    // Let the subscribe land before any mail is sent, so the pump is
+    // choosing between cursors rather than racing a subscription.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return recorder;
+  }
+
+  function payloads(recorder: Recorder): unknown[] {
+    return recorder.lines.map((line) => line['payload']);
+  }
+
+  it('a connected subscriber that never acks holds up only its own stream, not an unrelated topic', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    connectNodes(a, b);
+    const { path } = await startIpc(b);
+
+    const silent = await subscriber(path, { topic: 'wedged' });
+    const healthy = await subscriber(path, { topic: 'orchestra' });
+
+    const sendTo = (topic: string, payload: string): Promise<unknown> =>
+      a.mailbox.send({ to: b.identity.peerId, topic, payload });
+
+    // Wedge the first subscriber: it takes this one and never acks it.
+    await sendTo('wedged', 'never-acked');
+    await waitFor(
+      () => payloads(silent),
+      (seen) => seen.includes('never-acked')
+    );
+
+    // Two messages on an unrelated topic. The second can only arrive if
+    // the first was acked and that subscriber's own cursor moved, so this
+    // covers both "the wedge does not block another subscriber" and "each
+    // subscriber's own stream is still sequential".
+    for (const payload of ['first', 'second']) {
+      await sendTo('orchestra', payload);
+      const seen = await waitFor(
+        () => healthy.lines,
+        (lines) => lines.some((line) => line['payload'] === payload)
+      );
+      healthy.client.send({
+        op: 'ack',
+        id: seen.find((line) => line['payload'] === payload)?.['id'],
+      });
+    }
+    expect(payloads(healthy)).toEqual(['first', 'second']);
+
+    // The wedged subscriber really is stopped — without this, the
+    // assertions above would also hold if `wedged` mail were simply never
+    // routed anywhere.
+    await sendTo('wedged', 'behind-the-wedge');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(payloads(silent)).toEqual(['never-acked']);
+
+    // Positive control for that negative: the moment it acks, the message
+    // it was holding up arrives.
+    silent.client.send({ op: 'ack', id: silent.lines[0]?.['id'] });
+    await waitFor(
+      () => payloads(silent),
+      (seen) => seen.includes('behind-the-wedge')
+    );
+  });
+
+  it('two catch-all subscribers are each handed an envelope at the same time, and neither waits on the other', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    connectNodes(a, b);
+    const { path } = await startIpc(b);
+
+    const one = await subscriber(path, {});
+    const two = await subscriber(path, {});
+
+    for (const payload of ['m1', 'm2']) {
+      await a.mailbox.send({ to: b.identity.peerId, topic: 't', payload });
+    }
+
+    // Neither acks. With one shared in-flight slot the second envelope
+    // waits behind the first forever; with a cursor each, both are out.
+    await waitFor(
+      () => [...payloads(one), ...payloads(two)].sort(),
+      (seen) => seen.length === 2
+    );
+    // Each envelope goes to exactly one subscriber — the pump splices it
+    // out of `pending` as it assigns it — never to both.
+    expect([...payloads(one), ...payloads(two)].sort()).toEqual(['m1', 'm2']);
+  });
+});
