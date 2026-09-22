@@ -4,6 +4,11 @@
  * and libs/beam/src/lib/muxer.ts for the framing underneath it.
  */
 
+import {
+  startLiveness,
+  type LivenessMonitor,
+  type LivenessOptions,
+} from './liveness.js';
 import { Muxer, type MuxerRole } from './muxer.js';
 import type { StreamOpenHandler, StreamRegistry } from './stream-registry.js';
 import type { BeamStream } from './stream.js';
@@ -34,6 +39,19 @@ export interface PeerConnection {
    * through a handshake the far end can decline.
    */
   terminate(reason?: string): void;
+  /**
+   * Ask the transport for a liveness round trip right now, and resolve
+   * with whether the peer answered inside `timeoutMs` (default: the
+   * monitor's own pong timeout).
+   *
+   * For a caller that is about to *rely* on this connection — a
+   * reconnect, a manual retry — and cannot afford the periodic timer's
+   * worst case. A connection whose transport has no probe at all, or one
+   * already closed, answers `false`: an unverifiable connection is
+   * suspect, which is the safe direction for the one caller this exists
+   * for.
+   */
+  checkAlive(timeoutMs?: number): Promise<boolean>;
 }
 
 export interface CreateConnectionOptions {
@@ -44,6 +62,12 @@ export interface CreateConnectionOptions {
   role: MuxerRole;
   socket: TransportSocket;
   registry: StreamRegistry;
+  /**
+   * Ping/pong liveness over the transport (`liveness.ts`). On by default
+   * with the module's own interval and timeout; `false` turns it off, for
+   * a caller driving both ends itself with no real socket between them.
+   */
+  liveness?: LivenessOptions | false;
 }
 
 /** Wire a transport socket to a Muxer and present the result as a
@@ -61,13 +85,32 @@ export function createConnection(
   });
   const closeHandlers: ((reason: string) => void)[] = [];
   let closed = false;
+  let monitor: LivenessMonitor | null = null;
 
   const finish = (reason: string): void => {
     if (closed) return;
     closed = true;
+    monitor?.stop();
     muxer.dispose(reason);
     for (const cb of closeHandlers) cb(reason);
   };
+
+  // A peer that stops answering is dropped, not asked to leave: there is
+  // nobody on the other end to complete a close handshake, and `ws` would
+  // sit out its 30s close timeout waiting for one. Same reasoning as
+  // revocation's `terminate`, for the opposite reason — there the peer
+  // will not answer, here it cannot.
+  const { ping, onPong } = socket;
+  if (options.liveness !== false && ping && onPong) {
+    monitor = startLiveness(
+      { ping: () => ping.call(socket), onPong: (h) => onPong.call(socket, h) },
+      options.liveness ?? {},
+      (reason) => {
+        finish(`connection lost: ${reason}`);
+        socket.terminate();
+      }
+    );
+  }
 
   socket.onData((data) => {
     if (!muxer.receive(data)) socket.close();
@@ -105,5 +148,7 @@ export function createConnection(
       finish(reason ?? 'terminated locally');
       socket.terminate();
     },
+    checkAlive: (timeoutMs) =>
+      monitor?.checkAlive(timeoutMs) ?? Promise.resolve(false),
   };
 }
