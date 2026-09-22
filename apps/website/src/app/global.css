@@ -566,8 +566,8 @@
   opacity: 0.28;
 }
 
-/* The /orchestra stage (src/components/orchestra/). The boxes reuse the
- * beam mesh's face tones; everything else here is the show. */
+/* The /orchestra stage (src/components/orchestra/). The machines and
+ * beams reuse the beam mesh's styles; everything else here is the show. */
 .orchestra-stage {
   --orchestra-play: running;
   --n10-mesh-play: var(--orchestra-play);
@@ -595,145 +595,98 @@
   opacity: 0.35;
 }
 
-.orchestra-riser {
-  fill: var(--color-fd-card);
-  opacity: 0.9;
-}
-
-.orchestra-riser-edge {
+/* A beam on this stage is a straight line in screen space, one lane
+ * each way, with the beam mesh's packets running along it. */
+.orchestra-line {
   fill: none;
-  stroke: var(--n10-iso-line);
-  stroke-width: 0.75;
-  opacity: 0.6;
+  stroke: var(--n10-mesh-color);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.3;
 }
 
-.orchestra-platform .n10-iso-face--top {
-  fill: var(--n10-sand);
-}
-
-.orchestra-remote-platform .n10-iso-face--top {
-  fill: color-mix(in oklab, #a98fc4 35%, var(--n10-iso-top));
-}
-
-.orchestra-podium-top {
-  fill: var(--n10-sand);
-  stroke: var(--n10-iso-line);
-  stroke-width: 0.5;
-}
-
-/* The beat: rings spreading out across the podium from where the
- * orchestrator stands, one every bar, and a baton keeping time. */
-.orchestra-beat {
-  fill: none;
-  stroke: var(--n10-sand);
-  stroke-width: 1.5;
+/* A player sits still and works. Every so often it gives a short
+ * comic twitch, each machine on its own stagger, and whenever an
+ * instruction lands on it it gets a proper shake. Both stop while it
+ * has something to report. Its lights take the colour of that report. */
+.orchestra-player[data-status='working'] .orchestra-shake {
   transform-box: fill-box;
-  transform-origin: center;
-  animation: orchestra-beat 2.4s ease-out infinite;
+  transform-origin: 50% 100%;
+  animation: orchestra-twitch 11s linear infinite;
+  animation-delay: var(--orchestra-stagger);
   animation-play-state: var(--orchestra-play);
 }
 
-.orchestra-beat--late {
-  animation-delay: -1.2s;
-}
-
-@keyframes orchestra-beat {
-  from {
-    transform: scale(0.4);
-    opacity: 0.9;
-  }
-  to {
-    transform: scale(4.5);
-    opacity: 0;
-  }
-}
-
-.orchestra-baton-line {
-  stroke: var(--color-fd-foreground);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-}
-
-.orchestra-baton-tip {
-  fill: var(--n10-sand);
-}
-
-/* Figures. Bodies take --orchestra-figure; heads and arms are one
- * neutral tone so every figure reads as the same kind of person. */
-.orchestra-figure-shadow {
-  fill: rgb(30 25 10 / 0.16);
-}
-
-.dark .orchestra-figure-shadow {
-  fill: rgb(0 0 0 / 0.5);
-}
-
-.orchestra-figure-body {
-  fill: var(--orchestra-figure);
-  stroke: rgb(0 0 0 / 0.18);
-  stroke-width: 0.8;
-}
-
-.orchestra-figure-head {
-  fill: color-mix(
-    in oklab,
-    var(--color-fd-foreground) 78%,
-    var(--color-fd-background)
-  );
-}
-
-.orchestra-arm,
-.orchestra-arm line {
-  stroke: color-mix(
-    in oklab,
-    var(--color-fd-foreground) 78%,
-    var(--color-fd-background)
-  );
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.orchestra-bowtie {
-  fill: var(--n10-sand);
-}
-
-/* The conductor beats a four: down, in, out, up. Each beat is a
- * quarter of the bar, with a flick at the bottom of the downbeat. */
-.orchestra-figure--conductor .orchestra-arm--right {
-  animation: orchestra-conduct 2.4s ease-in-out infinite;
-  animation-play-state: var(--orchestra-play);
-}
-
-@keyframes orchestra-conduct {
-  0% {
-    transform: rotate(-70deg);
-  }
-  22% {
-    transform: rotate(40deg);
-  }
-  27% {
-    transform: rotate(28deg);
-  }
-  50% {
-    transform: rotate(-5deg) translate(-8px, 0);
-  }
-  75% {
-    transform: rotate(10deg) translate(10px, 0);
-  }
+@keyframes orchestra-twitch {
+  0%,
+  90%,
+  95%,
   100% {
-    transform: rotate(-70deg);
+    transform: none;
+  }
+  91% {
+    transform: rotate(-1.6deg);
+  }
+  92% {
+    transform: rotate(1.6deg);
+  }
+  93% {
+    transform: rotate(-1.2deg);
+  }
+  94% {
+    transform: rotate(1.2deg);
   }
 }
 
-.orchestra-figure--conductor .orchestra-arm--left {
-  animation: orchestra-conduct-left 4.8s ease-in-out infinite;
+.orchestra-player[data-status] .orchestra-shake.orchestra-shake--hit {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: orchestra-hit 0.7s ease-out;
   animation-play-state: var(--orchestra-play);
 }
 
-@keyframes orchestra-conduct-left {
-  50% {
-    transform: rotate(35deg);
+@keyframes orchestra-hit {
+  0%,
+  100% {
+    transform: none;
   }
+  12% {
+    transform: rotate(-4deg) translate(-3px, -3px);
+  }
+  28% {
+    transform: rotate(4deg) translate(3px, 0);
+  }
+  44% {
+    transform: rotate(-3deg) translate(-2px, -1px);
+  }
+  60% {
+    transform: rotate(2.5deg) translate(2px, 0);
+  }
+  76% {
+    transform: rotate(-1.5deg);
+  }
+  90% {
+    transform: rotate(1deg);
+  }
+}
+
+.orchestra-player .n10-iso-led,
+.orchestra-player .n10-iso-glow {
+  fill: var(--orchestra-kind);
+  filter: drop-shadow(0 0 3px var(--orchestra-kind));
+}
+
+.orchestra-player .n10-iso-code--sage,
+.orchestra-player .n10-iso-code--sand {
+  stroke: var(--orchestra-kind);
+}
+
+.orchestra-player[data-status='working'] .n10-iso-led {
+  animation-delay: var(--orchestra-stagger);
+}
+
+.orchestra-player:not([data-status='working']) .n10-iso-led {
+  animation: none;
 }
 
 .orchestra-badge rect {
@@ -761,111 +714,6 @@
 
 .orchestra-nameplate text.orchestra-nameplate-agent {
   fill: var(--color-fd-muted-foreground);
-}
-
-/* A player box hums — a fast, tiny bob — and every few seconds shakes
- * itself in a burst of effort, each box on its own stagger. Both stop
- * the moment it has something to report. */
-.orchestra-player[data-status='working'] .orchestra-hum {
-  animation: orchestra-hum 0.16s ease-in-out infinite alternate;
-  animation-play-state: var(--orchestra-play);
-}
-
-@keyframes orchestra-hum {
-  to {
-    transform: translateY(-0.5px);
-  }
-}
-
-.orchestra-player[data-status='working'] .orchestra-shake {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: orchestra-shake 7s linear infinite;
-  animation-delay: var(--orchestra-stagger);
-  animation-play-state: var(--orchestra-play);
-}
-
-@keyframes orchestra-shake {
-  0%,
-  76%,
-  90%,
-  100% {
-    transform: none;
-  }
-  78% {
-    transform: rotate(-2.5deg) translateX(-1.5px);
-  }
-  80% {
-    transform: rotate(2.5deg) translateX(1.5px);
-  }
-  82% {
-    transform: rotate(-2deg) translateX(-1px);
-  }
-  84% {
-    transform: rotate(2deg) translateX(1px);
-  }
-  86% {
-    transform: rotate(-1deg);
-  }
-  88% {
-    transform: rotate(1deg);
-  }
-}
-
-.orchestra-vent {
-  fill: rgb(0 0 0 / 0.28);
-}
-
-.orchestra-led {
-  fill: var(--orchestra-kind);
-  animation: n10-iso-blink 2.8s steps(1, end) infinite;
-  animation-delay: var(--orchestra-stagger);
-  animation-play-state: var(--orchestra-play);
-}
-
-.orchestra-keys {
-  fill: rgb(0 0 0 / 0.16);
-}
-
-/* A player's screen: bouncing bars while it works, tinted by the kind
- * of report it is about to send, a glyph otherwise. */
-.orchestra-screen {
-  fill: var(--n10-iso-screen);
-  transition: fill 400ms;
-}
-
-.orchestra-player[data-status='question'] .orchestra-screen,
-.orchestra-player[data-status='blocked'] .orchestra-screen,
-.orchestra-player[data-status='done'] .orchestra-screen {
-  fill: color-mix(in oklab, var(--orchestra-kind) 45%, var(--n10-iso-screen));
-}
-
-.orchestra-bar {
-  fill: none;
-  stroke: var(--orchestra-kind);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-dasharray: 1 1;
-  stroke-dashoffset: 0.6;
-  animation: orchestra-bar 0.9s ease-in-out infinite alternate;
-  animation-play-state: var(--orchestra-play);
-}
-
-@keyframes orchestra-bar {
-  from {
-    stroke-dashoffset: 0.75;
-  }
-  to {
-    stroke-dashoffset: 0.15;
-  }
-}
-
-.orchestra-glyph {
-  fill: var(--orchestra-kind);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 700;
-  text-anchor: middle;
 }
 
 /* A report or an answer on its way: a note that hops from one place to

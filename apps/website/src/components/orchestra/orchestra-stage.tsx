@@ -2,32 +2,29 @@
 
 import { Pause, Play } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
-import { project, type Vec2 } from '@/components/beam/mesh/geometry';
-import { BEAM_COLORS } from '@/components/beam/mesh/palette';
-import { depth } from '@/components/orchestra/stage-geometry';
+import { project } from '@/components/beam/mesh/geometry';
 import {
+  Beam,
+  Ground,
+  groundOf,
   Note,
   PODIUM,
+  Player,
   Podium,
-  RemotePlatform,
-  Riser,
-  place,
 } from '@/components/orchestra/stage-parts';
-import { PlayerBox } from '@/components/orchestra/player-box';
 import { PLAYERS } from '@/components/orchestra/stage-script';
 import { useShow } from '@/components/orchestra/use-show';
 
 /**
- * The pitch as a scene, in the same isometric language as the beam
- * page. An orchestrator at a podium keeps a beat; players at lecterns on
- * a semicircular riser face it, screens bouncing while they work. A
- * scripted timeline (stage-script.ts) runs the show: a player asks a
- * question and the podium answers, one gets blocked and unblocked, one
- * finishes and is handed a new assignment. Every report leaves its stand
- * as a note and lands on the podium; every answer goes back the same
- * way. The log under the stage narrates in Orchestra's own report format.
- * One player stands on its own platform with a beam running off the
- * edge: it is on another machine, and nothing else about it differs.
+ * The pitch as a scene, built from the beam page's machines. The
+ * orchestrator is a laptop at the top; the players are machines on an
+ * arc below it, each joined to the laptop by its own straight two-lane
+ * beam. A scripted timeline
+ * (stage-script.ts) runs the show: a player asks a question and the
+ * laptop answers, one gets blocked and unblocked, one finishes and is
+ * handed a new assignment. Every report leaves its machine as a note
+ * and lands on the laptop; every answer goes back the same way. The
+ * log under the stage narrates in Orchestra's own report format.
  */
 const REDUCED = '(prefers-reduced-motion: reduce)';
 
@@ -47,61 +44,37 @@ export function OrchestraStage({ className }: { className?: string }) {
   const playing = choice ?? !reduced;
   const { show, dispatch } = useShow(playing);
   const Icon = playing ? Pause : Play;
-  const remote = PLAYERS.find((p) => p.remote);
   const solids = [
     { key: 'podium', at: PODIUM, node: <Podium /> },
-    ...PLAYERS.map((spec, index) => {
-      const at = place(spec.angle);
-      return {
-        key: spec.id,
-        at: [at.cx, at.cy] as Vec2,
-        node: (
-          <PlayerBox
-            spec={spec}
-            status={show.status[spec.id] ?? 'working'}
-            index={index}
-          />
-        ),
-      };
-    }),
-  ].sort((a, b) => depth(a.at) - depth(b.at));
+    ...PLAYERS.map((spec, index) => ({
+      key: spec.id,
+      at: groundOf(spec),
+      node: (
+        <Player
+          spec={spec}
+          status={show.status[spec.id] ?? 'working'}
+          index={index}
+          hits={show.hits[spec.id] ?? 0}
+        />
+      ),
+    })),
+  ].sort((a, b) => a.at[0] + a.at[1] - (b.at[0] + b.at[1]));
   const [px, py] = project([...PODIUM, 0]);
 
   return (
     <figure className={className}>
       <div className="relative">
         <svg
-          viewBox={`${px - 330} ${py - 125} 660 292`}
+          viewBox={`${px - 360} ${py - 112} 720 380`}
           className="orchestra-stage h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
-          aria-label="An orchestrator at a podium keeping a beat, with five computers on a semicircular riser facing it, one player each. Their screens bounce and the boxes shake while they work; reports fly to the podium as notes and answers fly back. One player stands on its own platform, joined to the scene by a beam from another machine."
+          aria-label="A laptop at the top, and five machines on an arc below it, one player each, every one joined to the laptop by its own beam. Reports fly to the laptop as notes and answers fly back; a machine shakes when an answer lands on it."
         >
-          <defs>
-            <radialGradient id="orchestra-pool">
-              <stop
-                offset="0"
-                stopColor={BEAM_COLORS.sand}
-                stopOpacity="0.45"
-              />
-              <stop
-                offset="0.6"
-                stopColor={BEAM_COLORS.sage}
-                stopOpacity="0.12"
-              />
-              <stop offset="1" stopColor={BEAM_COLORS.sage} stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          <ellipse
-            cx={px}
-            cy={py + 30}
-            rx="330"
-            ry="150"
-            fill="url(#orchestra-pool)"
-            className="orchestra-pool"
-          />
-          <Riser />
-          {remote && <RemotePlatform spec={remote} />}
+          <Ground />
+          {PLAYERS.map((spec, i) => (
+            <Beam key={spec.id} spec={spec} seconds={3 + i * 0.4} />
+          ))}
           {solids.map((s) => (
             <g key={s.key}>{s.node}</g>
           ))}

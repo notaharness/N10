@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from 'react';
-import { project, type Vec2 } from '@/components/beam/mesh/geometry';
+import type { Vec2 } from '@/components/beam/mesh/geometry';
 import { BEAM_COLORS } from '@/components/beam/mesh/palette';
-import { PODIUM, place } from '@/components/orchestra/stage-parts';
+import { machineTop, podiumTop } from '@/components/orchestra/stage-parts';
 import {
   KIND_COLOR,
   LOOP_SECONDS,
@@ -24,6 +24,8 @@ export interface Flight {
   to: Vec2;
   color: string;
   glyph: string;
+  /** The player it lands on, if it is an instruction rather than a report. */
+  lands?: string;
 }
 
 export interface LogLine {
@@ -39,18 +41,13 @@ export interface Show {
   status: Record<string, Status>;
   flights: Flight[];
   log: LogLine[];
+  /** Instructions landed per player; a change shakes the machine. */
+  hits: Record<string, number>;
 }
 
 export type Action =
   | { type: 'event'; event: Event }
   | { type: 'landed'; key: number };
-
-const podiumTop = project([PODIUM[0], PODIUM[1], 1.7]);
-
-function lecternTop(spec: PlayerSpec): Vec2 {
-  const at = place(spec.angle);
-  return project([at.cx, at.cy, 1.9]);
-}
 
 function playerOf(id: string): PlayerSpec {
   return PLAYERS.find((p) => p.id === id) as PlayerSpec;
@@ -58,8 +55,13 @@ function playerOf(id: string): PlayerSpec {
 
 function reduce(show: Show, action: Action): Show {
   if (action.type === 'landed') {
+    const landed = show.flights.find((f) => f.key === action.key);
+    const hits = landed?.lands
+      ? { ...show.hits, [landed.lands]: (show.hits[landed.lands] ?? 0) + 1 }
+      : show.hits;
     return {
       ...show,
+      hits,
       flights: show.flights.filter((f) => f.key !== action.key),
     };
   }
@@ -80,10 +82,11 @@ function reduce(show: Show, action: Action): Show {
     return {
       next,
       serial: key + 1,
+      hits: show.hits,
       status: { ...show.status, [spec.id]: status },
       flights: [
         ...show.flights,
-        { key, from: lecternTop(spec), to: podiumTop, color, glyph: '♪' },
+        { key, from: machineTop(spec), to: podiumTop, color, glyph: '♪' },
       ],
       log: [
         ...show.log,
@@ -104,15 +107,17 @@ function reduce(show: Show, action: Action): Show {
   return {
     next,
     serial: key + 1,
+    hits: show.hits,
     status: { ...show.status, [spec.id]: 'working' },
     flights: [
       ...show.flights,
       {
         key,
         from: podiumTop,
-        to: lecternTop(spec),
+        to: machineTop(spec),
         color: BEAM_COLORS.sand,
         glyph: '♫',
+        lands: spec.id,
       },
     ],
     log: [
@@ -128,6 +133,7 @@ const opening: Show = {
   status: Object.fromEntries(PLAYERS.map((p) => [p.id, 'working'])),
   flights: [],
   log: [],
+  hits: {},
 };
 
 export function useShow(playing: boolean) {

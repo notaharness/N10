@@ -10,52 +10,64 @@ export const KIND_COLOR: Record<Kind, string> = {
   DONE: BEAM_COLORS.blue,
 };
 
+export type Machine = 'tower' | 'mini' | 'rack' | 'laptop';
+
 export interface PlayerSpec {
   id: string;
-  /** Degrees around the arc from straight in front of the podium. */
-  angle: number;
   session: string;
   branch: string;
   agent: string;
-  remote?: boolean;
+  machine: Machine;
+  /** Degrees around the arc below the laptop, 90 being straight below. */
+  angle: number;
+  color: string;
 }
 
 export const PLAYERS: PlayerSpec[] = [
   {
     id: 'a',
-    angle: -66,
     session: 'shop-feature-search',
     branch: 'feature/search',
     agent: 'claude',
+    machine: 'tower',
+    angle: 158,
+    color: BEAM_COLORS.sage,
   },
   {
     id: 'b',
-    angle: -33,
     session: 'shop-fix-flaky-restore',
     branch: 'fix/flaky-restore',
     agent: 'codex',
+    machine: 'rack',
+    angle: 124,
+    color: BEAM_COLORS.sand,
   },
   {
     id: 'c',
-    angle: 0,
     session: 'shop-feature-palette',
     branch: 'feature/palette',
     agent: 'claude',
+    machine: 'mini',
+    angle: 90,
+    color: BEAM_COLORS.clay,
   },
   {
     id: 'd',
-    angle: 33,
     session: 'shop-chore-deps',
     branch: 'chore/deps',
     agent: 'gemini',
+    machine: 'laptop',
+    angle: 56,
+    color: BEAM_COLORS.blue,
   },
   {
     id: 'e',
-    angle: 66,
     session: 'shop-feature-export',
     branch: 'feature/export',
     agent: 'codex',
-    remote: true,
+    machine: 'tower',
+    angle: 22,
+    color: BEAM_COLORS.mauve,
   },
 ];
 
