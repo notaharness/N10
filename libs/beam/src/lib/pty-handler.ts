@@ -104,6 +104,43 @@ function resolveArgv(stream: BeamStream): string[] {
  * though every peer's sessions live in one shared map. `node` supplies the
  * facts every spawned process is told about itself (A4); it is optional so
  * unit tests can drive the handler without a real node directory. */
+/** How a `pty` stream's own ending is reported on its Close frame.
+ *
+ * The opener has to be able to tell "the process on the far side ended"
+ * from "the stream stopped for some other reason" — a dropped connection,
+ * a refused scope, a handler that threw — because only the first is the
+ * thing it asked for and the rest are failures. That distinction is a
+ * string on the wire, so producer and consumer share this pair rather
+ * than one of them matching on prose the other might reword. `exec` has
+ * had the same pair since it began (`decodeExecExit`); this is the pty
+ * equivalent, in the prose form pty closes have always used so a peer
+ * running an older build is still understood.
+ */
+export interface PtyExit {
+  exitCode: number;
+  signal?: number;
+}
+
+const PTY_EXIT_PATTERN = /^process exited \(code (-?\d+)(?:, signal (\d+))?\)$/;
+
+export function encodePtyExit(exit: PtyExit): string {
+  const signalPart = exit.signal ? `, signal ${exit.signal}` : '';
+  return `process exited (code ${exit.exitCode}${signalPart})`;
+}
+
+/** The far process's exit, or `null` when this close reason is not one —
+ * which is every way a `pty` stream can end that is not the process
+ * ending, and so is a failure the caller has to report rather than a
+ * session that finished. */
+export function decodePtyExit(reason: string | undefined): PtyExit | null {
+  const match = reason === undefined ? null : PTY_EXIT_PATTERN.exec(reason);
+  if (!match) return null;
+  const signal = match[2] === undefined ? undefined : Number(match[2]);
+  return signal === undefined
+    ? { exitCode: Number(match[1]) }
+    : { exitCode: Number(match[1]), signal };
+}
+
 export function createPtyStreamHandler(
   node?: NodeEnvContext
 ): StreamOpenHandler {
@@ -164,8 +201,7 @@ function wireSession(
   });
   proc.onExit(({ exitCode, signal }) => {
     if (!sessions.release(sessionKey, proc)) return;
-    const signalPart = signal ? `, signal ${signal}` : '';
-    stream.close(`process exited (code ${exitCode}${signalPart})`);
+    stream.close(encodePtyExit({ exitCode, signal }));
   });
   stream.onData((data) => {
     try {

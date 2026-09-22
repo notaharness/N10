@@ -132,8 +132,11 @@ export { ConnectionRegistry } from './lib/connection-registry.js';
 
 export {
   createPtyStreamHandler,
+  decodePtyExit,
+  encodePtyExit,
   shellForEnv,
   MAX_PTY_SESSIONS,
+  type PtyExit,
 } from './lib/pty-handler.js';
 
 export {
