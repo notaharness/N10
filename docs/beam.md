@@ -781,12 +781,9 @@ guessed at: **D7**, cited in `mailbox/mailbox.ts` alongside D9 and in `apps/beam
 command, with no accompanying reasoning in either place. **D12** is not cited anywhere and
 has no entry. D1 is also cited in the mailbox for two further rules — the receiver's lack of
 a contiguity requirement, and quarantine being loud rather than silent — both stated in full
-under "Durable mailbox" above.
-
-`D8`, `D10`, `D13` and `D14` are cited in `apps/desktop` (and `D13` in `apps/beam`'s `msg
-listen`); every one of them belongs to the machine-integration register in
-`docs/decisions.md`, not here. This document's desktop-subscriber paragraph above cites D14
-in that sense.
+under "Durable mailbox" above. This document's desktop-subscriber paragraph cites `D14`,
+which — like every `D8`, `D10` and `D13` in the tree — is the machine-integration register's,
+not this one's.
 
 ## Deliberately out of scope, doors left open
 
