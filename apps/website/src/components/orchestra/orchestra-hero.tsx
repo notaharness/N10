@@ -31,7 +31,7 @@ export function OrchestraHero() {
           </Link>
         </div>
       </div>
-      <OrchestraStage className="mx-auto w-full max-w-4xl px-4 pt-6 pb-8" />
+      <OrchestraStage className="mx-auto w-full max-w-5xl px-4 pt-4 pb-8" />
     </section>
   );
 }

@@ -1,235 +1,40 @@
 'use client';
 
 import { Pause, Play } from 'lucide-react';
-import { useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { project, type Vec2 } from '@/components/beam/mesh/geometry';
+import { BEAM_COLORS } from '@/components/beam/mesh/palette';
+import { depth } from '@/components/orchestra/stage-geometry';
+import {
+  Lectern,
+  Note,
+  PODIUM,
+  Podium,
+  RemotePlatform,
+  Riser,
+  place,
+} from '@/components/orchestra/stage-parts';
+import { PLAYERS } from '@/components/orchestra/stage-script';
+import { useShow } from '@/components/orchestra/use-show';
 
 /**
- * The pitch as a picture: a podium, and a semicircle of stands facing
- * it. Each stand is a player — a coding agent in its own tmux session
- * and worktree. Stands light up as their player works and send reports
- * back to the podium; one stand sits on another machine, and its beam
- * is the only thing that differs about it.
- *
- * Coordinates are plain SVG user units, podium near the top, stands on
- * an arc below it. Every stand runs the same work-then-report cycle
- * with its own duration and phase, so the stage never falls into
- * lockstep.
+ * The pitch as a scene, in the same isometric language as the beam
+ * page. An orchestrator at a podium keeps a beat; players at lecterns on
+ * a semicircular riser face it, screens bouncing while they work. A
+ * scripted timeline (stage-script.ts) runs the show: a player asks a
+ * question and the podium answers, one gets blocked and unblocked, one
+ * finishes and is handed a new assignment. Every report leaves its stand
+ * as a note and lands on the podium; every answer goes back the same
+ * way. The log under the stage narrates in Orchestra's own report format.
+ * One player stands on its own platform with a beam running off the
+ * edge: it is on another machine, and nothing else about it differs.
  */
-const PODIUM: readonly [number, number] = [0, -70];
-const RADIUS = 232;
-
-type Kind = 'PROGRESS' | 'QUESTION' | 'BLOCKED' | 'DONE';
-
-interface Stand {
-  id: string;
-  /** Degrees around the arc; 0 is straight below the podium. */
-  angle: number;
-  branch: string;
-  agent: string;
-  kind: Kind;
-  /** Seconds for one work-then-report cycle. */
-  seconds: number;
-  /** Where in the cycle this stand starts, 0–1. */
-  phase: number;
-  remote?: boolean;
-}
-
-const stands: Stand[] = [
-  {
-    id: 'a',
-    angle: -72,
-    branch: 'feature/search',
-    agent: 'claude',
-    kind: 'PROGRESS',
-    seconds: 9,
-    phase: 0.1,
-  },
-  {
-    id: 'b',
-    angle: -34,
-    branch: 'fix/flaky-restore',
-    agent: 'codex',
-    kind: 'DONE',
-    seconds: 11,
-    phase: 0.55,
-  },
-  {
-    id: 'c',
-    angle: 0,
-    branch: 'feature/palette',
-    agent: 'claude',
-    kind: 'QUESTION',
-    seconds: 8,
-    phase: 0.8,
-  },
-  {
-    id: 'd',
-    angle: 34,
-    branch: 'chore/deps',
-    agent: 'gemini',
-    kind: 'PROGRESS',
-    seconds: 10,
-    phase: 0.3,
-  },
-  {
-    id: 'e',
-    angle: 72,
-    branch: 'feature/export',
-    agent: 'claude',
-    kind: 'BLOCKED',
-    seconds: 12,
-    phase: 0.65,
-    remote: true,
-  },
-];
-
-const KIND_COLOR: Record<Kind, string> = {
-  PROGRESS: 'var(--n10-sage)',
-  QUESTION: 'var(--n10-sand)',
-  BLOCKED: '#d4896a',
-  DONE: '#7da3c0',
-};
-
-function standAt(angle: number): readonly [number, number] {
-  const rad = ((angle + 90) * Math.PI) / 180;
-  return [
-    PODIUM[0] + Math.cos(rad) * RADIUS,
-    PODIUM[1] + Math.sin(rad) * RADIUS * 0.6,
-  ];
-}
-
 const REDUCED = '(prefers-reduced-motion: reduce)';
 
 function subscribeReduced(onChange: () => void) {
   const query = window.matchMedia(REDUCED);
   query.addEventListener('change', onChange);
   return () => query.removeEventListener('change', onChange);
-}
-
-function Podium() {
-  const [x, y] = PODIUM;
-  return (
-    <g className="orchestra-podium">
-      <ellipse
-        cx={x}
-        cy={y + 30}
-        rx="54"
-        ry="14"
-        className="orchestra-podium-shadow"
-      />
-      <path
-        d={`M${x - 34},${y + 26} L${x - 26},${y - 14} L${x + 26},${y - 14} L${
-          x + 34
-        },${y + 26} Z`}
-        className="orchestra-podium-body"
-      />
-      <rect
-        x={x - 30}
-        y={y - 22}
-        width="60"
-        height="10"
-        rx="3"
-        className="orchestra-podium-top"
-      />
-      <circle cx={x} cy={y - 44} r="10" className="orchestra-figure" />
-      <path
-        d={`M${x - 16},${y - 12} Q${x},${y - 34} ${x + 16},${y - 12}`}
-        className="orchestra-figure"
-      />
-      <path
-        d={`M${x + 14},${y - 26} L${x + 34},${y - 48}`}
-        className="orchestra-baton"
-      />
-    </g>
-  );
-}
-
-function StandFigure({ stand }: { stand: Stand }) {
-  const [x, y] = standAt(stand.angle);
-  const vars = {
-    '--orchestra-seconds': `${stand.seconds}s`,
-    '--orchestra-delay': `${-stand.phase * stand.seconds}s`,
-    '--orchestra-kind': KIND_COLOR[stand.kind],
-  } as CSSProperties;
-  const [px, py] = PODIUM;
-  const report = `M${x},${y - 30} Q${(x + px) / 2},${(y + py) / 2 - 60} ${px},${
-    py - 10
-  }`;
-  return (
-    <g className="orchestra-stand" style={vars}>
-      {stand.remote && (
-        <ellipse
-          cx={x}
-          cy={y + 22}
-          rx="46"
-          ry="14"
-          className="orchestra-remote-beam"
-        />
-      )}
-      <ellipse
-        cx={x}
-        cy={y + 22}
-        rx="34"
-        ry="9"
-        className="orchestra-stand-shadow"
-      />
-      <path
-        d={`M${x - 24},${y + 4} L${x + 24},${y + 4} L${x + 18},${y - 26} L${
-          x - 18
-        },${y - 26} Z`}
-        className="orchestra-stand-desk"
-      />
-      <path
-        d={`M${x},${y + 4} L${x},${y + 18}`}
-        className="orchestra-stand-post"
-      />
-      <rect
-        x={x - 16}
-        y={y - 24}
-        width="32"
-        height="18"
-        rx="2"
-        className="orchestra-stand-screen"
-      />
-      <g className="orchestra-stand-lines">
-        <line x1={x - 12} y1={y - 19} x2={x + 2} y2={y - 19} />
-        <line x1={x - 12} y1={y - 15} x2={x + 8} y2={y - 15} />
-        <line x1={x - 12} y1={y - 11} x2={x - 2} y2={y - 11} />
-      </g>
-      <circle cx={x} cy={y - 40} r="8" className="orchestra-player" />
-      <path
-        d={`M${x - 13},${y - 26} Q${x},${y - 40} ${x + 13},${y - 26}`}
-        className="orchestra-player"
-      />
-      <path d={report} className="orchestra-report-path" />
-      <circle r="4" className="orchestra-report">
-        <animateMotion
-          dur="var(--orchestra-seconds)"
-          repeatCount="indefinite"
-          path={report}
-          keyPoints="0;0;1;1"
-          keyTimes="0;0.72;0.9;1"
-          calcMode="linear"
-        />
-      </circle>
-      <text x={x} y={y + 40} className="orchestra-stand-label">
-        {stand.branch}
-      </text>
-      <text x={x} y={y + 52} className="orchestra-stand-sub">
-        {stand.agent} · {stand.kind}
-      </text>
-      {stand.remote && (
-        <g className="orchestra-remote">
-          <text x={x} y={y + 66} className="orchestra-remote-label">
-            another machine
-          </text>
-          <text x={x} y={y + 77} className="orchestra-remote-label">
-            via beam
-          </text>
-        </g>
-      )}
-    </g>
-  );
 }
 
 export function OrchestraStage({ className }: { className?: string }) {
@@ -240,20 +45,68 @@ export function OrchestraStage({ className }: { className?: string }) {
   );
   const [choice, setChoice] = useState<boolean | null>(null);
   const playing = choice ?? !reduced;
+  const { show, dispatch } = useShow(playing);
   const Icon = playing ? Pause : Play;
+  const remote = PLAYERS.find((p) => p.remote);
+  const solids = [
+    { key: 'podium', at: PODIUM, node: <Podium /> },
+    ...PLAYERS.map((spec) => {
+      const at = place(spec.angle);
+      return {
+        key: spec.id,
+        at: [at.cx, at.cy] as Vec2,
+        node: (
+          <Lectern spec={spec} status={show.status[spec.id] ?? 'working'} />
+        ),
+      };
+    }),
+  ].sort((a, b) => depth(a.at) - depth(b.at));
+  const [px, py] = project([...PODIUM, 0]);
+
   return (
     <figure className={className}>
       <div className="relative">
         <svg
-          viewBox="-320 -150 640 296"
+          viewBox={`${px - 330} ${py - 125} 660 262`}
           className="orchestra-stage h-auto w-full overflow-visible"
           data-playing={choice === null ? undefined : String(choice)}
           role="img"
-          aria-label="An orchestrator at a podium, with five players at stands around it. Each player works on its own branch and sends reports back to the podium; one player stands on another machine, connected by a beam."
+          aria-label="An orchestrator at a podium keeping a beat, with five players at lecterns on a semicircular riser facing it. Their screens bounce while they work; reports fly to the podium as notes and answers fly back. One player stands on its own platform, joined to the scene by a beam from another machine."
         >
-          <Podium />
-          {stands.map((stand) => (
-            <StandFigure key={stand.id} stand={stand} />
+          <defs>
+            <radialGradient id="orchestra-pool">
+              <stop
+                offset="0"
+                stopColor={BEAM_COLORS.sand}
+                stopOpacity="0.45"
+              />
+              <stop
+                offset="0.6"
+                stopColor={BEAM_COLORS.sage}
+                stopOpacity="0.12"
+              />
+              <stop offset="1" stopColor={BEAM_COLORS.sage} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <ellipse
+            cx={px}
+            cy={py + 30}
+            rx="330"
+            ry="150"
+            fill="url(#orchestra-pool)"
+            className="orchestra-pool"
+          />
+          <Riser />
+          {remote && <RemotePlatform spec={remote} />}
+          {solids.map((s) => (
+            <g key={s.key}>{s.node}</g>
+          ))}
+          {show.flights.map((flight) => (
+            <Note
+              key={flight.key}
+              flight={flight}
+              onLanded={(key) => dispatch({ type: 'landed', key })}
+            />
           ))}
         </svg>
         <button
@@ -265,6 +118,26 @@ export function OrchestraStage({ className }: { className?: string }) {
           <Icon className="size-4" aria-hidden />
         </button>
       </div>
+      <figcaption className="orchestra-log n10-frame bg-fd-card mx-auto mt-2 max-w-2xl rounded-xl px-4 py-3 font-mono text-xs">
+        <ol
+          className="flex min-h-[5.5rem] flex-col justify-end gap-1.5"
+          aria-live="polite"
+        >
+          {show.log.length === 0 && (
+            <li className="text-fd-muted-foreground">
+              {playing ? 'five players working…' : 'press play to run the show'}
+            </li>
+          )}
+          {show.log.map((line) => (
+            <li
+              key={line.key}
+              className="orchestra-log-line text-fd-muted-foreground"
+            >
+              <span style={{ color: line.color }}>{line.head}</span> {line.text}
+            </li>
+          ))}
+        </ol>
+      </figcaption>
     </figure>
   );
 }
