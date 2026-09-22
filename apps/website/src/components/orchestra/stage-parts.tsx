@@ -128,13 +128,13 @@ export function Ground() {
 
 const LANE = 3.5;
 
-/** A player's beam: a straight line from the laptop's front edge, one lane out and one back. */
+/** A player's beam: a straight line between the two machines' centres, one lane out and one back, its ends hidden under the machines so it seems to come from beneath them. */
 export function Beam({ spec, seconds }: { spec: PlayerSpec; seconds: number }) {
   const vars = {
     '--n10-mesh-color': spec.color,
     '--n10-mesh-seconds': `${seconds}s`,
   } as CSSProperties;
-  const [x1, y1] = project([PODIUM[0], PODIUM[1] + 1.1, 0]);
+  const [x1, y1] = project([...PODIUM, 0]);
   const [x2, y2] = project([...groundOf(spec), 0]);
   const len = Math.hypot(x2 - x1, y2 - y1);
   const nx = (-(y2 - y1) / len) * LANE;
