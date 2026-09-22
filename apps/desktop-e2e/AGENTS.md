@@ -15,6 +15,11 @@ you are testing the previous bundle. Full notes: `docs/testing.md`.
   holds them open and the wait never ends, taking the worker down at the
   test timeout and blaming an unrelated test. The fallback reaps the
   process group and attaches `desktop-close` saying so.
+- `src/n10-window.d.ts` is a hand-written minimal view of the renderer's
+  `window.n10`, so the suite drives the UI without importing app source.
+  `scripts/check-bridge-mirror.mjs` compiles it against the real
+  `N10HostApi` and runs as part of `typecheck`; a field declared there is
+  one the host really returns. Add fields as tests need them.
 - Seeded branches must be slash-free: `git-repo.ts` seeds
   `.claude/worktrees/<branch>` verbatim while the app sanitizes the name.
 - `src/setup/fake-gh.ts` puts a fake `gh` on PATH answering from a JSON

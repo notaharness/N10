@@ -5,8 +5,14 @@
  * Deliberately not the real `N10HostApi`: an e2e suite importing the
  * app's source would couple the two projects, and these tests drive
  * the UI rather than the API. Only the handful of methods used to set
- * up or assert on host state are declared. Whether the bridge and the
- * contract still agree is the contract unit test's job, not this file's.
+ * up or assert on host state are declared.
+ *
+ * Minimal in methods and fields, exact in what it does claim:
+ * `scripts/check-bridge-mirror.mjs` compiles this against the real
+ * `N10HostApi` and fails when the two disagree, so a field declared
+ * here is one the host really returns. It runs as part of `typecheck`.
+ * Add a field when a test needs to read it — a missing one is a
+ * compile error at the test, not a gap in the host.
  */
 interface N10Bridge {
   getVersion(): Promise<{

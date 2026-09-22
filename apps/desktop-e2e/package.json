@@ -103,6 +103,25 @@
           "command": "node run-e2e.mjs --grep @integration",
           "cwd": "apps/desktop-e2e"
         }
+      },
+      "check-bridge-mirror": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": [
+          "{projectRoot}/src/n10-window.d.ts",
+          "{projectRoot}/scripts/check-bridge-mirror.mjs",
+          "{workspaceRoot}/apps/desktop/src/host/contract.ts",
+          "{workspaceRoot}/apps/desktop/src/host/contract-terminals.ts"
+        ],
+        "options": {
+          "command": "node scripts/check-bridge-mirror.mjs",
+          "cwd": "apps/desktop-e2e"
+        }
+      },
+      "typecheck": {
+        "dependsOn": [
+          "check-bridge-mirror"
+        ]
       }
     }
   }
