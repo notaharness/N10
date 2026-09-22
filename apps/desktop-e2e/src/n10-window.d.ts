@@ -61,6 +61,8 @@ interface N10Bridge {
       repo: string | null;
       running: boolean;
       spawnedAt: number;
+      /** The pull request a review session is reviewing. */
+      review?: string;
     }[]
   >;
   listForeignSessions(): Promise<

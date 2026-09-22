@@ -11,7 +11,11 @@ import { listOurSessions } from '../session-resolver.js';
 import { worktreeSessionKey } from '../session-key.js';
 import { launchSession } from './launch-session.js';
 import { buildBackgroundReviewRequest } from './review-prompt.js';
-import { findReviewSession, launchReviewSession } from './launch-review.js';
+import {
+  endReviewSession,
+  findReviewSession,
+  launchReviewSession,
+} from './launch-review.js';
 
 /**
  * A review runs beside the branch's own agent, in the same checkout.
@@ -136,10 +140,24 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(start.env.CLAUDE_CONFIG_DIR).toBe(join(fixture.home, '.claude'));
     });
 
-    it('sends no config directory when none was chosen', async () => {
+    it('adds no config directory of its own when none was chosen', async () => {
+      // "Unset" means let the host decide, so a launch that was given
+      // no directory sends none and the agent is left with whatever
+      // the machine already had. The fixture scrubs `CLAUDE_CONFIG_DIR`
+      // from the environment the session inherits, so what arrives here
+      // can only have been added by the launch.
+      //
+      // Both shapes of "none chosen" are covered: no machine request at
+      // all, and a request carrying no directory. Only the second
+      // reaches the resolver, so without it a default quietly filled in
+      // there would go unnoticed.
       await review();
-      const start = await started();
-      expect(start.env.CLAUDE_CONFIG_DIR).toBeNull();
+      expect((await started()).env.CLAUDE_CONFIG_DIR).toBeNull();
+
+      rmSync(join(fixture.home, 'agent-start.json'));
+      endReviewSession(fixture.repo, String(pr.id));
+      await review({});
+      expect((await started()).env.CLAUDE_CONFIG_DIR).toBeNull();
     });
 
     it('returns to a live review rather than starting a second', async () => {
