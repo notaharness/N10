@@ -76,3 +76,4 @@ export {
   estimateReplyInputRows,
   EDIT_INPUT_SLACK_ROWS,
 } from './lib/comment-rows.js';
+export { handleUtilCommand } from './lib/util-command.js';

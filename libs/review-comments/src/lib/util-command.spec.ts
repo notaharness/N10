@@ -2,9 +2,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import type { ReviewComment } from '@n10/review-comments';
-import type * as Util from './util.js';
-import { parseArgs } from './util.js';
+import type { ReviewComment } from './types.js';
+import type * as Util from './util-command.js';
+import { parseArgs } from './util-command.js';
 
 describe('parseArgs', () => {
   it('parses simple key=value', () => {
@@ -72,7 +72,7 @@ describe('add-comment', () => {
     // ~/.n10 is resolved once at import time, so the module chain has
     // to be re-imported after HOME moves.
     vi.resetModules();
-    util = await import('./util.js');
+    util = await import('./util-command.js');
   });
 
   afterEach(() => {
