@@ -31,6 +31,8 @@ status drive lifecycle information; no global tmux hooks are installed.
   form; a missing name must not match another session by prefix.
 - The server retains its initial environment. Explicit launch additions plus
   HOME/PATH are injected into the hosted process, not just the local client.
+  tmux gives a new pane the PATH of the client that spawned it over the
+  session's `-e PATH`, so that client runs with the pinned PATH as well.
 - Parsed command output uses `-u`, preventing a non-UTF-8 locale from rewriting
   column separators. Detailed discovery reads creation time, native pane state,
   requested user options and working directory in one command.

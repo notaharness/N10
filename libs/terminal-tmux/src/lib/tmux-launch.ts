@@ -132,14 +132,23 @@ export function optionCommands(
   );
 }
 
-function runCommands(commands: string[][]): void {
+function runCommands(commands: string[][], env?: NodeJS.ProcessEnv): void {
   const [first, ...following] = commands;
-  checked(runTmux(first, following), 'session setup');
+  checked(runTmux(first, following, env), 'session setup');
+}
+
+/** The environment of the tmux client that spawns a pane: tmux gives the
+ *  pane that client's PATH over the session's (`-e`), so a pinned PATH
+ *  has to be the client's too. */
+function clientEnv(spec: SessionSpec): NodeJS.ProcessEnv | undefined {
+  const path = spec.env?.['PATH'];
+  return path ? { ...process.env, PATH: path } : undefined;
 }
 
 function create(
   spec: SessionSpec,
-  plan: Extract<TmuxLaunchPlan, { mode: 'create' }>
+  plan: Extract<TmuxLaunchPlan, { mode: 'create' }>,
+  env: NodeJS.ProcessEnv | undefined
 ): string {
   const label = sanitizeTmuxSessionName(plan.label);
   let attempts = 0;
@@ -160,10 +169,13 @@ function create(
     try {
       // Publish complete metadata and launch in one native command queue, so
       // another client cannot discover a partly tagged placeholder.
-      runCommands([
-        ...optionCommands(name, plan.tags, plan.retainOnExit),
-        commandArgs(name, spec, true),
-      ]);
+      runCommands(
+        [
+          ...optionCommands(name, plan.tags, plan.retainOnExit),
+          commandArgs(name, spec, true),
+        ],
+        env
+      );
       return name;
     } catch (error) {
       tmuxKillSession(name);
@@ -177,14 +189,19 @@ export function prepareTmuxSession(
   spec: SessionSpec,
   plan: TmuxLaunchPlan
 ): string {
-  if (plan.mode === 'create') return create(spec, plan);
+  const env = clientEnv(spec);
+  if (plan.mode === 'create') return create(spec, plan, env);
   if (plan.mode === 'replace') {
     if (plan.target !== plan.expected.name)
       throw new Error('Replacement target does not match approval');
-    runPlanCommands(plan, [
-      commandArgs(plan.target, spec, true),
-      ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
-    ]);
+    runPlanCommands(
+      plan,
+      [
+        commandArgs(plan.target, spec, true),
+        ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
+      ],
+      env
+    );
   } else if (plan.mode === 'restart') {
     const state = tmuxPaneState(plan.target);
     if (!state?.paneDead)
@@ -194,10 +211,14 @@ export function prepareTmuxSession(
     // A single native command queue stops at a failed respawn. Only the
     // winning launcher may update metadata, and options are applied before
     // tmux processes the new command's exit. No -k may kill a concurrent winner.
-    runPlanCommands(plan, [
-      commandArgs(plan.target, spec, false),
-      ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
-    ]);
+    runPlanCommands(
+      plan,
+      [
+        commandArgs(plan.target, spec, false),
+        ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
+      ],
+      env
+    );
   } else if (plan.expected) {
     runPlanCommands(plan, [
       ['set-option', '-t', `=${plan.target}:`, 'status', 'off'],
@@ -210,10 +231,11 @@ export function prepareTmuxSession(
 
 function runPlanCommands(
   plan: Exclude<TmuxLaunchPlan, { mode: 'create' }>,
-  commands: string[][]
+  commands: string[][],
+  env?: NodeJS.ProcessEnv
 ): void {
-  if (!plan.expected) return runCommands(commands);
+  if (!plan.expected) return runCommands(commands, env);
   if (plan.target !== plan.expected.name)
     throw new Error('Launch target does not match approval');
-  runGuardedTmuxCommands(plan.expected, commands, plan.expectedTags);
+  runGuardedTmuxCommands(plan.expected, commands, plan.expectedTags, env);
 }

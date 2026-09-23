@@ -99,7 +99,8 @@ function quoteArgument(value: string): string {
 export function runGuardedTmuxCommands(
   expected: TmuxSessionIncarnation,
   commands: string[][],
-  expectedTags: Record<string, string> = {}
+  expectedTags: Record<string, string> = {},
+  env?: NodeJS.ProcessEnv
 ): void {
   if (
     !/^\$\d+$/.test(expected.sessionId) ||
@@ -128,14 +129,11 @@ export function runGuardedTmuxCommands(
   const branch = [...commands, ['display-message', '-p', success]]
     .map((command) => command.map(quoteArgument).join(' '))
     .join(' ; ');
-  const result = runTmux([
-    'if-shell',
-    '-F',
-    '-t',
-    `=${expected.name}:`,
-    condition,
-    branch,
-  ]);
+  const result = runTmux(
+    ['if-shell', '-F', '-t', `=${expected.name}:`, condition, branch],
+    [],
+    env
+  );
   if (result.exitCode || result.stdout.trim() !== success)
     throw new Error(
       `Session changed before replacement; reopen the launch dialog. ${result.stderr.trim()}`

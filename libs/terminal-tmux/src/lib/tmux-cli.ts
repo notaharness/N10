@@ -55,7 +55,8 @@ export function buildTmuxArgv(args: string[], following: string[][]): string[] {
  *  straightforward. */
 export function runTmux(
   args: string[],
-  following: string[][] = []
+  following: string[][] = [],
+  env?: NodeJS.ProcessEnv
 ): TmuxRunResult {
   const argv = buildTmuxArgv(args, following);
   try {
@@ -63,6 +64,7 @@ export function runTmux(
       encoding: 'utf8',
       timeout: 5000,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     });
     return { stdout, stderr: '', exitCode: 0 };
   } catch (err) {
