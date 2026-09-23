@@ -37,8 +37,14 @@ export const ORCHESTRA_TAG = {
   branch: '@orchestra-branch',
   /** Orchestra's: the harness in the pane (`claude`, `codex`, …). */
   agent: '@orchestra-agent',
-  /** Orchestra's: the player's reporting target. */
+  /** Orchestra's: the player's reporting target — `tmux:<session>`,
+   *  `codex:<thread>` or `claude:<session id>`, optionally under
+   *  `beam:<peerId>/`. */
   orchestrator: '@orchestra-orchestrator',
+  /** Orchestra's: a local `claude:` target's Claude config directory,
+   *  which stays out of the target string. n10 only clears it, with the
+   *  target. */
+  orchestratorConfig: '@orchestra-orchestrator-config',
   /** Orchestra's: `<KIND> <ISO-8601 UTC>` of the last delivered report. */
   lastReport: '@orchestra-last-report',
 } as const;

@@ -44,7 +44,12 @@ export function parseRelayPayload(
 
 export type LocalDeliveryTarget =
   | { kind: 'agent'; key: string }
+  | { kind: 'claude'; sessionId: string }
   | { kind: 'refused'; reason: string };
+
+/** Orchestra's grammar for a Claude session id. */
+const SESSION_ID =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 function refused(reason: string): LocalDeliveryTarget {
   return { kind: 'refused', reason };
@@ -68,13 +73,21 @@ function findRegistryMatch(
 
 /**
  * Resolve a relay target — a mailbox envelope's local part — to a
- * local, n10-managed agent session, or refuse it. Local state only
+ * local, n10-managed agent session or a Claude session id, or refuse it. Local state only
  * (D14): the envelope's target is never trusted on its own, only used
  * to look up something this machine's own registry already knows
  * about, matched by the tmux name n10 itself allocated. Orchestra's
  * `pane_owned_by_agent` is the same rule from the other side.
  */
 export function resolveLocalRelayTarget(target: string): LocalDeliveryTarget {
+  if (target.startsWith('claude:')) {
+    // Only the id's syntax is checked here; `postToClaudeSession`
+    // resolves it against this machine's Claude registry.
+    const sessionId = target.slice('claude:'.length);
+    return SESSION_ID.test(sessionId)
+      ? { kind: 'claude', sessionId }
+      : refused(`not a Claude session id: ${sessionId}`);
+  }
   if (target.startsWith('codex:')) {
     return refused(
       "codex targets are not delivered by n10 desktop; use Orchestra's relay.sh for those"

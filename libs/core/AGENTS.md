@@ -41,6 +41,10 @@ The reasoning behind each rule is in `docs/decisions.md`.
   `resolveLocalRelayTarget` resolves it only against this machine's own PTY
   registry, matched by the tmux name the registry itself allocated — never a
   foreign tmux session, a shell terminal, or a session on another machine.
+  A `claude:<session id>` target goes only to a live session in this
+  machine's Claude registry, with Orchestra's liveness checks
+  (`session/claude-inbox.ts`), and never falls back to a pane. An id no
+  registry file names is refused.
   Extending what a relay can deliver into means extending this allowlist, not
   trusting more of the envelope.
 - **Discovery** (`discovery/`): poll and use pure `diffScans`; attach through the

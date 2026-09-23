@@ -255,6 +255,7 @@ function launchPlan(
       ...(fresh
         ? {
             [ORCHESTRA_TAG.orchestrator]: null,
+            [ORCHESTRA_TAG.orchestratorConfig]: null,
             [ORCHESTRA_TAG.lastReport]: null,
           }
         : {}),

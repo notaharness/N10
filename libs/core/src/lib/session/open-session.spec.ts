@@ -170,6 +170,7 @@ describe('session launch boundary', () => {
       tags: {
         '@orchestra-agent': 'codex',
         '@orchestra-orchestrator': null,
+        '@orchestra-orchestrator-config': null,
         '@orchestra-last-report': null,
       },
     });

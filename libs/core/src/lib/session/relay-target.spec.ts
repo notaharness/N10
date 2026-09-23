@@ -61,6 +61,21 @@ describe('resolveLocalRelayTarget', () => {
     });
   });
 
+  it('resolves a Claude session id to that session, for its own inbox', () => {
+    const id = '3f2b9c1e-7a4d-4e8b-9c0f-1a2b3c4d5e6f';
+    expect(resolveLocalRelayTarget(`claude:${id}`)).toEqual({
+      kind: 'claude',
+      sessionId: id,
+    });
+  });
+
+  it('refuses a claude target that is not a session id', () => {
+    expect(resolveLocalRelayTarget('claude:../../etc')).toEqual({
+      kind: 'refused',
+      reason: 'not a Claude session id: ../../etc',
+    });
+  });
+
   it('refuses an unrecognised target shape', () => {
     const result = resolveLocalRelayTarget('shell:foo');
     expect(result.kind).toBe('refused');
