@@ -4,9 +4,10 @@
 //   - copies the launcher (bin entry), README and LICENSE to dist/
 //   - writes a distilled package.json
 //
-// The installed app needs exactly two runtime deps: electron (the
-// binary the launcher spawns) and node-pty (kept external by esbuild
-// because it's native). Everything else is bundled.
+// The installed app's runtime deps are electron (the binary the
+// launcher spawns), node-pty (kept external by esbuild because it's
+// native) and @notaharness/beam (the beam daemon binary, found through
+// its platform package). Everything else is bundled.
 //
 // node-pty is N-API based, so its prebuilt binaries load in Electron
 // as they do in Node — no @electron/rebuild step on the user's machine.
@@ -51,8 +52,12 @@ const src = JSON.parse(readFileSync(resolve(appDir, 'package.json'), 'utf8'));
 const electronVersion = src.devDependencies?.electron;
 const nodePtyVersion =
   src.dependencies?.['node-pty'] ?? src.devDependencies?.['node-pty'];
+const beamVersion = src.dependencies?.['@notaharness/beam'];
 if (!electronVersion) {
   throw new Error('electron version not found in source package.json');
+}
+if (!beamVersion) {
+  throw new Error('@notaharness/beam version not found in source package.json');
 }
 
 const out = {
@@ -84,6 +89,7 @@ const out = {
   dependencies: {
     electron: electronVersion,
     ...(nodePtyVersion ? { 'node-pty': nodePtyVersion } : {}),
+    '@notaharness/beam': beamVersion,
   },
 };
 
@@ -97,7 +103,7 @@ chmodSync(resolve(distDir, 'launcher.mjs'), 0o755);
 
 // Pack a tarball: `npm install -g <folder>` only symlinks the folder
 // and skips installing dependencies; installing the tarball performs
-// a real dependency install (electron + node-pty).
+// a real dependency install.
 // The scope makes npm name the tarball `<scope>-<name>-<version>.tgz`.
 for (const f of readdirSync(distDir)) {
   if (/n10-desktop-.*\.tgz$/.test(f)) {

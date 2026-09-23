@@ -22,6 +22,10 @@ Every rule below has its reasoning in `docs/decisions.md`.
   `RemoteMachinePort` and `InboundMailPort`. Nothing above them knows beam.
   Attach input stays within beam's four-frame window. The mail relay's
   ack and defer rules are decisions.md D13/D14.
+- Start the beam daemon only through `spawnOwnedDaemon`, which runs it
+  under `main/beam-daemon-worker.ts`, a utility process, for the same
+  descriptor reason as the tmux worker. Keep `@notaharness/beam` external
+  in both `build-main` and `scripts/dev.mjs`. Ownership rules: D15.
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo

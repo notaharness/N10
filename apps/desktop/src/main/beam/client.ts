@@ -10,8 +10,10 @@ import {
 } from '../../host/services/machines.js';
 import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
 import { runCeremony } from './ceremony.js';
-import { ControlConnection } from './control.js';
+import type { ControlConnection } from './control.js';
+import { DaemonLauncher } from './launcher.js';
 import { MailRelay } from './mail-relay.js';
+import type { OwnedDaemon } from './owned-daemon.js';
 import {
   localMachine,
   machineFromPeer,
@@ -28,6 +30,9 @@ const MAX_BACKOFF_MS = 30_000;
 
 export interface BeamClientOptions {
   socketPath: string;
+  /** Starts a daemon when none answers; without it the client only
+   *  connects to one already running. */
+  spawnDaemon?: () => OwnedDaemon;
   log?: (message: string) => void;
 }
 
@@ -42,6 +47,7 @@ export class BeamClient {
   /** Set only once subscribed to events, so no list misses one. */
   private main: ControlConnection | null = null;
   private readonly relay: MailRelay;
+  private readonly launcher: DaemonLauncher;
   /** The enrolment (`fleetId/peerId`) the relay is subscribed under. */
   private relayFor: string | null = null;
   /** Peer events heard while each list in flight is read. */
@@ -58,6 +64,7 @@ export class BeamClient {
   };
 
   constructor(private readonly options: BeamClientOptions) {
+    this.launcher = new DaemonLauncher(options.socketPath, options.spawnDaemon);
     this.relay = new MailRelay({
       socketPath: options.socketPath,
       onChange: refreshMailOverlay,
@@ -78,12 +85,17 @@ export class BeamClient {
     this.connectNow();
   }
 
-  stop(): void {
+  /** Disconnects, and stops the daemon if this client started it. The
+   *  loss of the connection that follows is deliberate: nothing
+   *  reconnects or respawns. */
+  async shutdown(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.stopRelay();
-    this.main?.close();
+    const conn = this.main;
     this.main = null;
+    conn?.close();
+    await this.launcher.stop();
   }
 
   private requireMain(): ControlConnection {
@@ -109,16 +121,9 @@ export class BeamClient {
     if (this.stopped) return;
     let conn: ControlConnection;
     try {
-      conn = await ControlConnection.connect(this.options.socketPath);
-    } catch {
-      this.publish({
-        ...this.status,
-        state: this.everConnected ? 'restarting' : 'unavailable',
-        detail: this.everConnected
-          ? null
-          : 'beam is not running on this machine.',
-      });
-      this.retryLater();
+      conn = await this.launcher.connect();
+    } catch (err) {
+      this.unreachable(err);
       return;
     }
     if (this.stopped) {
@@ -144,6 +149,16 @@ export class BeamClient {
       this.log('listing machines', err);
       conn.close();
     }
+  }
+
+  private unreachable(err: unknown): void {
+    const why = err instanceof Error ? err.message : String(err);
+    this.publish({
+      ...this.status,
+      state: this.everConnected ? 'restarting' : 'unavailable',
+      detail: this.everConnected ? null : why,
+    });
+    this.retryLater();
   }
 
   private lost(conn: ControlConnection): void {

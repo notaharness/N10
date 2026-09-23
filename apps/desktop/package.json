@@ -37,7 +37,8 @@
           "thirdParty": true,
           "external": [
             "electron",
-            "node-pty"
+            "node-pty",
+            "@notaharness/beam"
           ],
           "main": "apps/desktop/src/main/main.ts",
           "tsConfig": "apps/desktop/tsconfig.build.json",
@@ -51,7 +52,8 @@
             }
           },
           "additionalEntryPoints": [
-            "apps/desktop/src/main/tmux-session-worker.ts"
+            "apps/desktop/src/main/tmux-session-worker.ts",
+            "apps/desktop/src/main/beam-daemon-worker.ts"
           ]
         },
         "configurations": {

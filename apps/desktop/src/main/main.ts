@@ -1,4 +1,3 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   app,
@@ -28,8 +27,7 @@ import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installMachineResolver } from '../host/services/remote-machines.js';
-import { BeamClient } from './beam/client.js';
-import { beamSocketPath } from './beam/paths.js';
+import { appBeamClient } from './beam/app-beam.js';
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -279,12 +277,10 @@ setShellGlue({
 installHostEventBridge();
 
 // Machines come from the beam daemon's control socket; remote launches
-// resolve their machine through the ports the client installs.
-const beam = new BeamClient({
-  socketPath: beamSocketPath(process.env, homedir()),
-  log: (message) => console.error(message),
-});
-beam.start();
+// resolve their machine through the ports the client installs. The app
+// starts a daemon when none is running (D15), once ready: a utility
+// process cannot be forked before then.
+const beam = appBeamClient();
 installMachineResolver();
 
 // ── App lifecycle ────────────────────────────────────────────────
@@ -308,6 +304,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       mark(MAIN_MARKS.ready);
+      beam.start();
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
       installDesktopTmuxPreparer();
@@ -347,14 +344,25 @@ app.on('window-all-closed', () => {
 });
 
 // Release local terminal clients; the tmux-hosted processes survive app exit.
-app.on('will-quit', () => {
+// Then wait for the beam daemon the app started to stop (D15). `app.exit`,
+// because an `app.quit` from here can land inside this quit and be ignored.
+let quitting = false;
+app.on('will-quit', (event) => {
+  event.preventDefault();
+  if (quitting) return;
+  quitting = true;
+  // A relaunch while this one waits on beam must win, not quit into it.
+  app.releaseSingleInstanceLock();
   stopRemoteSyncLoop();
   stopDiscovery();
   stopAllBabysitters();
-  beam.stop();
   try {
     killAll();
   } catch {
     // nothing was running
   }
+  beam
+    .shutdown()
+    .catch((err: unknown) => console.error('[desktop] beam shutdown', err))
+    .finally(() => app.exit());
 });

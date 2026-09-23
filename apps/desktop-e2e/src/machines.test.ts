@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { test as base, expect } from './fixtures/desktop.js';
 import { tab } from './setup/app.js';
@@ -45,11 +47,49 @@ async function openMachines(desktop: {
 }
 
 test.describe('Machines over beam', () => {
-  test('says beam is not running when no daemon answers', async ({
+  test('starts beam when none is running, and stops it on quit', async ({
     desktop,
+    fixtureHome,
   }) => {
     await openMachines(desktop);
-    await expect(desktop.page.getByText(/beam is not running/)).toBeVisible();
+    await expect(
+      desktop.page.getByRole('button', { name: 'Create a fleet' })
+    ).toBeVisible();
+    const socket = join(fixtureHome, '.config', 'beam', 'run', 'beam.sock');
+    expect(existsSync(socket)).toBe(true);
+
+    await desktop.app.close();
+    expect(existsSync(socket)).toBe(false);
+  });
+
+  test('a crash of the app takes the beam it started with it', async ({
+    desktop,
+    fixtureHome,
+  }) => {
+    await openMachines(desktop);
+    await expect(
+      desktop.page.getByRole('button', { name: 'Create a fleet' })
+    ).toBeVisible();
+    const socket = join(fixtureHome, '.config', 'beam', 'run', 'beam.sock');
+    expect(existsSync(socket)).toBe(true);
+
+    desktop.app.process().kill('SIGKILL');
+    await expect
+      .poll(() => existsSync(socket), { timeout: 20_000 })
+      .toBe(false);
+  });
+
+  test.describe('a daemon already running', () => {
+    test.use({ beamScenario: { enrolled: false } });
+
+    test('is used and left running on quit', async ({ desktop, beam }) => {
+      await openMachines(desktop);
+      await expect(
+        desktop.page.getByRole('button', { name: 'Create a fleet' })
+      ).toBeVisible();
+      await desktop.app.close();
+      expect(beam!.ops('daemon.shutdown')).toHaveLength(0);
+    });
   });
 
   test.describe('an unenrolled daemon', () => {

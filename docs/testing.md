@@ -30,7 +30,9 @@ use the built app.
 `src/setup/fake-beam.ts` answers beam's control socket in the fixture HOME with
 a scripted daemon: enrolment, peers and their events, alias, grant and
 ceremonies a test finishes with `finishCeremony`. It never dials or runs a
-passkey step.
+passkey step. A test without it gets the real `beam daemon` from
+`@notaharness/beam`, started by the app in the fixture HOME, unenrolled, and
+stopped when the app quits.
 
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
 a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for

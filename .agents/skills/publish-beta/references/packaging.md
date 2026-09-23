@@ -17,7 +17,9 @@ bundles workspace libraries and JavaScript dependencies. `node-pty` stays extern
 `prepare-install.mjs` writes the distribution manifest, copies the executable
 launcher, README and LICENSE, and packs the tarball used by `install-global`.
 Set `publishConfig.access: public` for the scoped package. Runtime dependencies
-are Electron and node-pty. Linux installs need the native build tools documented
+are Electron, node-pty and `@notaharness/beam`, whose platform package holds the
+`beam` binary the app runs as its daemon; the manifest pins the version the
+desktop's `package.json` names. Linux installs need the native build tools documented
 in the desktop README; verify supported platforms when upgrading dependencies.
 
 ## Review-agent command

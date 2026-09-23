@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
@@ -14,6 +15,7 @@ import {
 } from '../../host/services/machines.js';
 import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
 import { BeamClient } from './client.js';
+import type { DaemonExit, OwnedDaemon } from './owned-daemon.js';
 import type { PeerView } from './peers.js';
 import { FakeDaemon } from './test-support/fake-daemon.js';
 import { until } from './test-support/until.js';
@@ -68,7 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  client?.stop();
+  await client?.shutdown();
   await daemon?.close();
   rmSync(dir, { recursive: true, force: true });
   setMachinesPort(null);
@@ -237,4 +239,157 @@ describe('BeamClient', () => {
     await listMachines();
     expect(daemon.requests('ceremony.cancel')).toHaveLength(0);
   });
+});
+
+/** A `spawnDaemon` whose daemon is a FakeDaemon at the client's socket.
+ *  It exits shortly after it is asked to stop. */
+function fakeSpawner(options: { startsAfterMs?: number } = {}) {
+  const spawned: { stopped: boolean; killed: boolean; exit(): void }[] = [];
+  const spawn = (): OwnedDaemon => {
+    let exit!: (how: DaemonExit) => void;
+    const exited = new Promise<DaemonExit>((resolve) => (exit = resolve));
+    const started = delay(options.startsAfterMs ?? 0)
+      .then(() => FakeDaemon.start(socketPath))
+      .then((d) => {
+        daemon = d;
+        d.on('status', () => ({ ready: true, enrolled: false }));
+        return d;
+      });
+    const stopIt = async () => {
+      await (await started).close();
+      exit({ code: 0, signal: null });
+    };
+    const entry = {
+      stopped: false,
+      killed: false,
+      exit: () => void stopIt(),
+    };
+    spawned.push(entry);
+    return {
+      exited,
+      stop: () => {
+        entry.stopped = true;
+        setTimeout(() => void stopIt(), 10);
+      },
+      kill: () => {
+        entry.killed = true;
+        void stopIt();
+      },
+    };
+  };
+  return { spawn, spawned };
+}
+
+describe('BeamClient owning the daemon', () => {
+  it('starts a daemon when none answers, and stops it on shutdown', async () => {
+    const { spawn, spawned } = fakeSpawner();
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    expect(spawned).toHaveLength(1);
+    const owned = daemon!;
+
+    await client.shutdown();
+    client = null;
+    expect(spawned[0].stopped).toBe(true);
+    expect(owned.requests('daemon.shutdown')).toHaveLength(0);
+    expect(spawned[0].killed).toBe(false);
+  });
+
+  it('uses a daemon already running and leaves it running', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    daemon.on('status', () => ({ ready: true, enrolled: false }));
+    const { spawn, spawned } = fakeSpawner();
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await client.shutdown();
+    client = null;
+    expect(spawned).toHaveLength(0);
+    expect(daemon.requests('daemon.shutdown')).toHaveLength(0);
+  });
+
+  it('starts another daemon after its own one dies', async () => {
+    const { spawn, spawned } = fakeSpawner();
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    spawned[0].exit();
+    await until(() => last(statuses)?.state === 'restarting');
+    await until(() => last(statuses)?.state === 'ready');
+    expect(spawned).toHaveLength(2);
+  });
+
+  it('stops a daemon still starting at shutdown, and starts no other', async () => {
+    const { spawn, spawned } = fakeSpawner({ startsAfterMs: 200 });
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => spawned.length === 1);
+    await client.shutdown();
+    client = null;
+    // Past the first reconnect (500 ms), which would spawn again.
+    await delay(800);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].stopped).toBe(true);
+  });
+
+  it('says how a daemon it started ended before answering', async () => {
+    const spawn = (): OwnedDaemon => ({
+      exited: Promise.resolve({
+        code: null,
+        signal: null,
+        error: 'spawn beam ENOENT',
+      }),
+      stop: () => undefined,
+      kill: () => undefined,
+    });
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'unavailable');
+    expect(last(statuses).detail).toBe(
+      'beam could not start: the daemon could not run: spawn beam ENOENT'
+    );
+  });
+
+  it('uses the daemon that won the start race, and leaves it running', async () => {
+    const spawn = (): OwnedDaemon => {
+      setTimeout(() => {
+        void FakeDaemon.start(socketPath).then((d) => {
+          daemon = d;
+          d.on('status', () => ({ ready: true, enrolled: false }));
+        });
+      }, 150);
+      return {
+        exited: Promise.resolve({
+          code: 1,
+          signal: null,
+          lastLine: 'beam: another daemon holds $BEAM_DIR',
+        }),
+        stop: () => undefined,
+        kill: () => undefined,
+      };
+    };
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    expect(statuses.map((s) => s.state)).not.toContain('unavailable');
+    await client.shutdown();
+    client = null;
+    expect(daemon!.requests('daemon.shutdown')).toHaveLength(0);
+  });
+
+  it('says a daemon it started never answered', async () => {
+    const spawn = (): OwnedDaemon => {
+      let exit!: (e: DaemonExit) => void;
+      return {
+        exited: new Promise<DaemonExit>((resolve) => (exit = resolve)),
+        stop: () => exit({ code: 0, signal: null }),
+        kill: () => undefined,
+      };
+    };
+    client = new BeamClient({ socketPath, spawnDaemon: spawn });
+    client.start();
+    await until(() => last(statuses)?.state === 'unavailable', 8000);
+    expect(last(statuses).detail).toMatch(/^beam could not start/);
+  }, 10_000);
 });
