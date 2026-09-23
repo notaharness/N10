@@ -86,7 +86,6 @@ vi.mock('./services/sessions.js', () =>
     'writeSession',
     'resizeSession',
     'killSession',
-    'reconnectSession',
   ])
 );
 vi.mock('./services/terminals.js', () =>
@@ -114,22 +113,6 @@ vi.mock('./services/babysit.js', () =>
 );
 vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
-);
-vi.mock('./services/machines.js', () =>
-  recorder('machines', [
-    'listMachines',
-    'getAcceptingStatus',
-    'setAccepting',
-    'regeneratePairingUrl',
-    'previewPairing',
-    'confirmPairing',
-    'renameMachine',
-    'revokeMachine',
-    'forgetMachine',
-  ])
-);
-vi.mock('./services/inbound-mail.js', () =>
-  recorder('inboundMail', ['dismissInboundMail'])
 );
 
 const { createHostApi } = await import('./register-handlers.js');
@@ -219,7 +202,6 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['writeSession', ['b', 'ls\n'], 'sessions.writeSession'],
   ['resizeSession', ['b', 120, 40], 'sessions.resizeSession'],
   ['killSession', ['b'], 'sessions.killSession'],
-  ['reconnectSession', ['b'], 'sessions.reconnectSession'],
 
   [
     'launchTerminal',
@@ -233,21 +215,6 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
 
   ['startBabysit', [7], 'babysit.startBabysit'],
   ['stopBabysit', [7], 'babysit.stopBabysit'],
-
-  ['listMachines', [], 'machines.listMachines'],
-  ['getAcceptingStatus', [], 'machines.getAcceptingStatus'],
-  ['setAccepting', [true], 'machines.setAccepting'],
-  ['regeneratePairingUrl', [], 'machines.regeneratePairingUrl'],
-  ['previewPairing', ['http://host/pair#token=x'], 'machines.previewPairing'],
-  [
-    'confirmPairing',
-    ['http://host/pair#token=x', true],
-    'machines.confirmPairing',
-  ],
-  ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox'], 'machines.renameMachine'],
-  ['revokeMachine', ['bbbbbbbbbbbbbbbb'], 'machines.revokeMachine'],
-  ['forgetMachine', ['bbbbbbbbbbbbbbbb'], 'machines.forgetMachine'],
-  ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 
 describe('host API wiring', () => {
@@ -274,13 +241,11 @@ describe('host API wiring', () => {
       'setDesktopPrefs', // also notifies main.ts; covered separately
       'onSessionData',
       'onSessionExit',
-      'onLaunchStep',
       'onMenuCommand',
       'onBabysitChanged',
       'onSyncNotice',
       'onRemoteUpdated',
       'onDiscoveryChanged',
-      'onMachinesChanged',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

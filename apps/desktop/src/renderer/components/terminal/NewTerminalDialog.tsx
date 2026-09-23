@@ -7,15 +7,10 @@ import {
 } from 'lucide-react';
 import { useRef, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
-import type { LaunchStep, TerminalKind } from '../../../host/contract.js';
+import type { TerminalKind } from '../../../host/contract.js';
 import { useRecentRepos } from '../../lib/data/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { basename, errorMessage } from '../../lib/utils.js';
-import {
-  MachineChoiceSelect,
-  RemoteLaunchProgress,
-  useMachineChoice,
-} from './NewTerminalMachineChoice.js';
 import { Button } from '../ui/button.js';
 import {
   Dialog,
@@ -80,15 +75,10 @@ export function NewTerminalDialog({
   onLaunch,
   onClose,
   busy,
-  remoteStep,
-  remoteError,
 }: {
-  onLaunch: (kind: TerminalKind, cwd: string, machine?: string) => void;
+  onLaunch: (kind: TerminalKind, cwd: string) => void;
   onClose: () => void;
   busy: boolean;
-  /** Set only during a remote launch (ux-machines.md §5). */
-  remoteStep?: LaunchStep | null;
-  remoteError?: string | null;
 }) {
   const { repo } = useRepo();
   const [where, setWhere] = useState<Where | null>({
@@ -99,7 +89,6 @@ export function NewTerminalDialog({
   const [repoList, setRepoList] = useState<RepoList>('closed');
   const whereRef = useRef<HTMLDivElement>(null);
   const whatRef = useRef<HTMLDivElement>(null);
-  const machineChoice = useMachineChoice();
 
   /** Answer "where"; from the keyboard, move on to "what". */
   const choose = (next: Where, advance: boolean) => {
@@ -118,7 +107,7 @@ export function NewTerminalDialog({
   };
 
   const go = (kind: TerminalKind = what) => {
-    if (where) onLaunch(kind, where.cwd, machineChoice.selectedMachine());
+    if (where) onLaunch(kind, where.cwd);
   };
 
   return (
@@ -208,29 +197,6 @@ export function NewTerminalDialog({
             description="The configured agent, no task"
           />
         </ToggleGroup>
-
-        <MachineChoiceSelect id="new-terminal-machine" choice={machineChoice} />
-
-        {/* Finding 5: the folder choices above, "Other folder…" above
-         *  all, are browsed on THIS machine — there is no remote folder
-         *  picker (a known limitation) — so a directory picked here is
-         *  sent to the chosen machine as a plain path, which resolves
-         *  or fails against its own filesystem, not this one's. */}
-        {machineChoice.selectedMachine() && (
-          <p className="text-sm text-muted-foreground">
-            Folders above are on this machine, not{' '}
-            {machineChoice.selectedLabel()}
-            's — it will open the same path there, or fail if that path doesn't
-            exist on it.
-          </p>
-        )}
-
-        <RemoteLaunchProgress
-          step={remoteStep}
-          error={remoteError}
-          machineLabel={machineChoice.selectedLabel()}
-          what={what === 'agent' ? 'agent' : 'shell'}
-        />
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>

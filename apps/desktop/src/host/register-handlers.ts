@@ -19,8 +19,6 @@ import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 import * as babysit from './services/babysit.js';
-import * as machines from './services/machines.js';
-import * as inboundMail from './services/inbound-mail.js';
 import { resolvePickedFolder } from './services/terminal-home.js';
 
 /**
@@ -95,8 +93,6 @@ export function createHostApi(): N10HostApi {
     resizeSession: (name, cols, rows) =>
       Promise.resolve(sessions.resizeSession(name, cols, rows)),
     killSession: (name) => Promise.resolve(sessions.killSession(name)),
-    reconnectSession: (name) =>
-      Promise.resolve(sessions.reconnectSession(name)),
     saveClipboardImage: (data, mimeType) =>
       Promise.resolve(clipboardImage.saveClipboardImage(data, mimeType)),
     launchTerminal: (req) => terminals.launchTerminal(req),
@@ -108,7 +104,6 @@ export function createHostApi(): N10HostApi {
       return () => undefined;
     },
     onSessionExit: () => () => undefined,
-    onLaunchStep: () => () => undefined,
 
     fetchDiffText: (sourceBranch, targetBranch) =>
       reviews.getDiffText(sourceBranch, targetBranch),
@@ -135,19 +130,6 @@ export function createHostApi(): N10HostApi {
     startBabysit: (prId) => babysit.startBabysit(prId),
     stopBabysit: (prId) => Promise.resolve(babysit.stopBabysit(prId)),
     onBabysitChanged: () => () => undefined,
-
-    listMachines: () => machines.listMachines(),
-    getAcceptingStatus: () => machines.getAcceptingStatus(),
-    setAccepting: (enabled) => machines.setAccepting(enabled),
-    regeneratePairingUrl: () => machines.regeneratePairingUrl(),
-    previewPairing: (url) => machines.previewPairing(url),
-    confirmPairing: (url, force) =>
-      machines.confirmPairing(url, force ?? false),
-    renameMachine: (peerId, label) => machines.renameMachine(peerId, label),
-    revokeMachine: (peerId) => machines.revokeMachine(peerId),
-    forgetMachine: (peerId) => machines.forgetMachine(peerId),
-    dismissInboundMail: (id) => inboundMail.dismissInboundMail(id),
-    onMachinesChanged: () => () => undefined,
   };
 }
 
@@ -242,7 +224,6 @@ export function registerHostHandlers(
     [IPC.writeSession]: api.writeSession as HostMethod,
     [IPC.resizeSession]: api.resizeSession as HostMethod,
     [IPC.killSession]: api.killSession as HostMethod,
-    [IPC.reconnectSession]: api.reconnectSession as HostMethod,
     [IPC.saveClipboardImage]: api.saveClipboardImage as HostMethod,
     [IPC.launchTerminal]: api.launchTerminal as HostMethod,
     [IPC.listTerminals]: api.listTerminals as HostMethod,
@@ -274,16 +255,6 @@ export function registerHostHandlers(
     [IPC.showAbout]: api.showAbout as HostMethod,
     [IPC.startBabysit]: api.startBabysit as HostMethod,
     [IPC.stopBabysit]: api.stopBabysit as HostMethod,
-    [IPC.listMachines]: api.listMachines as HostMethod,
-    [IPC.getAcceptingStatus]: api.getAcceptingStatus as HostMethod,
-    [IPC.setAccepting]: api.setAccepting as HostMethod,
-    [IPC.regeneratePairingUrl]: api.regeneratePairingUrl as HostMethod,
-    [IPC.previewPairing]: api.previewPairing as HostMethod,
-    [IPC.confirmPairing]: api.confirmPairing as HostMethod,
-    [IPC.renameMachine]: api.renameMachine as HostMethod,
-    [IPC.revokeMachine]: api.revokeMachine as HostMethod,
-    [IPC.forgetMachine]: api.forgetMachine as HostMethod,
-    [IPC.dismissInboundMail]: api.dismissInboundMail as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

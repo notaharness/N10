@@ -1,6 +1,5 @@
 import { getSession, hasPersistedTerminalSession } from '@n10/core';
-import type { LaunchStepEvent, SessionBuffer } from '../contract.js';
-import { LAUNCH_EVENTS } from '../contract.js';
+import type { SessionBuffer } from '../contract.js';
 
 /**
  * The output relay every host-launched session hangs off: a bounded
@@ -76,11 +75,4 @@ export function attachRelay(name: string, entry: RelayEntry): void {
 
 export function relayBuffer(entry: RelayEntry): SessionBuffer {
   return { data: entry.chunks.join(''), seq: entry.seq };
-}
-
-/** Named progress for a remote launch (ux-machines.md §5), keyed to
- *  its `launchId` by the caller. Shares the same broadcaster as PTY
- *  output/exit — installed once, at startup, before any launch runs. */
-export function broadcastLaunchStep(event: LaunchStepEvent): void {
-  broadcast?.(LAUNCH_EVENTS.step, event);
 }

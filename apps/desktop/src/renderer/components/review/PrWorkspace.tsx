@@ -77,16 +77,6 @@ function useAgentFocus(next: AgentPresence, onFocusAgent: () => void): void {
   }
 }
 
-/** What the agent pane's connection banner needs (ux-machines.md §6),
- *  resolved by the caller (ItemView) so PrWorkspace stays free of the
- *  machines query and the reconnect mutation. */
-export interface PrConnectionBanner {
-  state: 'reconnecting' | 'failed';
-  machineLabel: string;
-  onReconnect: () => void;
-  reconnecting: boolean;
-}
-
 export function PrWorkspace({
   pr,
   branch,
@@ -98,8 +88,6 @@ export function PrWorkspace({
   busy,
   onLaunch,
   onStop,
-  connectionBanner,
-  inputDisabled,
 }: {
   /** Absent for a worktree without a PR: the rail degrades gracefully
    *  (no comments, drafts or review walkthrough — just Agent + Files). */
@@ -117,12 +105,6 @@ export function PrWorkspace({
   busy: boolean;
   onLaunch: () => void;
   onStop: () => void;
-  /** Set only while the session's connection is reconnecting/failed
-   *  (ux-machines.md §6) — the headline capability of this feature runs
-   *  here, so a silent dead connection does the most damage in exactly
-   *  this pane. */
-  connectionBanner?: PrConnectionBanner | null;
-  inputDisabled?: boolean;
 }) {
   const { repo } = useRepo();
   const prId = pr?.id ?? 0;
@@ -334,8 +316,6 @@ export function PrWorkspace({
               sessionName={sessionName}
               sessionEpoch={sessionEpoch}
               active={active}
-              connectionBanner={connectionBanner}
-              inputDisabled={inputDisabled}
               files={files}
               filesByName={filesByName}
               fileOrder={fileOrder}

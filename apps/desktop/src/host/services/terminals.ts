@@ -8,10 +8,8 @@ import {
   isSessionAlive,
   hasPersistedTerminalSession,
   killSession as killSessionEntry,
-  LOCAL_MACHINE,
   launchTerminalSession,
   releaseExitedSession,
-  sessionIdentity,
   type DiscoveredTerminal,
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
@@ -25,7 +23,6 @@ import { ensureRecent } from './recent-repos.js';
 import { isGitRepo } from './repo.js';
 import {
   attachRelay,
-  broadcastLaunchStep,
   newRelayEntry,
   relayBuffer,
   type RelayEntry,
@@ -92,9 +89,6 @@ interface TerminalSize {
   cols?: number;
   rows?: number;
   fresh?: boolean;
-  machine?: string;
-  /** Set only alongside `machine`: correlates `onLaunchStep` events. */
-  launchId?: string;
 }
 const starting = new Map<
   string,
@@ -110,7 +104,7 @@ function startSignature(
   size: TerminalSize,
   mode?: 'open' | 'attach'
 ): string {
-  return JSON.stringify([kind, cwd, size.fresh, mode, size.machine]);
+  return JSON.stringify([kind, cwd, size.fresh, mode]);
 }
 
 function start(
@@ -146,12 +140,6 @@ async function performStart(
   size: TerminalSize,
   mode?: 'open' | 'attach'
 ): Promise<string> {
-  // A terminal has no worktree step — only a remote fresh launch (never
-  // a restart, which ignores `machine`) gets a step at all, and it is
-  // the one step a plain terminal ever has.
-  if (!requestedName && size.machine && size.launchId) {
-    broadcastLaunchStep({ launchId: size.launchId, step: 'start' });
-  }
   // Config for the directory, not for whatever repository is open: an
   // agent at a repository root should be that repository's agent.
   const launched = await launchTerminalSession({
@@ -163,9 +151,6 @@ async function performStart(
     config: readConfig(cwd),
     mode,
     fresh: size.fresh,
-    // A restart (requestedName set) ignores this: the retained
-    // terminal's own machine (carried in its key) wins.
-    machine: requestedName ? undefined : size.machine,
   });
   const name = launched.name;
   const prev = requestedName ? known.get(requestedName) : undefined;
@@ -202,44 +187,19 @@ function noteRepository(cwd: string): string | null {
 }
 
 function summarize(name: string, entry: KnownTerminal, home: string) {
-  const session = getSession(name);
-  const machine = sessionIdentity(name)?.machine ?? LOCAL_MACHINE;
-  const isLocal = machine === LOCAL_MACHINE;
   return {
     name,
-    ...(session?.pty.name ? { tmuxName: session.pty.name } : {}),
+    ...(getSession(name)?.pty.name
+      ? { tmuxName: getSession(name)?.pty.name }
+      : {}),
     kind: entry.kind,
-    agent: session?.agent,
+    agent: getSession(name)?.agent,
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
-    // `terminalRepo`/`isGitRepo` stat the local filesystem: meaningless
-    // for a directory that lives on another machine.
-    repo: isLocal ? terminalRepo(entry.cwd, isGitRepo) : null,
+    repo: terminalRepo(entry.cwd, isGitRepo),
     running: isSessionAlive(name),
     spawnedAt: getSpawnedAt(name) ?? 0,
-    machine,
-    // A local session must never carry a connectionState at all — the
-    // reconnecting/failed banner (ux-machines.md §6) is about a remote
-    // machine's transport, and TmuxBackend's own local-client reconnect
-    // (a distinct, older concern — libs/terminal-tmux/AGENTS.md) must
-    // not be read as that (finding 10).
-    ...(!isLocal && session?.pty.connectionState
-      ? { connectionState: session.pty.connectionState }
-      : {}),
   };
-}
-
-/** Whether this request's terminal lives on a remote machine — from
- *  the request itself for a fresh launch, or, on a restart
- *  (`req.machine` is never sent: TerminalView.tsx sends only
- *  `{sessionName, kind, cwd}`), from the retained tab's own identity
- *  (D2's key). The caller not re-supplying a field it never carries in
- *  the first place must not read as "local" (finding 6). */
-function isRemoteRequest(req: TerminalLaunchRequest): boolean {
-  const machine =
-    req.machine ??
-    (req.sessionName ? sessionIdentity(req.sessionName)?.machine : undefined);
-  return !!machine && machine !== LOCAL_MACHINE;
 }
 
 /** Open a new terminal. `home` is injectable for tests. */
@@ -252,20 +212,14 @@ export async function launchTerminal(
   // A retained-tab restart launches in the tab's own directory, not
   // whatever cwd the request happened to carry.
   const cwd = existing?.cwd ?? req.cwd;
-  const isRemote = isRemoteRequest(req);
-  // A remote machine's filesystem is not this one's to `statSync` —
-  // the remote tmux/session-create call is what validates the
-  // directory there, loudly, if it is wrong.
-  if (!isRemote) assertLaunchableCwd(cwd);
+  assertLaunchableCwd(cwd);
   const name = await start(
     req.sessionName,
     existing?.kind ?? req.kind,
     cwd,
     req
   );
-  // `terminalRepo`/`isGitRepo` stat the local filesystem: correct for
-  // this machine's terminals, meaningless for `cwd` on another one.
-  if (!isRemote) noteRepository(cwd);
+  noteRepository(cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);
   return summarize(name, entry, home);

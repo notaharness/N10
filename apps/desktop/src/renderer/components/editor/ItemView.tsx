@@ -1,14 +1,8 @@
 import { Loader2Icon, PlayIcon, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionSummary, SidebarItem } from '../../../host/contract.js';
+import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import {
-  useAllBranches,
-  useMachines,
-  useSessions,
-} from '../../lib/data/queries.js';
-import { useReconnectSession } from '../../lib/data/mutations-terminals.js';
-import { resolveMachineLabel } from '../../lib/machines/machine-model.js';
+import { useAllBranches, useSessions } from '../../lib/data/queries.js';
 import {
   itemBranch,
   itemHasWorktree,
@@ -25,7 +19,6 @@ import {
   estimateTerminalGrid,
   paneTerminalGrid,
 } from '../../lib/terminal-grid.js';
-import { terminalPaneState } from '../../lib/terminals/terminal-pane-state.js';
 import { PrWorkspace } from './lazy-panes.js';
 import { Button } from '../ui/button.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
@@ -52,26 +45,22 @@ import { useItemLaunch } from './use-item-launch.js';
 function resolveItemState(
   item: SidebarItem,
   sessionRow: SidebarItem | undefined,
-  aliveSessions: readonly SessionSummary[]
+  aliveSessions: readonly { name: string; spawnedAt: number }[]
 ) {
   const rowSessionName =
     itemSessionName(item) ??
     (sessionRow ? itemSessionName(sessionRow) : undefined);
-  const liveSession = aliveSessions.find((s) => s.name === rowSessionName);
   return {
     sessionName: liveSessionName(rowSessionName, aliveSessions),
     // Restarting an agent keeps the session's name, so the name alone
     // cannot tell the terminal that the thing on the other end of it is
     // a different process that has never been told the pane's size.
-    sessionEpoch: liveSession?.spawnedAt ?? 0,
+    sessionEpoch:
+      aliveSessions.find((s) => s.name === rowSessionName)?.spawnedAt ?? 0,
     running:
       itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false),
     hasWorktree: Boolean(rowSessionName) || itemHasWorktree(item),
     pr: item.pr ?? sessionRow?.pr,
-    // The pane's connection banner (ux-machines.md §6) — independent of
-    // `running` above, which is processState only (decisions.md D4).
-    connectionState: liveSession?.connectionState,
-    machine: liveSession?.machine,
   };
 }
 
@@ -173,37 +162,6 @@ function Preparing({ itemKey }: { itemKey: string }) {
   );
 }
 
-/** The agent pane's connection banner (ux-machines.md §6) — Phase 5
- *  wired this into TerminalView only; a session running here is
- *  exactly where a silent dead remote connection does the most damage,
- *  since it is the headline capability of this whole feature. Split
- *  out to keep ItemView's own complexity down. */
-function useConnectionBanner(
-  sessionName: string | undefined,
-  state: ItemState
-) {
-  const machines = useMachines();
-  const reconnect = useReconnectSession();
-  const pane = sessionName
-    ? terminalPaneState({
-        kind: 'agent',
-        running: state.running,
-        connectionState: state.connectionState,
-      })
-    : { bannerState: null, inputDisabled: false };
-  const connectionBanner =
-    pane.bannerState && sessionName
-      ? {
-          state: pane.bannerState,
-          machineLabel:
-            resolveMachineLabel(state.machine, machines.data) ?? 'this machine',
-          onReconnect: () => reconnect.mutate(sessionName),
-          reconnecting: reconnect.isPending,
-        }
-      : null;
-  return { connectionBanner, inputDisabled: pane.inputDisabled };
-}
-
 export function ItemView({
   item,
   items,
@@ -242,24 +200,10 @@ export function ItemView({
     // the moment it mounts.
     return estimateTerminalGrid(tab.getBoundingClientRect(), 0.6);
   };
-  const { choose, stop, busy, remoteStep, remoteError, resetRemote } =
-    useItemLaunch(
-      repo.cwd,
-      launchTarget(branch, state),
-      estimateGrid,
-      menu.close
-    );
-  const { connectionBanner, inputDisabled } = useConnectionBanner(
-    state?.sessionName,
-    state ?? {
-      sessionName: undefined,
-      sessionEpoch: 0,
-      running: false,
-      hasWorktree: false,
-      pr: undefined,
-      connectionState: undefined,
-      machine: undefined,
-    }
+  const { choose, stop, busy } = useItemLaunch(
+    repo.cwd,
+    launchTarget(branch, state),
+    estimateGrid
   );
 
   if (!item || !state) return <Preparing itemKey={itemKey} />;
@@ -269,17 +213,9 @@ export function ItemView({
     onPin();
     menu.show();
   };
-  // A remote launch leaves the dialog open to show its step, and to
-  // keep the user's input intact on a named failure (ux-machines.md
-  // §5) — closing here as eagerly as a local launch would lose both.
-  // `useItemLaunch` closes it itself once the launch actually lands.
-  const closeMenu = () => {
-    resetRemote();
-    menu.close();
-  };
   const onChoose = (choice: LaunchChoice) => {
+    menu.close();
     onPin();
-    if (!choice.machine) closeMenu();
     choose(choice);
   };
   const dialog = menu.open && (
@@ -288,11 +224,8 @@ export function ItemView({
       branch={branch}
       hasWorktree={hasWorktree}
       cwd={repo.cwd}
-      busy={busy}
-      remoteStep={remoteStep}
-      remoteError={remoteError}
       onChoose={onChoose}
-      onClose={closeMenu}
+      onClose={menu.close}
     />
   );
 
@@ -312,8 +245,6 @@ export function ItemView({
           busy={busy}
           onLaunch={onLaunchClick}
           onStop={stop}
-          connectionBanner={connectionBanner}
-          inputDisabled={inputDisabled}
         />
         {dialog}
       </div>
@@ -336,8 +267,6 @@ export function ItemView({
           busy={busy}
           onLaunch={onLaunchClick}
           onStop={stop}
-          connectionBanner={connectionBanner}
-          inputDisabled={inputDisabled}
         />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">

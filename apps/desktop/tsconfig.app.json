@@ -49,9 +49,6 @@
       "path": "../../libs/core/tsconfig.lib.json"
     },
     {
-      "path": "../../libs/beam/tsconfig.lib.json"
-    },
-    {
       "path": "../../libs/app-core/tsconfig.lib.json"
     }
   ]

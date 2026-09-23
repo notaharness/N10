@@ -3,10 +3,8 @@ import {
   GitBranchIcon,
   GitBranchPlusIcon,
   GitPullRequestIcon,
-  MonitorIcon,
   MoonIcon,
   PanelLeftIcon,
-  PlugIcon,
   RefreshCwIcon,
   SettingsIcon,
   SunIcon,
@@ -14,11 +12,9 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { MachineView, SidebarItem } from '../../host/contract.js';
-import { useAllBranches, useMachines } from '../lib/data/queries.js';
+import type { SidebarItem } from '../../host/contract.js';
+import { useAllBranches } from '../lib/data/queries.js';
 import { useCreateWorktree, useRefreshRemote } from '../lib/data/mutations.js';
-import { isMachineSelectable } from '../lib/machines/machine-model.js';
-import { OpenTerminalOnMachineItems } from './machines/OpenTerminalOnMachineItems.js';
 import { useRepo } from '../lib/repo-context.js';
 import {
   itemBranch,
@@ -29,7 +25,6 @@ import { requestLaunchMenu } from '../lib/sidebar/launch-menu-request.js';
 import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
-import { PairMachineDialog } from './machines/PairMachineDialog.js';
 import {
   CommandDialog,
   CommandEmpty,
@@ -54,7 +49,6 @@ export function CommandPalette({
   onToggleSidebar,
   onSwitchRepo,
   onNewTerminal,
-  onOpenTerminalOnMachine,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,11 +56,6 @@ export function CommandPalette({
   onToggleSidebar: () => void;
   onSwitchRepo: () => void;
   onNewTerminal: () => void;
-  /** Open a shell on a paired machine directly, skipping the dialog —
-   *  the palette is how a keyboard user reaches this (ux-machines.md
-   *  §5). Only reachable machines are offered (§5's `Open terminal on`
-   *  entries are for reachable machines, not disabled ones). */
-  onOpenTerminalOnMachine: (peerId: string) => void;
 }) {
   const { repo } = useRepo();
   const tabs = useRepoTabs();
@@ -74,14 +63,7 @@ export function CommandPalette({
   const branches = useAllBranches(repo.cwd, open);
   const create = useCreateWorktree(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
-  const machines = useMachines();
   const [query, setQuery] = useState('');
-  const [pairOpen, setPairOpen] = useState(false);
-
-  // D8: only when a peer is both registered and reachable — a machine
-  // that cannot be dialled is not something to offer "Open terminal
-  // on" for from the palette.
-  const reachableMachines = reachablePeers(machines.data);
 
   const worktreeBranches = useMemo(
     () =>
@@ -149,7 +131,7 @@ export function CommandPalette({
     });
   };
 
-  const dialogContent = (
+  return (
     <CommandDialog
       open={open}
       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
@@ -197,13 +179,6 @@ export function CommandPalette({
             New terminal…
             <CommandShortcut>{MOD} ⇧ T</CommandShortcut>
           </CommandItem>
-          <OpenTerminalOnMachineItems
-            machines={reachableMachines}
-            onSelect={(peerId) => {
-              close();
-              onOpenTerminalOnMachine(peerId);
-            }}
-          />
           <CommandItem
             value="command refresh pull requests sync"
             onSelect={() => {
@@ -247,26 +222,6 @@ export function CommandPalette({
             <FolderOpenIcon />
             Open another repository…
           </CommandItem>
-          <CommandItem
-            value="command pair a machine beam"
-            onSelect={() => {
-              close();
-              setPairOpen(true);
-            }}
-          >
-            <MonitorIcon />
-            Pair a machine…
-          </CommandItem>
-          <CommandItem
-            value="command accept connections beam machines"
-            onSelect={() => {
-              close();
-              tabs.openSettings();
-            }}
-          >
-            <PlugIcon />
-            Accept connections
-          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
@@ -308,19 +263,6 @@ export function CommandPalette({
       </CommandList>
     </CommandDialog>
   );
-
-  return (
-    <>
-      {dialogContent}
-      {pairOpen && <PairMachineDialog onClose={() => setPairOpen(false)} />}
-    </>
-  );
-}
-
-/** Paired machines the palette's "Open terminal on" offers — D8: only
- *  ones both registered and reachable, never local or disabled. */
-function reachablePeers(machines: MachineView[] | undefined): MachineView[] {
-  return (machines ?? []).filter((m) => !m.isLocal && isMachineSelectable(m));
 }
 
 function OpenItem({

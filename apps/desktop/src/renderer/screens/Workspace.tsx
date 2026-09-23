@@ -40,7 +40,6 @@ import {
   type ItemEntry,
 } from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
-import { REMOTE_HOME_CWD } from '../lib/terminals/terminal-launch-request.js';
 import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
 import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
@@ -301,9 +300,6 @@ function WorkspaceInner({
         onToggleSidebar={toggleSidebar}
         onSwitchRepo={onSwitchRepo}
         onNewTerminal={terminalTabs.openDialog}
-        onOpenTerminalOnMachine={(machine) =>
-          terminalTabs.launchTerminal('shell', REMOTE_HOME_CWD, machine)
-        }
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       {terminalTabs.dialogOpen && (
@@ -311,8 +307,6 @@ function WorkspaceInner({
           onLaunch={terminalTabs.launchTerminal}
           onClose={terminalTabs.closeDialog}
           busy={terminalTabs.busy}
-          remoteStep={terminalTabs.remoteStep}
-          remoteError={terminalTabs.remoteError}
         />
       )}
       {closer.confirmDialog}
