@@ -59,10 +59,9 @@ export function CommandPalette({
   onToggleSidebar: () => void;
   onSwitchRepo: () => void;
   onNewTerminal: () => void;
-  /** Open a shell on a paired machine directly, skipping the dialog —
-   *  the palette is how a keyboard user reaches this (ux-machines.md
-   *  §5). Only reachable machines are offered (§5's `Open terminal on`
-   *  entries are for reachable machines, not disabled ones). */
+  /** Open a shell on a fleet member directly, skipping the dialog —
+   *  the palette is how a keyboard user reaches this. Only connected
+   *  members are offered, never disabled ones. */
   onOpenTerminalOnMachine: (peerId: string) => void;
 }) {
   const { repo } = useRepo();
@@ -74,10 +73,9 @@ export function CommandPalette({
   const machines = useMachines();
   const [query, setQuery] = useState('');
 
-  // D8: only when a peer is both registered and reachable — a machine
-  // that cannot be dialled is not something to offer "Open terminal
-  // on" for from the palette.
-  const reachableMachines = reachablePeers(machines.data);
+  // D8: only a connected peer — one offline is not something to offer
+  // "Open terminal on" for from the palette.
+  const launchableMachines = launchablePeers(machines.data);
 
   const worktreeBranches = useMemo(
     () =>
@@ -194,7 +192,7 @@ export function CommandPalette({
             <CommandShortcut>{MOD} ⇧ T</CommandShortcut>
           </CommandItem>
           <OpenTerminalOnMachineItems
-            machines={reachableMachines}
+            machines={launchableMachines}
             onSelect={(peerId) => {
               close();
               onOpenTerminalOnMachine(peerId);
@@ -286,9 +284,9 @@ export function CommandPalette({
   );
 }
 
-/** Paired machines the palette's "Open terminal on" offers — D8: only
- *  ones both registered and reachable, never local or disabled. */
-function reachablePeers(machines: MachineView[] | undefined): MachineView[] {
+/** Fleet members the palette's "Open terminal on" offers — D8: only
+ *  connected ones, never local or disabled. */
+function launchablePeers(machines: MachineView[] | undefined): MachineView[] {
   return (machines ?? []).filter((m) => !m.isLocal && isMachineSelectable(m));
 }
 

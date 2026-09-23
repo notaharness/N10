@@ -317,7 +317,7 @@ export function useForeignSessions() {
 const MACHINES_POLL_MS = 5 * 60_000;
 
 /**
- * Every machine: the local one first, then paired peers. Not repo-
+ * Every machine: this one first, then fleet members. Not repo-
  * scoped — survives a repo switch (CROSS_REPO_KEYS). Pushed on every
  * change (`onMachinesChanged` in use-host-events.ts writes straight
  * into this cache), so the poll here is only the fallback for the
@@ -334,6 +334,16 @@ export function machinesQuery() {
 
 export function useMachines() {
   return useQuery(machinesQuery());
+}
+
+/** The beam daemon as the host sees it. Pushed on every change
+ *  (`onBeamStatusChanged`), so this fetches only the first answer. */
+export function useBeamStatus() {
+  return useQuery({
+    queryKey: keys.beamStatus,
+    queryFn: () => window.n10.getBeamStatus(),
+    staleTime: Infinity,
+  });
 }
 
 /** Debounced per-session agent activity (spinner/blink source). The

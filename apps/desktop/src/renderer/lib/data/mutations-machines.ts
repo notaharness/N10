@@ -1,29 +1,31 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { MachineGrant } from '../../../host/contract-machines.js';
 import { keys } from './query-keys.js';
 
 /**
- * The renderer's machine writes — rename, revoke, dismissing a refused
- * report. Split from `mutations.ts` (a catalogue already), mirroring `mutations-terminals.ts`. Machines are pushed on
- * every change (`onMachinesChanged`), so most of these invalidate
- * `keys.machines` only as a fallback for a push that raced the mutation
- * response — the push channel is the primary path.
+ * The renderer's machine writes — alias, grant, dismissing a refused
+ * report. Split from `mutations.ts` (a catalogue already), mirroring
+ * `mutations-terminals.ts`. Machines are pushed on every change
+ * (`onMachinesChanged`), so these invalidate `keys.machines` only as a
+ * fallback for a push that raced the mutation response.
  */
 
-export function useRenameMachine() {
+export function useSetMachineAlias() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { peerId: string; label: string }) =>
-      window.n10.renameMachine(args.peerId, args.label),
+    mutationFn: (args: { peerId: string; alias: string | null }) =>
+      window.n10.setMachineAlias(args.peerId, args.alias),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.machines });
     },
   });
 }
 
-export function useRevokeMachine() {
+export function useSetMachineGrant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (peerId: string) => window.n10.revokeMachine(peerId),
+    mutationFn: (args: { peerId: string; grant: MachineGrant }) =>
+      window.n10.setMachineGrant(args.peerId, args.grant),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.machines });
     },

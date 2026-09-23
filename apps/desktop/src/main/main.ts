@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   app,
@@ -27,6 +28,8 @@ import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installMachineResolver } from '../host/services/remote-machines.js';
+import { BeamClient } from './beam/client.js';
+import { beamSocketPath } from './beam/paths.js';
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -275,6 +278,13 @@ setShellGlue({
 
 installHostEventBridge();
 
+// Machines come from the beam daemon's control socket; remote launches
+// resolve their machine through the ports the client installs.
+const beam = new BeamClient({
+  socketPath: beamSocketPath(process.env, homedir()),
+  log: (message) => console.error(message),
+});
+beam.start();
 installMachineResolver();
 
 // ── App lifecycle ────────────────────────────────────────────────
@@ -341,6 +351,7 @@ app.on('will-quit', () => {
   stopRemoteSyncLoop();
   stopDiscovery();
   stopAllBabysitters();
+  beam.stop();
   try {
     killAll();
   } catch {

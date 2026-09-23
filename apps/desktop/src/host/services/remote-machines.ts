@@ -7,7 +7,7 @@
  *
  * No `electron` import here, so this stays testable with a fake port —
  * same pattern as `services/machines.ts`. The real port is the beam
- * transport, installed once at startup.
+ * client, installed once at startup.
  */
 import { setMachineResolver } from '@n10/core';
 import type {
@@ -35,8 +35,8 @@ export interface RemoteMachinePort {
       env?: Record<string, string>;
       cols?: number;
       rows?: number;
-      /** This attach replaces a stream that just died, so the pooled
-       *  connection to that machine is suspect (`RemotePtyOpenParams`). */
+      /** This attach replaces a stream that just died
+       *  (`RemotePtyOpenParams`). */
       reconnect?: boolean;
     }
   ): Promise<{ streamId: string }>;
@@ -48,7 +48,7 @@ export interface RemoteMachinePort {
 
 let port: RemoteMachinePort | null = null;
 
-/** Installed once the beam transport is up. `null` (the default, and
+/** Installed once the beam client starts. `null` (the default, and
  *  what tests reset to) means "no remote machines" — `machineFor` throws rather than silently
  *  returning something that looks like a working machine. */
 export function setRemoteMachinePort(next: RemoteMachinePort | null): void {

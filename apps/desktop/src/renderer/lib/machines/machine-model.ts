@@ -7,24 +7,11 @@ import type {
 import { relativeTime } from '../utils.js';
 
 /**
- * The five reachability states, plus `revoked`, mapped to what a row
- * actually shows — a pure function so the mapping is testable without
- * mounting anything, and so every state is exercised even though most
- * are rare in a screenshot. See the UX spec's table in
- * `ux-machines.md` — this is that table, in code.
- *
- * The two rules that matter most: `no-endpoint` is never a fault
- * (`info` tone, not `warning`/`destructive`), and `unknown` is never
- * rendered as `unreachable` — a paired machine that has not been
- * probed yet must read as "checking", not "down".
+ * beam's peer states mapped to what a row shows — a pure function so
+ * the mapping is testable without mounting anything.
  */
 
-export type MachineTone =
-  | 'success'
-  | 'muted'
-  | 'warning'
-  | 'info'
-  | 'destructive';
+export type MachineTone = 'success' | 'muted' | 'destructive';
 
 export interface MachinePresentation {
   label: string;
@@ -34,40 +21,32 @@ export interface MachinePresentation {
 
 const STATE_LABEL: Record<MachineState, string> = {
   connected: 'Connected',
-  reachable: 'Reachable',
-  unreachable: 'Unreachable',
-  unknown: 'Checking…',
-  'no-endpoint': 'Can reach us only',
+  offline: 'Offline',
   revoked: 'Revoked',
+  'revoked-by-fleet': 'Refuses this machine',
 };
 
 const STATE_TONE: Record<MachineState, MachineTone> = {
   connected: 'success',
-  reachable: 'muted',
-  unreachable: 'warning',
-  unknown: 'muted',
-  'no-endpoint': 'info',
+  offline: 'muted',
   revoked: 'destructive',
+  'revoked-by-fleet': 'destructive',
 };
 
 function secondaryText(machine: MachineView): string {
   switch (machine.state) {
     case 'connected':
-      return machine.transport ?? '';
-    case 'reachable':
-      return machine.endpoints[0] ?? '';
-    case 'unreachable':
+      return machine.isLocal ? '' : machine.path ?? '';
+    case 'offline':
       return machine.lastSeenAt == null
         ? 'never seen'
         : `last seen ${relativeTime(machine.lastSeenAt)}`;
-    case 'unknown':
-      return '';
-    case 'no-endpoint':
-      return 'this machine cannot be dialled from here';
     case 'revoked':
       return machine.revokedAt == null
-        ? 'revoked'
+        ? 'revoked here'
         : `revoked ${relativeTime(machine.revokedAt)}`;
+    case 'revoked-by-fleet':
+      return 'it has revoked this machine';
   }
 }
 
@@ -79,16 +58,15 @@ export function machinePresentation(machine: MachineView): MachinePresentation {
   };
 }
 
-/** `a1b2c3d4e5f60718` → `a1b2 c3d4 e5f6 0718` — grouped in fours, per
- *  the UX spec, so it is easier to compare out of band by eye. */
-export function fingerprintGroups(peerId: string): string {
-  const groups = peerId.match(/.{1,4}/g);
-  return groups ? groups.join(' ') : peerId;
+/** A peerId or fleetId as beam prints it: its first 16 characters in
+ *  groups of four (`a1b2 c3d4 e5f6 0718`), for comparing by eye. */
+export function fingerprintGroups(id: string): string {
+  const groups = id.slice(0, 16).match(/.{1,4}/g);
+  return groups ? groups.join(' ') : id;
 }
 
-/** `2 waiting`, or null when there is nothing to say — a zero queue
- *  shows no badge at all (the UX spec's copy rule: never call `queued`
- *  a failure, and never announce there being none of it either). */
+/** `2 waiting`, or null at zero — mail queued for a peer is not a
+ *  failure, and no badge shows for none. */
 export function queueBadgeLabel(depth: number): string | null {
   return depth > 0 ? `${depth} waiting` : null;
 }
@@ -96,10 +74,9 @@ export function queueBadgeLabel(depth: number): string | null {
 // ── Inbound mail relay (decisions.md D13/D14) ──
 //
 // A report from this machine that is waiting for its target session to
-// connect, or one that was refused, oldest-first. Never a failure for
-// `waiting` (ux-machines.md §7's rule extends to this: "queued" is not
-// a failure, and neither is waiting for a pane to reconnect); a
-// refusal is always visible and named — machine label, target, reason.
+// connect, or one that was refused, oldest-first. Waiting is not a
+// failure; a refusal is always visible and named — machine label,
+// target, reason.
 
 /** `1 waiting to be delivered` / `3 waiting to be delivered`, or null
  *  when there is nothing waiting — same "no badge at zero" rule as
@@ -146,26 +123,26 @@ export function oldestInboundMailAge(machine: MachineView): string | null {
   return relativeTime(Math.min(...all.map((i) => i.receivedAt)));
 }
 
-// ── Launching on a machine (ux-machines.md §5, §6) ────────
+// ── Launching on a machine ────────
 
-/** D8's gate for every surface this phase adds: with only the local
- *  machine registered, none of it renders. */
+/** D8's gate for every machines surface: with only the local machine
+ *  registered, none of it renders. */
 export function hasPeerMachines(machines: readonly MachineView[]): boolean {
   return machines.some((m) => !m.isLocal);
 }
 
-/** Whether a machine can be launched on right now — the local machine
- *  always can; a peer needs a live or provenly-reachable connection.
- *  `no-endpoint`/`unknown`/`unreachable`/`revoked` are listed but not
- *  selectable — ux-machines.md §5: shown disabled with the reason,
- *  never omitted, so a user who paired a machine and cannot find it
- *  selectable still finds the row and learns why. */
+/** A peer still in the fleet: not this machine, not revoked here. */
+export function isFleetMember(machine: MachineView): boolean {
+  return !machine.isLocal && machine.state !== 'revoked';
+}
+
+/** Whether a machine can be launched on right now — this machine
+ *  always can; a peer needs a live tunnel, and a grant here is not
+ *  what decides that (its grant on *its* side does). Others are listed
+ *  disabled with the reason, never omitted, so a user who cannot
+ *  select a machine still finds its row and learns why. */
 export function isMachineSelectable(machine: MachineView): boolean {
-  return (
-    machine.isLocal ||
-    machine.state === 'connected' ||
-    machine.state === 'reachable'
-  );
+  return machine.isLocal || machine.state === 'connected';
 }
 
 /** What a dialog's machine picker should show, and what its launch
@@ -174,7 +151,7 @@ export function isMachineSelectable(machine: MachineView): boolean {
  *  local launch, which is every launch whose machine is this one).
  *
  *  A dialog can sit open while the machine it picked flips to
- *  `unreachable` or `revoked`. Radix disables that option but keeps
+ *  `offline` or `revoked`. Radix disables that option but keeps
  *  the value, so a stale pick would still go out on the request and
  *  fail a round trip later. Falling back to local is both what gets
  *  sent and what the picker shows, so the two never disagree about
@@ -204,7 +181,7 @@ export interface MachineOption {
 }
 
 /** The machine `Select`'s rows: local first (as `useMachines` already
- *  orders them), every peer listed — reachable ones enabled, everything
+ *  orders them), every peer listed — connected ones enabled, everything
  *  else disabled with its state spelled out beside it. */
 export function machineSelectOptions(
   machines: readonly MachineView[]
@@ -224,9 +201,8 @@ export function machineSelectOptions(
 /** A machine id (D2's beam `peerId`, or `'local'`/absent) resolved to
  *  its label for display — never a bare id, which means nothing to the
  *  user. `null` for local: the caller shows no prefix/badge at all.
- *  A machine no longer in the registered list (revoked, removed) still
- *  has to render something honest, so this names it rather than
- *  vanishing or showing the raw id. */
+ *  A machine no longer in the list still has to render something
+ *  honest, so this names it rather than vanishing or showing the id. */
 export function resolveMachineLabel(
   machineId: string | undefined,
   machines: readonly MachineView[] | undefined

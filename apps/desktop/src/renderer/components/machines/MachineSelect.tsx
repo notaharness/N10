@@ -16,9 +16,8 @@ import {
  * decide that on its own.
  *
  * A machine that cannot be launched on right now is listed disabled
- * with its reason beside it, never omitted: a user who paired a
- * machine and cannot find it here would otherwise conclude pairing
- * failed.
+ * with its reason beside it, never omitted: a user who cannot find a
+ * fleet member here would otherwise conclude it never joined.
  */
 export function MachineSelect({
   id,

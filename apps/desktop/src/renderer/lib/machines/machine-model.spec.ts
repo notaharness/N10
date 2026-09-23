@@ -18,16 +18,15 @@ import {
 
 function machine(overrides: Partial<MachineView> = {}): MachineView {
   return {
-    peerId: 'a1b2c3d4e5f60718',
+    peerId: 'a1b2c3d4e5f60718a1b2c3d4e5f60718',
     label: 'workbox',
     isLocal: false,
-    state: 'unknown',
-    transport: null,
-    endpoints: ['http://10.0.0.2:4000'],
+    state: 'offline',
+    path: 'unknown',
     lastSeenAt: null,
-    queueDepth: 0,
-    pairedAt: 1000,
+    grant: 'all',
     revokedAt: null,
+    queued: 0,
     inboundWaiting: [],
     inboundRefused: [],
     ...overrides,
@@ -35,68 +34,52 @@ function machine(overrides: Partial<MachineView> = {}): MachineView {
 }
 
 describe('machinePresentation', () => {
-  it('connected: success tone, transport as secondary', () => {
+  it('connected: success tone, the path as secondary', () => {
     const p = machinePresentation(
-      machine({ state: 'connected', transport: 'WebSocket' })
+      machine({ state: 'connected', path: 'relay fra' })
     );
     expect(p).toEqual({
       label: 'Connected',
       tone: 'success',
-      secondary: 'WebSocket',
+      secondary: 'relay fra',
     });
   });
 
-  it('reachable: muted tone, the endpoint as secondary', () => {
-    const p = machinePresentation(machine({ state: 'reachable' }));
-    expect(p.label).toBe('Reachable');
-    expect(p.tone).toBe('muted');
-    expect(p.secondary).toBe('http://10.0.0.2:4000');
-  });
-
-  it('unreachable: warning tone, never mistaken for no-endpoint or a crash', () => {
+  it('this machine: connected, with no path to show', () => {
     const p = machinePresentation(
-      machine({ state: 'unreachable', lastSeenAt: Date.now() - 60_000 })
+      machine({ state: 'connected', isLocal: true, path: null })
     );
-    expect(p.label).toBe('Unreachable');
-    expect(p.tone).toBe('warning');
-    expect(p.secondary).toMatch(/^last seen/);
+    expect(p.secondary).toBe('');
   });
 
-  it('unknown: muted tone, no secondary claiming it is down — must never say Unreachable', () => {
-    const p = machinePresentation(machine({ state: 'unknown' }));
-    expect(p.label).toBe('Checking…');
-    expect(p.label).not.toMatch(/unreachable/i);
-    expect(p.tone).toBe('muted');
-  });
-
-  it('no-endpoint: info tone — must never read as a fault (warning/destructive)', () => {
+  it('offline: muted, never a fault, with when it was last seen', () => {
     const p = machinePresentation(
-      machine({ state: 'no-endpoint', endpoints: [] })
+      machine({ state: 'offline', lastSeenAt: Date.now() - 60_000 })
     );
-    expect(p.label).toBe('Can reach us only');
-    expect(p.tone).toBe('info');
-    expect(p.tone).not.toBe('warning');
-    expect(p.tone).not.toBe('destructive');
+    expect(p.label).toBe('Offline');
+    expect(p.tone).toBe('muted');
+    expect(p.secondary).toMatch(/^last seen /);
+    expect(machinePresentation(machine()).secondary).toBe('never seen');
   });
 
-  it('revoked: destructive tone, orthogonal to connection/probe state', () => {
-    const p = machinePresentation(
+  it('revoked here and revoked by the fleet are both destructive, and read apart', () => {
+    const here = machinePresentation(
       machine({ state: 'revoked', revokedAt: Date.now() - 3_600_000 })
     );
-    expect(p.label).toBe('Revoked');
-    expect(p.tone).toBe('destructive');
-    expect(p.secondary).toMatch(/^revoked/);
+    const there = machinePresentation(machine({ state: 'revoked-by-fleet' }));
+    expect(here.tone).toBe('destructive');
+    expect(there.tone).toBe('destructive');
+    expect(here.secondary).toMatch(/^revoked /);
+    expect(there.label).toBe('Refuses this machine');
   });
 
   it('every state maps to a distinct label — no two states read the same', () => {
-    const states: MachineView['state'][] = [
+    const states = [
       'connected',
-      'reachable',
-      'unreachable',
-      'unknown',
-      'no-endpoint',
+      'offline',
       'revoked',
-    ];
+      'revoked-by-fleet',
+    ] as const;
     const labels = states.map(
       (state) => machinePresentation(machine({ state })).label
     );
@@ -175,7 +158,7 @@ describe('hasPeerMachines (D8)', () => {
   });
 
   it('is true the moment a peer is registered, whatever its state', () => {
-    expect(hasPeerMachines([local, machine({ state: 'unknown' })])).toBe(true);
+    expect(hasPeerMachines([local, machine({ state: 'offline' })])).toBe(true);
   });
 
   it('is false for an empty list', () => {
@@ -188,25 +171,19 @@ describe('isMachineSelectable', () => {
     expect(isMachineSelectable(local)).toBe(true);
   });
 
-  it('connected and reachable peers are selectable', () => {
+  it('a connected peer is selectable', () => {
     expect(isMachineSelectable(machine({ state: 'connected' }))).toBe(true);
-    expect(isMachineSelectable(machine({ state: 'reachable' }))).toBe(true);
   });
 
-  it('unreachable, unknown, no-endpoint and revoked peers are not', () => {
-    for (const state of [
-      'unreachable',
-      'unknown',
-      'no-endpoint',
-      'revoked',
-    ] as const) {
+  it('offline and revoked peers, either way round, are not', () => {
+    for (const state of ['offline', 'revoked', 'revoked-by-fleet'] as const) {
       expect(isMachineSelectable(machine({ state }))).toBe(false);
     }
   });
 });
 
 describe('machineChoice', () => {
-  const reachable = machine({ peerId: 'bbbbbbbbbbbbbbbb', state: 'reachable' });
+  const reachable = machine({ peerId: 'bbbbbbbbbbbbbbbb', state: 'connected' });
 
   it('defaults to the local machine, which a launch names as no machine at all', () => {
     const { value, remote } = machineChoice([local, reachable], null);
@@ -226,7 +203,7 @@ describe('machineChoice', () => {
     // this the launch goes out against a machine already known to be
     // unusable and fails a round trip later. Local is both what is
     // sent and what the control shows — they never disagree.
-    for (const state of ['unreachable', 'revoked', 'no-endpoint'] as const) {
+    for (const state of ['offline', 'revoked', 'revoked-by-fleet'] as const) {
       const gone = machine({ peerId: 'bbbbbbbbbbbbbbbb', state });
       expect(machineChoice([local, gone], 'bbbbbbbbbbbbbbbb')).toEqual({
         value: 'aaaaaaaaaaaaaaaa',
@@ -255,25 +232,10 @@ describe('machineSelectOptions', () => {
 
   it('a disabled option always carries its reason, never omits it', () => {
     const [opt] = machineSelectOptions([
-      machine({ state: 'unreachable', lastSeenAt: Date.now() - 60_000 }),
+      machine({ state: 'offline', lastSeenAt: Date.now() - 60_000 }),
     ]);
     expect(opt.disabled).toBe(true);
-    expect(opt.reason).toMatch(/^Unreachable — last seen/);
-  });
-
-  it('no-endpoint is disabled but its reason never reads as a fault', () => {
-    const [opt] = machineSelectOptions([
-      machine({ state: 'no-endpoint', endpoints: [] }),
-    ]);
-    expect(opt.disabled).toBe(true);
-    expect(opt.reason).toBe(
-      'Can reach us only — this machine cannot be dialled from here'
-    );
-  });
-
-  it('unknown is disabled with "Checking…", never "Unreachable"', () => {
-    const [opt] = machineSelectOptions([machine({ state: 'unknown' })]);
-    expect(opt.reason).toBe('Checking…');
+    expect(opt.reason).toMatch(/^Offline — last seen/);
   });
 });
 

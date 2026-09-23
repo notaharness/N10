@@ -1,4 +1,11 @@
-import type { MachineView } from '../contract-machines.js';
+import type {
+  BeamStatus,
+  CeremonyOutcome,
+  CeremonyProgress,
+  CeremonyRequest,
+  MachineGrant,
+  MachineView,
+} from '../contract-machines.js';
 import { withMailOverlay } from './inbound-mail.js';
 
 /**
@@ -9,14 +16,26 @@ import { withMailOverlay } from './inbound-mail.js';
  */
 export interface MachinesPort {
   listMachines(): Promise<MachineView[]>;
-  renameMachine(peerId: string, label: string): Promise<MachineView>;
-  revokeMachine(peerId: string): Promise<MachineView>;
+  setAlias(peerId: string, alias: string | null): Promise<void>;
+  setGrant(peerId: string, grant: MachineGrant): Promise<void>;
+  runCeremony(
+    request: CeremonyRequest,
+    onProgress: (progress: CeremonyProgress) => void
+  ): Promise<CeremonyOutcome>;
+  cancelCeremony(): Promise<void>;
 }
 
 let port: MachinesPort | null = null;
 let changed: ((machines: MachineView[]) => void) | null = null;
+let statusChanged: ((status: BeamStatus) => void) | null = null;
+let ceremonyProgress: ((progress: CeremonyProgress) => void) | null = null;
 /** The last list any source (a call or a push) produced. */
 let lastKnown: MachineView[] = [];
+let beamStatus: BeamStatus = {
+  state: 'connecting',
+  detail: null,
+  enrolled: false,
+};
 
 /** Installed by main.ts once the transport is up. */
 export function setMachinesPort(next: MachinesPort | null): void {
@@ -31,6 +50,18 @@ export function setMachinesNotifier(
   changed = fn;
 }
 
+export function setBeamStatusNotifier(
+  fn: ((status: BeamStatus) => void) | null
+): void {
+  statusChanged = fn;
+}
+
+export function setCeremonyProgressNotifier(
+  fn: ((progress: CeremonyProgress) => void) | null
+): void {
+  ceremonyProgress = fn;
+}
+
 /** Fed by the transport whenever it pushes a fresh list. Also the seam
  *  `refreshMailOverlay` calls when only inbound-mail state changed —
  *  `withMailOverlay` replaces its two fields wholesale, so re-running it
@@ -41,14 +72,24 @@ export function receiveMachinesUpdate(machines: MachineView[]): void {
 }
 
 /** Called after a delivery, a refusal or a dismiss — an inbound-mail
- *  change with no beam connection change behind it, so nothing else
- *  would otherwise trigger a fresh push. */
+ *  change with no beam change behind it, so nothing else would
+ *  otherwise trigger a fresh push. */
 export function refreshMailOverlay(): void {
   receiveMachinesUpdate(lastKnown);
 }
 
 export function getLastKnownMachines(): MachineView[] {
   return lastKnown;
+}
+
+/** Fed by the transport as its connection to the daemon changes. */
+export function receiveBeamStatus(status: BeamStatus): void {
+  beamStatus = status;
+  statusChanged?.(status);
+}
+
+export async function getBeamStatus(): Promise<BeamStatus> {
+  return beamStatus;
 }
 
 function requirePort(): MachinesPort {
@@ -67,13 +108,28 @@ export async function listMachines(): Promise<MachineView[]> {
 // synchronous throw out of what every caller treats as a Promise-
 // returning function — register-handlers.ts awaits these directly.
 
-export async function renameMachine(
+export async function setMachineAlias(
   peerId: string,
-  label: string
-): Promise<MachineView> {
-  return requirePort().renameMachine(peerId, label);
+  alias: string | null
+): Promise<void> {
+  return requirePort().setAlias(peerId, alias);
 }
 
-export async function revokeMachine(peerId: string): Promise<MachineView> {
-  return requirePort().revokeMachine(peerId);
+export async function setMachineGrant(
+  peerId: string,
+  grant: MachineGrant
+): Promise<void> {
+  return requirePort().setGrant(peerId, grant);
+}
+
+export async function runCeremony(
+  request: CeremonyRequest
+): Promise<CeremonyOutcome> {
+  return requirePort().runCeremony(request, (progress) =>
+    ceremonyProgress?.(progress)
+  );
+}
+
+export async function cancelCeremony(): Promise<void> {
+  return requirePort().cancelCeremony();
 }

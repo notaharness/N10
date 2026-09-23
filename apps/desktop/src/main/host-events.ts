@@ -28,7 +28,11 @@ import {
 } from '../host/services/discovery.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
 import { setBabysitNotifier } from '../host/services/babysit.js';
-import { setMachinesNotifier } from '../host/services/machines.js';
+import {
+  setBeamStatusNotifier,
+  setCeremonyProgressNotifier,
+  setMachinesNotifier,
+} from '../host/services/machines.js';
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -67,10 +71,17 @@ export function installHostEventBridge(): void {
   // status otherwise rides on the sidebar item.
   setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
 
-  // The machines list is pushed whole on every change, so the renderer
-  // writes it straight into the query cache with no round trip.
-  // Repo-independent, like the discovery/babysit bridges above.
+  // The machines list is pushed whole on every change the beam daemon
+  // reports, so the renderer writes it straight into the query cache
+  // with no round trip; the daemon's status and a running ceremony's
+  // progress likewise. Repo-independent, like the bridges above.
   setMachinesNotifier((machines) =>
     broadcast(MACHINES_EVENTS.changed, machines)
+  );
+  setBeamStatusNotifier((status) =>
+    broadcast(MACHINES_EVENTS.beamStatus, status)
+  );
+  setCeremonyProgressNotifier((progress) =>
+    broadcast(MACHINES_EVENTS.ceremony, progress)
   );
 }

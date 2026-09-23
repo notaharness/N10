@@ -27,6 +27,11 @@ Every test uses a private tmux socket inside its fixture HOME and kills only
 that fixture's sessions at teardown. It drops `N10_VITE_URL` to ensure tests
 use the built app.
 
+`src/setup/fake-beam.ts` answers beam's control socket in the fixture HOME with
+a scripted daemon: enrolment, peers and their events, alias, grant and
+ceremonies a test finishes with `finishCeremony`. It never dials or runs a
+passkey step.
+
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
 a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for
 a real diff. Seeded worktree branches must be slash-free because the fixture and

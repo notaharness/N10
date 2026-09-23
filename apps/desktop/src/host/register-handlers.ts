@@ -137,8 +137,13 @@ export function createHostApi(): N10HostApi {
     onBabysitChanged: () => () => undefined,
 
     listMachines: () => machines.listMachines(),
-    renameMachine: (peerId, label) => machines.renameMachine(peerId, label),
-    revokeMachine: (peerId) => machines.revokeMachine(peerId),
+    getBeamStatus: () => machines.getBeamStatus(),
+    onBeamStatusChanged: () => () => undefined,
+    setMachineAlias: (peerId, alias) => machines.setMachineAlias(peerId, alias),
+    setMachineGrant: (peerId, grant) => machines.setMachineGrant(peerId, grant),
+    runCeremony: (request) => machines.runCeremony(request),
+    cancelCeremony: () => machines.cancelCeremony(),
+    onCeremonyProgress: () => () => undefined,
     dismissInboundMail: (id) => inboundMail.dismissInboundMail(id),
     onMachinesChanged: () => () => undefined,
   };
@@ -268,8 +273,11 @@ export function registerHostHandlers(
     [IPC.startBabysit]: api.startBabysit as HostMethod,
     [IPC.stopBabysit]: api.stopBabysit as HostMethod,
     [IPC.listMachines]: api.listMachines as HostMethod,
-    [IPC.renameMachine]: api.renameMachine as HostMethod,
-    [IPC.revokeMachine]: api.revokeMachine as HostMethod,
+    [IPC.getBeamStatus]: api.getBeamStatus as HostMethod,
+    [IPC.setMachineAlias]: api.setMachineAlias as HostMethod,
+    [IPC.setMachineGrant]: api.setMachineGrant as HostMethod,
+    [IPC.runCeremony]: api.runCeremony as HostMethod,
+    [IPC.cancelCeremony]: api.cancelCeremony as HostMethod,
     [IPC.dismissInboundMail]: api.dismissInboundMail as HostMethod,
   };
 

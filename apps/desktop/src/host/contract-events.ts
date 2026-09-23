@@ -65,11 +65,16 @@ export const LAUNCH_EVENTS = {
 // ── Machines (beam peers) ─────────────────────────────────────────
 
 /**
- * The whole machines list, pushed on every change. The renderer writes
- * it straight into the query cache, with no round trip.
+ * The whole machines list, pushed on any change the beam daemon reports
+ * (a peer connects, disconnects, joins, is renamed, re-granted or
+ * revoked) and on any change to inbound mail. The renderer writes it
+ * straight into the query cache, as it does the daemon's status and a
+ * running ceremony's progress.
  */
 export const MACHINES_EVENTS = {
   changed: 'n10/machines/changed',
+  beamStatus: 'n10/machines/beam-status-changed',
+  ceremony: 'n10/machines/ceremony-progress',
 } as const;
 
 export type MachinesChangedEvent = MachineView[];

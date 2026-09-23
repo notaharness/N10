@@ -132,7 +132,7 @@ function noteLaunchStep(
   }
 }
 
-/** Reuse a live connection, or refuse a local launch a paired machine
+/** Reuse a live connection, or refuse a local launch a fleet member
  *  already owns — split out to keep `doLaunchAgent` under budget. */
 async function guardLaunch(
   req: SessionLaunchRequest,

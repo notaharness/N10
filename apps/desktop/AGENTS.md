@@ -17,6 +17,11 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are prepared in `main/tmux-session-worker.ts`, an Electron utility process:
   direct Node child-process spawning on Linux inherits Chromium descriptors
   into the persistent server. The main process only attaches local clients.
+- `main/beam/` is a client of the beam daemon's control socket (beam's
+  docs/06) and installs the three machine ports: `MachinesPort`,
+  `RemoteMachinePort` and `InboundMailPort`. Nothing above them knows beam.
+  Attach input stays within beam's four-frame window. The mail relay's
+  ack and defer rules are decisions.md D13/D14.
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo

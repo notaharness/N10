@@ -12,6 +12,7 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
 apps/desktop/                    — Electron GUI shell over @n10/app-core (n10-desktop)
   src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
   src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), N10_QA_STEPS hook
+  src/main/beam/                 — Client of the beam daemon's control socket: machines, remote exec/pty, ceremonies, mail relay
   src/preload/preload.ts         — Typed contextBridge → window.n10
   src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names (incl. MenuCommand, ContextMenuItem, DesktopPrefs)
   src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings, desktop-prefs…)

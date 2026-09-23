@@ -116,7 +116,14 @@ vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
 );
 vi.mock('./services/machines.js', () =>
-  recorder('machines', ['listMachines', 'renameMachine', 'revokeMachine'])
+  recorder('machines', [
+    'listMachines',
+    'getBeamStatus',
+    'setMachineAlias',
+    'setMachineGrant',
+    'runCeremony',
+    'cancelCeremony',
+  ])
 );
 vi.mock('./services/inbound-mail.js', () =>
   recorder('inboundMail', ['dismissInboundMail'])
@@ -225,8 +232,15 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['stopBabysit', [7], 'babysit.stopBabysit'],
 
   ['listMachines', [], 'machines.listMachines'],
-  ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox'], 'machines.renameMachine'],
-  ['revokeMachine', ['bbbbbbbbbbbbbbbb'], 'machines.revokeMachine'],
+  ['getBeamStatus', [], 'machines.getBeamStatus'],
+  [
+    'setMachineAlias',
+    ['bbbbbbbbbbbbbbbb', 'workbox'],
+    'machines.setMachineAlias',
+  ],
+  ['setMachineGrant', ['bbbbbbbbbbbbbbbb', 'msg'], 'machines.setMachineGrant'],
+  ['runCeremony', [{ op: 'join', label: 'box' }], 'machines.runCeremony'],
+  ['cancelCeremony', [], 'machines.cancelCeremony'],
   ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 
@@ -261,6 +275,8 @@ describe('host API wiring', () => {
       'onRemoteUpdated',
       'onDiscoveryChanged',
       'onMachinesChanged',
+      'onBeamStatusChanged',
+      'onCeremonyProgress',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

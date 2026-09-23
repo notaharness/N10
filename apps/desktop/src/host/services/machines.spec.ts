@@ -1,11 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { MachineView } from '../contract-machines.js';
+import type {
+  BeamStatus,
+  CeremonyProgress,
+  MachineView,
+} from '../contract-machines.js';
 import {
+  cancelCeremony,
+  getBeamStatus,
   getLastKnownMachines,
   listMachines,
+  receiveBeamStatus,
   receiveMachinesUpdate,
-  renameMachine,
-  revokeMachine,
+  runCeremony,
+  setBeamStatusNotifier,
+  setCeremonyProgressNotifier,
+  setMachineAlias,
+  setMachineGrant,
   setMachinesNotifier,
   setMachinesPort,
   type MachinesPort,
@@ -16,22 +26,25 @@ import {
  * fake port — no Electron, no real transport.
  */
 
+const PEER = 'b'.repeat(32);
+
 function localMachine(): MachineView {
   return {
-    peerId: 'aaaaaaaaaaaaaaaa',
+    peerId: 'a'.repeat(32),
     label: 'my-mac',
     isLocal: true,
     state: 'connected',
-    transport: null,
-    endpoints: [],
+    path: null,
     lastSeenAt: null,
-    queueDepth: 0,
-    pairedAt: null,
+    grant: 'all',
     revokedAt: null,
+    queued: 0,
     inboundWaiting: [],
     inboundRefused: [],
   };
 }
+
+const PROGRESS: CeremonyProgress = { kind: 'stage', stage: 'publishing' };
 
 function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
   const calls: [string, unknown[]][] = [];
@@ -46,41 +59,68 @@ function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
     listMachines: record('listMachines', () =>
       Promise.resolve([localMachine()])
     ),
-    renameMachine: record('renameMachine', (peerId: string, label: string) =>
-      Promise.resolve({ ...localMachine(), peerId, label })
-    ),
-    revokeMachine: record('revokeMachine', (peerId: string) =>
-      Promise.resolve({ ...localMachine(), peerId, state: 'revoked' as const })
-    ),
+    setAlias: record('setAlias', () => Promise.resolve()),
+    setGrant: record('setGrant', () => Promise.resolve()),
+    runCeremony: (request, onProgress) => {
+      calls.push(['runCeremony', [request]]);
+      onProgress(PROGRESS);
+      return Promise.resolve({
+        ok: true as const,
+        op: 'revoke' as const,
+        published: true,
+        acknowledgedBy: 1,
+      });
+    },
+    cancelCeremony: record('cancelCeremony', () => Promise.resolve()),
   };
 }
 
 beforeEach(() => {
   setMachinesPort(null);
   setMachinesNotifier(null);
+  setBeamStatusNotifier(null);
+  setCeremonyProgressNotifier(null);
 });
 
 describe('without a port installed', () => {
   it('every call rejects with a clear reason instead of hanging', async () => {
     await expect(listMachines()).rejects.toThrow(/not available/);
-    await expect(revokeMachine('b')).rejects.toThrow(/not available/);
+    await expect(setMachineGrant(PEER, 'none')).rejects.toThrow(
+      /not available/
+    );
   });
 });
 
 describe('with a port installed', () => {
-  it('forwards every call to the port, arguments untouched, and returns its answer', async () => {
+  it('forwards every call to the port, arguments untouched', async () => {
     const port = fakePort();
     setMachinesPort(port);
 
     await expect(listMachines()).resolves.toEqual([localMachine()]);
-    await renameMachine('bbbbbbbbbbbbbbbb', 'workbox-2');
-    await revokeMachine('bbbbbbbbbbbbbbbb');
+    await setMachineAlias(PEER, 'workbox');
+    await setMachineAlias(PEER, null);
+    await setMachineGrant(PEER, 'msg');
+    await runCeremony({ op: 'revoke', peerId: PEER });
+    await cancelCeremony();
 
     expect(port.calls).toEqual([
       ['listMachines', []],
-      ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox-2']],
-      ['revokeMachine', ['bbbbbbbbbbbbbbbb']],
+      ['setAlias', [PEER, 'workbox']],
+      ['setAlias', [PEER, null]],
+      ['setGrant', [PEER, 'msg']],
+      ['runCeremony', [{ op: 'revoke', peerId: PEER }]],
+      ['cancelCeremony', []],
     ]);
+  });
+
+  it('pushes a running ceremony’s progress and resolves with its outcome', async () => {
+    setMachinesPort(fakePort());
+    const seen: CeremonyProgress[] = [];
+    setCeremonyProgressNotifier((p) => seen.push(p));
+    await expect(
+      runCeremony({ op: 'revoke', peerId: PEER })
+    ).resolves.toMatchObject({ ok: true, op: 'revoke' });
+    expect(seen).toEqual([PROGRESS]);
   });
 });
 
@@ -98,9 +138,21 @@ describe('the push channel', () => {
   });
 
   it('listMachines() also refreshes the cache, for a caller that only reads', async () => {
-    const port = fakePort();
-    setMachinesPort(port);
+    setMachinesPort(fakePort());
     await listMachines();
     expect(getLastKnownMachines()).toEqual([localMachine()]);
+  });
+
+  it('pushes and answers the latest beam status', async () => {
+    const ready: BeamStatus = {
+      state: 'ready',
+      detail: null,
+      enrolled: true,
+    };
+    const seen: BeamStatus[] = [];
+    setBeamStatusNotifier((s) => seen.push(s));
+    receiveBeamStatus(ready);
+    expect(seen).toEqual([ready]);
+    await expect(getBeamStatus()).resolves.toEqual(ready);
   });
 });

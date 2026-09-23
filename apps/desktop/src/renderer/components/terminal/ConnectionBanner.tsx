@@ -21,7 +21,7 @@ export function ConnectionBanner({
   reconnecting,
 }: {
   state: 'reconnecting' | 'failed';
-  /** The paired machine's label, resolved by the caller — never a
+  /** The remote machine's label, resolved by the caller — never a
    *  peerId, which means nothing to the user. */
   machineLabel: string;
   onReconnect?: () => void;
