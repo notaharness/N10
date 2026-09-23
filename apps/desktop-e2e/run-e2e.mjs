@@ -13,6 +13,40 @@
  * Set N10_E2E_HEADED=1 to watch the run on your own display instead.
  */
 import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The suite drives the built app. `vite build` keeps a NODE_ENV it finds
+// in the environment, so a shell exporting `development` builds a
+// development React; the build target pins production, and this refuses
+// anything else before xvfb and Playwright start.
+const ASSETS = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'desktop',
+  'dist',
+  'renderer',
+  'assets'
+);
+const REBUILD =
+  'Run `npx nx build desktop` first; the build target sets NODE_ENV=production.';
+if (!existsSync(ASSETS)) {
+  console.error(`[desktop-e2e] No renderer bundle at ${ASSETS}. ${REBUILD}`);
+  process.exit(1);
+}
+for (const f of readdirSync(ASSETS).filter((f) => /^index-.*\.js$/.test(f))) {
+  if (
+    readFileSync(join(ASSETS, f), 'utf8').includes(
+      'Download the React DevTools'
+    )
+  ) {
+    console.error(
+      `[desktop-e2e] ${f} is a development React bundle. ${REBUILD}`
+    );
+    process.exit(1);
+  }
+}
 
 const passthrough = process.argv.slice(2);
 
