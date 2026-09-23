@@ -73,6 +73,29 @@
           "cwd": "apps/desktop-e2e"
         }
       },
+      "e2e:beam": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/test-output/beam/output",
+          "{projectRoot}/test-output/beam/report"
+        ],
+        "options": {
+          "command": "node run-beam-e2e.mjs",
+          "cwd": "apps/desktop-e2e",
+          "env": {
+            "N10_E2E_OUTPUT_BASE": "./test-output/beam"
+          }
+        }
+      },
       "perf": {
         "executor": "nx:run-commands",
         "cache": false,

@@ -1,14 +1,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Page } from '@playwright/test';
 import { test as base, expect } from './fixtures/desktop.js';
-import { tab } from './setup/app.js';
 import {
   FakeBeam,
   ceremonyUrl,
   type FakeBeamScenario,
 } from './setup/fake-beam.js';
-import { clickAppMenuItem } from './setup/menu.js';
+import { openMachines } from './setup/machines.js';
 
 /**
  * The machines panel over beam's control socket, with a scripted daemon
@@ -34,17 +32,6 @@ const test = base.extend<{
 });
 
 const WORKBOX = 'c0ffee00c0ffee00c0ffee00c0ffee00';
-
-async function openMachines(desktop: {
-  app: Parameters<typeof clickAppMenuItem>[0];
-  page: Page;
-}): Promise<void> {
-  await clickAppMenuItem(desktop.app, 'Settings…');
-  await expect(tab(desktop.page, /Settings/)).toBeVisible();
-  await desktop.page
-    .getByRole('button', { name: 'Machines', exact: true })
-    .click();
-}
 
 test.describe('Machines over beam', () => {
   test('starts beam when none is running, and stops it on quit', async ({

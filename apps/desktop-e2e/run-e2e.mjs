@@ -17,8 +17,9 @@ import { spawnSync } from 'node:child_process';
 const passthrough = process.argv.slice(2);
 
 // A plain run is the offline suite. The screenshot tests only mean
-// anything inside the pinned container (see run-visual.mjs), and the
-// integration tests talk to real GitHub — both would fail here for
+// anything inside the pinned container (see run-visual.mjs), the
+// integration tests talk to real GitHub, and the beam tests need a
+// beamtest build (see run-beam-e2e.mjs) — each would fail here for
 // reasons that say nothing about the code. A caller that selects tests
 // itself is left alone.
 const selectsTests = passthrough.some((a) => a.startsWith('--grep'));
@@ -26,7 +27,7 @@ const playwright = [
   'npx',
   'playwright',
   'test',
-  ...(selectsTests ? [] : ['--grep-invert', '@visual|@integration']),
+  ...(selectsTests ? [] : ['--grep-invert', '@visual|@integration|@beam']),
   ...passthrough,
 ];
 
