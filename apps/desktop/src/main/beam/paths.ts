@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
 /** Where beam keeps this machine's identity and its control socket. */
@@ -34,4 +35,12 @@ export function beamEnv(
     BEAM_CONFIG_DIR: paths.configDir,
     ...(env.BEAM_SOCKET ? { BEAM_SOCKET: paths.socket } : {}),
   };
+}
+
+/** The beam binary for this platform, from the `@notaharness/beam`
+ *  package the desktop depends on. Throws where it has none. */
+export function beamBinary(): string {
+  const require = createRequire(import.meta.url);
+  const beam = require('@notaharness/beam') as { binaryPath(): string };
+  return beam.binaryPath();
 }

@@ -26,6 +26,9 @@ Every rule below has its reasoning in `docs/decisions.md`.
   under `main/beam-daemon-worker.ts`, a utility process, for the same
   descriptor reason as the tmux worker. Keep `@notaharness/beam` external
   in both `build-main` and `scripts/dev.mjs`. Ownership rules: D15.
+- `main/n10-shim.ts` is an entry point in both `build-main` and
+  `scripts/dev.mjs`. The desktop package declares no `n10` bin, and the shim
+  gets no `beam` subcommand (D16).
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo

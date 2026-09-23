@@ -37,8 +37,6 @@ npm install -g @notaharness/n10-desktop  # Desktop app
 npm install -g @notaharness/n10          # Terminal UI and CLI utilities
 ```
 
-The desktop app uses the CLI for agent-drafted reviews: agents save their comments with `n10 util add-comment`, so `n10` must be on your `PATH`. If you don't use that feature, you can install the desktop app on its own.
-
 Run `n10-desktop` or `n10` from your project directory. On the first run, n10 walks you through connecting your version control provider.
 
 ## Features

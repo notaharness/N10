@@ -53,7 +53,8 @@
           },
           "additionalEntryPoints": [
             "apps/desktop/src/main/tmux-session-worker.ts",
-            "apps/desktop/src/main/beam-daemon-worker.ts"
+            "apps/desktop/src/main/beam-daemon-worker.ts",
+            "apps/desktop/src/main/n10-shim.ts"
           ]
         },
         "configurations": {

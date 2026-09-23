@@ -32,9 +32,9 @@ under `src/screens/main` (sidebar, diff, branch picker) and
   rendering, PTY forwarding and real terminal interaction are manual or
   `apps/cli-e2e`. Specs are type-checked through `tsconfig.spec.json`; a new
   project must reference its spec tsconfig as well as the app one.
-- `n10 util add-comment` (`src/commands/util.ts`) is how a review agent
-  records drafts. It ships only in this package, so a desktop-only install
-  cannot run agent reviews; both READMEs say so. Draft posting is one comment
+- `n10 util add-comment` (`@n10/review-comments` `util-command.ts`) is how a
+  review agent records drafts; desktop sessions run it through the desktop's
+  own shim (decisions.md D16). Draft posting is one comment
   per `postReviewComments` call so a mid-batch failure cannot reset live
   comments to draft.
 - Comment images (`![alt](url)`) render inline through kitty graphics only

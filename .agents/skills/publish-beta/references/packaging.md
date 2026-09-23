@@ -24,11 +24,11 @@ in the desktop README; verify supported platforms when upgrading dependencies.
 
 ## Review-agent command
 
-Review agents record drafts with `n10 util add-comment`, supplied by the CLI.
-Desktop users need both packages for that workflow. A dependency's executable is
-not exposed on the user's global PATH, and declaring the same executable in two
-global packages causes install conflicts. Keep this requirement in both READMEs
-until command delivery changes.
+Review agents record drafts with `n10 util add-comment`. The CLI supplies it
+globally. The desktop declares no `n10` bin (two global packages declaring one
+conflict); its sessions reach `n10 util` through a shim in the desktop bundle
+(decisions.md D16), so neither README lists the other package as a
+prerequisite.
 
 ## Tags
 

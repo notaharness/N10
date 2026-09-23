@@ -27,7 +27,7 @@ import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installMachineResolver } from '../host/services/remote-machines.js';
-import { appBeamClient } from './beam/app-beam.js';
+import { appBeamClient, installSessionBin } from './beam/app-beam.js';
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -290,6 +290,8 @@ installMachineResolver();
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Only the instance that holds the lock rewrites what its sessions run.
+  installSessionBin(app.getPath('userData'));
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows()[0];
     if (win) {

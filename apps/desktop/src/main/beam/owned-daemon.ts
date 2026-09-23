@@ -1,6 +1,6 @@
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { utilityProcess } from 'electron';
+import { beamBinary } from './paths.js';
 
 /** How a daemon ended: its status and the last line it wrote to
  *  stderr, or `error` when it never ran. */
@@ -19,14 +19,6 @@ export interface OwnedDaemon {
    *  takes beam's graceful shutdown. */
   stop(): void;
   kill(): void;
-}
-
-/** The beam binary for this platform, from the `@notaharness/beam`
- *  package the desktop depends on. */
-function beamBinary(): string {
-  const require = createRequire(import.meta.url);
-  const beam = require('@notaharness/beam') as { binaryPath(): string };
-  return beam.binaryPath();
 }
 
 /**

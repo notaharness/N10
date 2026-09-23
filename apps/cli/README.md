@@ -36,10 +36,6 @@ The first run walks you through connecting your version control provider.
 - **Pull request review.** Whole-file diffs with comment threads inline, replied to and resolved without leaving the terminal. Images in comments render inline on kitty and Ghostty.
 - **Agent-written reviews.** An agent reviewing a pull request records its draft comments with `n10 util add-comment`, and you walk through them to edit, discard or post.
 
-## For desktop users
-
-`n10 util add-comment` is how a review agent records its comments, and it ships only in this package. [`@notaharness/n10-desktop`](https://www.npmjs.com/package/@notaharness/n10-desktop) needs `n10` on your `PATH` for agent-written reviews; everything else there works without it.
-
 ## Links
 
 - [Source](https://github.com/notaharness/n10)
