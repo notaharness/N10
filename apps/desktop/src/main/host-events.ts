@@ -67,10 +67,9 @@ export function installHostEventBridge(): void {
   // status otherwise rides on the sidebar item.
   setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
 
-  // The machines list is pushed whole on every change — a connect,
-  // disconnect, probe result, pairing, rename, revoke or forget — so the
-  // renderer writes it straight into the query cache with no round
-  // trip. Repo-independent, like the discovery/babysit bridges above.
+  // The machines list is pushed whole on every change, so the renderer
+  // writes it straight into the query cache with no round trip.
+  // Repo-independent, like the discovery/babysit bridges above.
   setMachinesNotifier((machines) =>
     broadcast(MACHINES_EVENTS.changed, machines)
   );

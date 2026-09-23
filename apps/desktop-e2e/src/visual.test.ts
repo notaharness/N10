@@ -9,7 +9,6 @@ import {
 } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
-import { shot } from './setup/visual.js';
 
 /**
  * Screenshot comparisons, kept to the surfaces where they earn their
@@ -25,8 +24,6 @@ import { shot } from './setup/visual.js';
  *     land mid-transition.
  *   • The terminal is never in shot — it renders agent output and a
  *     blinking cursor.
- *   • A small pixel-ratio tolerance absorbs font antialiasing between
- *     machines while still failing on anything that moved.
  *
  * These run only inside the pinned container (`nx e2e:visual
  * desktop-e2e`), which is the whole point: fonts differ between this
@@ -36,11 +33,14 @@ import { shot } from './setup/visual.js';
  *
  * A diff here means "look at it", not "something is broken": regenerate
  * with `node run-visual.mjs --update-snapshots` once you have.
- *
- * `shot` (zero tolerance, since everything renders in one pinned
- * container) lives in `setup/visual.ts` so `machines-visual.test.ts`
- * reuses the exact same options.
  */
+
+/** Zero tolerance: everything renders in one pinned container. */
+const shot = {
+  animations: 'disabled',
+  caret: 'hide',
+  maxDiffPixels: 0,
+} as const;
 
 test.describe('Visual @visual', () => {
   test.use({ repo: { name: 'n10-visual' } });

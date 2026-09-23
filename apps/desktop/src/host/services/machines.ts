@@ -31,9 +31,10 @@ export function setMachinesNotifier(
   changed = fn;
 }
 
-/** Fed by the transport whenever it pushes a fresh list. Also the seam `refreshMailOverlay` calls when only inbound-mail
- *  state changed — `withMailOverlay` replaces its two fields wholesale,
- *  so re-running it on an already-merged list (`lastKnown`) is safe. */
+/** Fed by the transport whenever it pushes a fresh list. Also the seam
+ *  `refreshMailOverlay` calls when only inbound-mail state changed —
+ *  `withMailOverlay` replaces its two fields wholesale, so re-running it
+ *  on an already-merged list (`lastKnown`) is safe. */
 export function receiveMachinesUpdate(machines: MachineView[]): void {
   lastKnown = withMailOverlay(machines);
   changed?.(lastKnown);

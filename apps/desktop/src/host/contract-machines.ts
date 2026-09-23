@@ -1,14 +1,12 @@
 /**
- * Machines: other n10 hosts paired over beam, plus this one's own
- * identity and accept-connections state. Split from `contract.ts`
- * because it is one subject, and because that file is a catalogue
- * already.
+ * Machines: this one and the others it reaches over beam. Split from
+ * `contract.ts` because it is one subject, and because that file is a
+ * catalogue already.
  *
- * D6 (docs/decisions.md) fixes five reachability states, `revoked`
- * shown separately. Two of them are not faults: `no-endpoint` is a
- * normal, permanent condition for a laptop that only dials out;
- * `unknown` means "paired, not yet probed" and must never render as
- * `unreachable`.
+ * Five reachability states, `revoked` shown separately. Two of them are
+ * not faults: `no-endpoint` is a normal, permanent condition for a
+ * laptop that only dials out; `unknown` means "not yet probed" and must
+ * never render as `unreachable`.
  */
 
 export type MachineState =
@@ -45,7 +43,7 @@ export interface MachineView {
   /** Where this machine may be dialed. Empty means `no-endpoint`. */
   endpoints: string[];
   lastSeenAt: number | null;
-  /** Messages waiting for this peer — D7: part of its displayed state. */
+  /** Messages waiting for this peer, part of its displayed state. */
   queueDepth: number;
   /** null for the local row, which was never "paired". */
   pairedAt: number | null;

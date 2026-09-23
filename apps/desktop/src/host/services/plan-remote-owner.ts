@@ -36,7 +36,7 @@ export async function findRemoteBranchOwner(
   try {
     machines = await listMachines();
   } catch {
-    return null; // No beam node running — nothing to check against.
+    return null; // Machines unavailable — nothing to check against.
   }
   for (const machine of machines) {
     if (machine.isLocal || machine.state !== 'connected') continue;

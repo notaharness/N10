@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu.js';
 import { Tip } from '../ui/tooltip.js';
-import { ConfirmMachineActionDialog } from './ConfirmMachineActionDialog.js';
+import { RevokeMachineDialog } from './RevokeMachineDialog.js';
 import { InboundMailPanel } from './InboundMailPanel.js';
 
 const DOT_CLASS: Record<MachineTone, string> = {
@@ -174,7 +174,7 @@ export function MachineRow({ machine }: { machine: MachineView }) {
         </DropdownMenu>
 
         {confirmRevoke && (
-          <ConfirmMachineActionDialog
+          <RevokeMachineDialog
             machine={machine}
             onClose={() => setConfirmRevoke(false)}
           />

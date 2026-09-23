@@ -22,7 +22,8 @@ import type {
  * machine cannot `statSync` another machine's filesystem) it simply
  * failed on the far side instead, loudly but for an untested, unnamed
  * reason. The remote user's home is the explicit meaning: beam expands
- * a leading `~/` on the accepting machine, so this is not a new contract, only naming what "no
+ * a leading `~/` on the accepting machine, so this is not a new
+ * contract, only naming what "no
  * directory chosen" means instead of leaving it blank (finding 5).
  */
 export const REMOTE_HOME_CWD = '~/';

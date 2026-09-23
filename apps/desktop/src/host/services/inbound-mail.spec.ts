@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { MachineView } from '../contract-machines.js';
 import {
   dismissInboundMail,
-  setInboundMailChangeNotifier,
   setInboundMailPort,
   withMailOverlay,
 } from './inbound-mail.js';
@@ -26,7 +25,6 @@ function machine(peerId: string): MachineView {
 
 beforeEach(() => {
   setInboundMailPort(null);
-  setInboundMailChangeNotifier(null);
 });
 
 describe('withMailOverlay', () => {

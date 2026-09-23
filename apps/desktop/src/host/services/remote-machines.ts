@@ -112,7 +112,7 @@ export function machineFor(peerId: string): RemoteMachine {
 }
 
 /** Installs `machineFor` as `@n10/core`'s machine resolver. Call once
- *  at startup, after `setRemoteMachinePort`. A machine that cannot be
+ *  at startup; the port is read per call. A machine that cannot be
  *  constructed (no port installed, or an unknown peerId) resolves to
  *  undefined, never a fallback machine -- `requireMachine` in
  *  `@n10/core` then throws loudly, which is what stops a remote-machine

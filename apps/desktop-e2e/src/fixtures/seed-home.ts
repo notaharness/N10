@@ -90,8 +90,8 @@ export interface HomeSeed {
 /**
  * Write the isolated `$HOME` a test runs against: global config, the
  * per-project config (cwd-hashed, as the config store keys it), any
- * agent-authored drafts, desktop prefs and — when a scenario is given — the fake `gh`. Returns the
- * environment additions the app needs.
+ * agent-authored drafts, desktop prefs and — when a scenario is given —
+ * the fake `gh`. Returns the environment additions the app needs.
  */
 export function seedHome(
   homeDir: string,

@@ -22,9 +22,17 @@ export function MachineRows() {
     );
   }
 
+  if (!local) {
+    return (
+      <p className="px-4 py-4 text-sm text-muted-foreground">
+        No machines available.
+      </p>
+    );
+  }
+
   return (
     <div className="divide-y divide-border">
-      {local && <MachineRow machine={local} />}
+      <MachineRow machine={local} />
       {peers.map((m) => (
         <MachineRow key={m.peerId} machine={m} />
       ))}

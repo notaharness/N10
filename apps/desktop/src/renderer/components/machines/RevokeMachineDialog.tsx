@@ -12,9 +12,9 @@ import {
   DialogTitle,
 } from '../ui/dialog.js';
 
-/** Revoking is destructive and permanent, so it is confirmed first.
- *  It leaves the other machine's own sessions running. */
-export function ConfirmMachineActionDialog({
+/** Revoking is destructive, so it is confirmed first. It leaves the
+ *  other machine's own sessions running. */
+export function RevokeMachineDialog({
   machine,
   onClose,
 }: {

@@ -7,7 +7,7 @@ import type {
 import { relativeTime } from '../utils.js';
 
 /**
- * D6's five reachability states, plus `revoked`, mapped to what a row
+ * The five reachability states, plus `revoked`, mapped to what a row
  * actually shows — a pure function so the mapping is testable without
  * mounting anything, and so every state is exercised even though most
  * are rare in a screenshot. See the UX spec's table in
@@ -146,7 +146,7 @@ export function oldestInboundMailAge(machine: MachineView): string | null {
   return relativeTime(Math.min(...all.map((i) => i.receivedAt)));
 }
 
-// ── Phase 7: launching on a machine (ux-machines.md §5, §6) ────────
+// ── Launching on a machine (ux-machines.md §5, §6) ────────
 
 /** D8's gate for every surface this phase adds: with only the local
  *  machine registered, none of it renders. */
@@ -205,7 +205,7 @@ export interface MachineOption {
 
 /** The machine `Select`'s rows: local first (as `useMachines` already
  *  orders them), every peer listed — reachable ones enabled, everything
- *  else disabled with its D6 state spelled out beside it. */
+ *  else disabled with its state spelled out beside it. */
 export function machineSelectOptions(
   machines: readonly MachineView[]
 ): MachineOption[] {

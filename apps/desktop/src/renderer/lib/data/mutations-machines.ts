@@ -3,8 +3,7 @@ import { keys } from './query-keys.js';
 
 /**
  * The renderer's machine writes — rename, revoke, dismissing a refused
- * report. Split from `mutations.ts` (a catalogue
- * already), mirroring `mutations-terminals.ts`. Machines are pushed on
+ * report. Split from `mutations.ts` (a catalogue already), mirroring `mutations-terminals.ts`. Machines are pushed on
  * every change (`onMachinesChanged`), so most of these invalidate
  * `keys.machines` only as a fallback for a push that raced the mutation
  * response — the push channel is the primary path.

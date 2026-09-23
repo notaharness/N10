@@ -43,10 +43,9 @@ export function listOurSessions(): TaggedSession[] {
   }
 }
 
-/** Bounds one `listOurSessionsWith` round trip: `RemoteOps.execOn`
- *  resolves only on stream close and a beam dial has no timeout of its
- *  own, so a half-open connection would otherwise hang the call
- *  forever — and with it `openSession`'s `opening` map, which never
+/** Bounds one `listOurSessionsWith` round trip: a remote exec
+ *  resolves only when its stream closes, so a half-open connection
+ *  would otherwise hang the call forever — and with it `openSession`'s `opening` map, which never
  *  clears an in-flight entry, wedging that key behind "Another launch
  *  is in progress" permanently (second-pass finding 1). */
 export const LIST_SESSIONS_TIMEOUT_MS = 10_000;
