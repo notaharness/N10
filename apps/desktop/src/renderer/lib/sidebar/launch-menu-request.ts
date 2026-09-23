@@ -14,28 +14,44 @@ import { useSyncExternalStore } from 'react';
 // One request at a time. Filing a new one replaces the old: the
 // selection it accompanies is the user's newest intent, and a stale
 // request must not pop a menu on a later, unrelated tab.
+//
+// The pane copies a request into its own state in the render that
+// can honor it, so nothing in its lifecycle can lose it afterwards
+// (StrictMode replays mount effects; clearing on unmount closed the
+// menu before it opened). A request nobody honors expires instead of
+// popping a menu on a later visit — the same TTL rule as core's
+// session-menu-request.ts.
 
-let pending: string | null = null;
+export const LAUNCH_MENU_REQUEST_TTL_MS = 10_000;
+
+let pending: { branch: string; filedAt: number } | null = null;
 const subscribers = new Set<() => void>();
 
 function notify(): void {
   for (const fn of [...subscribers]) fn();
 }
 
-export function requestLaunchMenu(branch: string): void {
-  pending = branch;
+export function requestLaunchMenu(
+  branch: string,
+  now: number = Date.now()
+): void {
+  pending = { branch, filedAt: now };
   notify();
 }
 
 /** Drop the request for `branch`; a request for another branch stays. */
 export function clearLaunchMenuRequest(branch: string): void {
-  if (pending !== branch) return;
+  if (pending?.branch !== branch) return;
   pending = null;
   notify();
 }
 
-export function pendingLaunchMenu(): string | null {
-  return pending;
+/** The branch a fresh request is pending for, if any. */
+export function pendingLaunchMenu(now: number = Date.now()): string | null {
+  if (!pending) return null;
+  return now - pending.filedAt <= LAUNCH_MENU_REQUEST_TTL_MS
+    ? pending.branch
+    : null;
 }
 
 export function subscribeLaunchMenu(cb: () => void): () => void {
@@ -45,22 +61,12 @@ export function subscribeLaunchMenu(cb: () => void): () => void {
   };
 }
 
-/** True while a menu is requested for `branch`. */
+/** True while a fresh request is pending for `branch`. */
 export function useLaunchMenuRequested(branch: string): boolean {
-  return useSyncExternalStore(subscribeLaunchMenu, () => pending === branch);
-}
-
-/**
- * Whether a tab shows its session menu: opened from the tab itself, or
- * requested from outside — honored once the item exists including a running agent that can be opened or explicitly replaced.
- */
-export function launchMenuOpen(s: {
-  own: boolean;
-  requested: boolean;
-  hasItem: boolean;
-  running: boolean;
-}): boolean {
-  return s.own || (s.requested && s.hasItem);
+  return useSyncExternalStore(
+    subscribeLaunchMenu,
+    () => pendingLaunchMenu() === branch
+  );
 }
 
 export function __resetLaunchMenuRequestForTests(): void {

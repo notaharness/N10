@@ -35,12 +35,14 @@ function PaneBody({
   item,
   items,
   active,
+  menuActive,
   onPin,
 }: {
   tab: Tab;
   item: SidebarItem | undefined;
   items: SidebarItem[];
   active: boolean;
+  menuActive: boolean;
   onPin: () => void;
 }) {
   if (tab.kind === 'settings') return <SettingsView />;
@@ -52,6 +54,7 @@ function PaneBody({
       items={items}
       itemKey={tab.itemKey}
       active={active}
+      menuActive={menuActive}
       onPin={onPin}
     />
   );
@@ -225,6 +228,7 @@ export function EditorArea({
                   item={itemFor(tab)}
                   items={items}
                   active={active}
+                  menuActive={tab.id === tabs.activeId}
                   onPin={() => tabs.pin(tab.id)}
                 />
               </ErrorBoundary>

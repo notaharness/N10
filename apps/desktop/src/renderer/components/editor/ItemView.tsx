@@ -18,7 +18,6 @@ import {
 } from '../../lib/sidebar/sidebar-model.js';
 import {
   clearLaunchMenuRequest,
-  launchMenuOpen,
   useLaunchMenuRequested,
 } from '../../lib/sidebar/launch-menu-request.js';
 import {
@@ -125,12 +124,19 @@ function useBaseBranch(cwd: string): string {
  * Whether the session menu is showing. Two things open it: the tab's
  * own Launch button, and a request from outside the tab — the sidebar
  * (Enter, double-click, "Launch agent…") or the palette after a fresh
- * checkout. A request is honored once the item exists; a tab the user has left must not pop the
- * menu later, so inactive tabs drop the request.
+ * checkout. A request is honored once the item exists, and copied into
+ * the pane's own state then (see launch-menu-request.ts for why); a
+ * tab the user has left must not pop the menu later, so inactive tabs
+ * drop the request.
+ *
+ * `active` is the strip's own answer, not the deferred one the pane
+ * body renders by: a request arrives in the same update that brings
+ * the tab forward, and against the deferred value the pane would still
+ * read as behind and drop it.
  */
 function useLaunchMenu(branch: string, active: boolean, state?: ItemState) {
   const [own, setOwn] = useState(false);
-  const running = state?.running ?? false;
+  const hasItem = state !== undefined;
   const requested = useLaunchMenuRequested(branch);
 
   // The dialog portals to <body>, so an inactive-but-mounted
@@ -141,24 +147,18 @@ function useLaunchMenu(branch: string, active: boolean, state?: ItemState) {
     setPrevActive(active);
     if (!active) setOwn(false);
   }
+  // Honoring a request makes the menu the pane's own, in the same
+  // render the request is seen; the request itself is cleared after.
+  if (requested && active && hasItem && !own) setOwn(true);
   useEffect(() => {
-    if (requested && !active) clearLaunchMenuRequest(branch);
-  }, [requested, active, branch]);
-  // A tab closed before its item arrived (a checkout still in flight)
-  // must not leave its request behind for a later visit to the branch.
-  useEffect(() => () => clearLaunchMenuRequest(branch), [branch]);
+    if (requested && (!active || own)) clearLaunchMenuRequest(branch);
+  }, [requested, active, own, branch]);
 
-  const open = launchMenuOpen({
-    own,
-    requested,
-    hasItem: state !== undefined,
-    running,
-  });
   const close = () => {
     setOwn(false);
     clearLaunchMenuRequest(branch);
   };
-  return { open, show: () => setOwn(true), close };
+  return { open: own, show: () => setOwn(true), close };
 }
 
 function Preparing({ itemKey }: { itemKey: string }) {
@@ -209,19 +209,23 @@ export function ItemView({
   items,
   itemKey,
   active,
+  menuActive,
   onPin,
 }: {
   item: SidebarItem | undefined;
   items: SidebarItem[];
   itemKey: string;
   active: boolean;
+  /** Whether the strip has this tab in front, before the pane switch
+   *  (deferred) catches up — what a session menu request goes by. */
+  menuActive: boolean;
   onPin: () => void;
 }) {
   const { repo } = useRepo();
   const paneRef = useRef<HTMLDivElement>(null);
   const { branch, state } = useItemState(repo.cwd, item, items);
   const baseBranch = useBaseBranch(repo.cwd);
-  const menu = useLaunchMenu(branch, active, state);
+  const menu = useLaunchMenu(branch, menuActive, state);
 
   // Measured off the pane the terminal will actually occupy, not off
   // the tab: the rail beside it is resizable, so no fraction of the tab
