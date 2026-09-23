@@ -21,7 +21,8 @@ Every rule below has its reasoning in `docs/decisions.md`.
   docs/06) and installs the three machine ports: `MachinesPort`,
   `RemoteMachinePort` and `InboundMailPort`. Nothing above them knows beam.
   Attach input stays within beam's four-frame window. The mail relay's
-  ack and defer rules are decisions.md D13/D14.
+  ack and defer rules are decisions.md D13/D14; it delivers into a
+  session only for a sender granted `all` (D17).
 - Start the beam daemon only through `spawnOwnedDaemon`, which runs it
   under `main/beam-daemon-worker.ts`, a utility process, for the same
   descriptor reason as the tmux worker. Keep `@notaharness/beam` external

@@ -1,6 +1,7 @@
-import type { LocalDeliveryTarget } from '@n10/core';
+import type { ClaudePost, LocalDeliveryTarget } from '@n10/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MailRelay, type Envelope } from './mail-relay.js';
+import type { Envelope } from './mail-envelope.js';
+import { MailRelay } from './mail-relay.js';
 import {
   FakeDaemon,
   FakeOpError,
@@ -18,10 +19,20 @@ let daemon: FakeDaemon;
 /** Envelopes the fake offers on every msg.subscribe until acked. */
 let inbound: Envelope[];
 let settled: Request[];
+/** The `peers` pages the fake answers, the sender granted `all`. */
+let peerPages: { peerId: string; grant: string }[][];
 beforeEach(async () => {
   daemon = await FakeDaemon.start();
   inbound = [];
   settled = [];
+  peerPages = [[{ peerId: PEER, grant: 'all' }]];
+  daemon.on('peers', (req) => {
+    const at = Number(req.cursor ?? 0);
+    return {
+      peers: peerPages[at],
+      ...(at + 1 < peerPages.length ? { next: String(at + 1) } : {}),
+    };
+  });
   daemon.on('msg.subscribe', (_req, conn) => {
     setTimeout(() => {
       for (const e of inbound) conn.emit('mail', e);
@@ -47,6 +58,7 @@ function relay(opts: {
   deliver?: (key: string, message: string) => boolean;
   retryMs?: number;
   onChange?: () => void;
+  postToClaude?: (sessionId: string, text: string) => Promise<ClaudePost>;
 }): MailRelay {
   return new MailRelay({
     socketPath: daemon.socketPath,
@@ -56,6 +68,7 @@ function relay(opts: {
     retryMs: opts.retryMs ?? 60_000,
     now: () => 1000,
     onChange: opts.onChange,
+    postToClaude: opts.postToClaude,
   });
 }
 
@@ -256,6 +269,107 @@ describe('MailRelay', () => {
     const r = relay({});
     await expect(r.start(() => undefined)).rejects.toThrow(/not-enrolled/);
     await until(() => daemon.controls[0].socket.destroyed);
+  });
+
+  it('posts a claude target to that session’s inbox and acks it', async () => {
+    const id = '3f2b9c1e-7a4d-4e8b-9c0f-1a2b3c4d5e6f';
+    inbound = [envelope('e1', `target: claude:${id}\n\nreport`)];
+    const posted: [string, string][] = [];
+    const r = relay({
+      resolve: () => ({ kind: 'claude', sessionId: id }),
+      postToClaude: async (sessionId, text) => {
+        posted.push([sessionId, text]);
+        return 'delivered';
+      },
+    });
+    await r.start(() => undefined);
+    await until(() => settled.length === 1);
+    expect(posted).toEqual([[id, 'report']]);
+    expect(settled[0]).toMatchObject({ op: 'msg.ack', envelopeId: 'e1' });
+    r.stop();
+  });
+
+  it('holds a claude target whose session is not live, and retries it', async () => {
+    const id = '3f2b9c1e-7a4d-4e8b-9c0f-1a2b3c4d5e6f';
+    inbound = [envelope('e1', `target: claude:${id}\n\nreport`)];
+    const answers: ClaudePost[] = ['not-live', 'delivered'];
+    const r = relay({
+      resolve: () => ({ kind: 'claude', sessionId: id }),
+      postToClaude: async () => answers.shift() ?? 'delivered',
+      retryMs: 5,
+    });
+    await r.start(() => undefined);
+    await until(() => settled.length === 2);
+    expect(settled[0]).toMatchObject({
+      op: 'msg.defer',
+      reason: `waiting for claude:${id} to connect`,
+    });
+    expect(settled[1]).toMatchObject({ op: 'msg.ack', envelopeId: 'e1' });
+    r.stop();
+  });
+
+  it('refuses a claude target no registry names', async () => {
+    const id = '3f2b9c1e-7a4d-4e8b-9c0f-1a2b3c4d5e6f';
+    inbound = [envelope('e1', `target: claude:${id}\n\nreport`)];
+    const r = relay({
+      resolve: () => ({ kind: 'claude', sessionId: id }),
+      postToClaude: async () => 'unregistered',
+    });
+    await r.start(() => undefined);
+    await until(() => settled.length === 1);
+    expect(settled[0]).toMatchObject({
+      op: 'msg.defer',
+      reason: 'no Claude session by that id is registered here',
+    });
+    expect(r.snapshotFor(PEER).inboundRefused).toHaveLength(1);
+    r.stop();
+  });
+
+  it('types nothing for a sender granted only mail', async () => {
+    peerPages = [[{ peerId: PEER, grant: 'msg' }]];
+    inbound = [envelope('e1', 'target: tmux:agent\n\nhi')];
+    let typed = 0;
+    const r = relay({ deliver: () => (typed++, true) });
+    await r.start(() => undefined);
+    await until(() => settled.length === 1);
+    expect(settled[0]).toMatchObject({
+      op: 'msg.defer',
+      reason:
+        'this machine grants the sender "msg", which does not deliver into a session; "all" does',
+    });
+    expect(typed).toBe(0);
+    expect(r.snapshotFor(PEER).inboundRefused).toHaveLength(1);
+    r.stop();
+  });
+
+  it('posts nothing to a live Claude session for a sender granted only mail', async () => {
+    peerPages = [[{ peerId: PEER, grant: 'msg' }]];
+    const id = '3f2b9c1e-7a4d-4e8b-9c0f-1a2b3c4d5e6f';
+    inbound = [envelope('e1', `target: claude:${id}\n\nreport`)];
+    let posted = 0;
+    const r = relay({
+      resolve: () => ({ kind: 'claude', sessionId: id }),
+      postToClaude: async () => (posted++, 'delivered'),
+    });
+    await r.start(() => undefined);
+    await until(() => settled.length === 1);
+    expect(settled[0]).toMatchObject({ op: 'msg.defer' });
+    expect(String(settled[0].reason)).toMatch(/grants the sender "msg"/);
+    expect(posted).toBe(0);
+    r.stop();
+  });
+
+  it('reads every page of peers for the sender’s grant', async () => {
+    peerPages = [
+      [{ peerId: 'c'.repeat(32), grant: 'msg' }],
+      [{ peerId: PEER, grant: 'all' }],
+    ];
+    inbound = [envelope('e1', 'target: tmux:agent\n\nhi')];
+    const r = relay({});
+    await r.start(() => undefined);
+    await until(() => settled.length === 1);
+    expect(settled[0]).toMatchObject({ op: 'msg.ack', envelopeId: 'e1' });
+    r.stop();
   });
 
   it('refuses a message over the size cap rather than typing part of it', async () => {

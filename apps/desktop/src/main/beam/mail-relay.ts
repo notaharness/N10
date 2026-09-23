@@ -1,27 +1,30 @@
 /**
  * The desktop's mailbox relay (decisions.md D13/D14): a `msg.subscribe`
  * on its own control connection, each envelope resolved against this
- * machine's session registry and typed into that pane, then settled at
- * once — `msg.ack` after a delivery or a dismissal, `msg.defer` with the
- * reason otherwise. A fresh subscription is offered the deferred again.
+ * machine's sessions and delivered (typed into an agent's pane, or
+ * posted to a Claude session's inbox), then settled at once — `msg.ack`
+ * after a delivery or a dismissal, `msg.defer` with the reason otherwise.
+ * A fresh subscription is offered the deferred again.
  */
 import {
   deliverToRunningSession,
   parseRelayPayload,
+  postToClaudeSession,
+  type ClaudePost,
   resolveLocalRelayTarget,
   type LocalDeliveryTarget,
 } from '@n10/core';
 import type { InboundMailItem } from '../../host/contract-machines.js';
 import type { InboundMailPort } from '../../host/services/inbound-mail.js';
 import { ControlConnection } from './control.js';
-
-/** beam docs/05's envelope, as a `mail` event carries it. */
-export interface Envelope {
-  id: string;
-  from: string;
-  payload: string;
-  encoding: 'utf8' | 'base64';
-}
+import {
+  MAX_RELAY_MESSAGE_BYTES,
+  payloadText,
+  sanitizeRelayMessage,
+  senderGrant,
+  truncateReason,
+  type Envelope,
+} from './mail-envelope.js';
 
 export interface MailRelayOptions {
   socketPath: string;
@@ -29,6 +32,10 @@ export interface MailRelayOptions {
   resolveTarget?: (target: string) => LocalDeliveryTarget;
   /** Overridable for tests; defaults to the real injection primitive. */
   deliver?: (key: string, message: string) => boolean;
+  /** Overridable for tests; defaults to core's Claude inbox post. A
+   *  registered session not live is waited for, like a pane not
+   *  connected yet; an id nothing registers is refused. */
+  postToClaude?: (sessionId: string, text: string) => Promise<ClaudePost>;
   retryMs?: number;
   now?: () => number;
   log?: (message: string) => void;
@@ -39,42 +46,6 @@ export interface MailRelayOptions {
 /** Orchestra's reports travel on this topic (report.sh, relay.sh). */
 const TOPIC = 'orchestra';
 const DEFAULT_RETRY_MS = 10_000;
-/** beam docs/06: a defer's reason is at most 1 KiB. */
-const MAX_REASON_BYTES = 1000;
-
-/** Generous enough for the agent reports the relay exists to carry,
- *  small enough that a single envelope cannot paste a novel into a REPL. */
-const MAX_RELAY_MESSAGE_BYTES = 32 * 1024;
-
-/** Strips what a terminal would act on rather than display: the C0
- *  controls other than tab and newline (ESC and everything it can
- *  drive, BEL, backspace), DEL and the C1 range. A carriage return
- *  becomes a newline — `deliverToRunningSession` submits with a
- *  trailing CR of its own, so an embedded one is a submit in the
- *  middle of somebody else's message. */
-function sanitizeRelayMessage(message: string): string {
-  return (
-    message
-      .replace(/\r\n?/g, '\n')
-      // eslint-disable-next-line no-control-regex -- matching control characters is the point
-      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '')
-  );
-}
-
-/** base64 payloads are unpadded base64url (beam docs/05). */
-function payloadText(envelope: Envelope): string {
-  return envelope.encoding === 'base64'
-    ? Buffer.from(envelope.payload, 'base64url').toString('utf8')
-    : envelope.payload;
-}
-
-function truncateReason(reason: string): string {
-  const bytes = Buffer.from(reason, 'utf8');
-  return bytes.length <= MAX_REASON_BYTES
-    ? reason
-    : bytes.subarray(0, MAX_REASON_BYTES).toString('utf8');
-}
-
 type Verdict =
   | { kind: 'delivered' }
   | { kind: 'waiting'; target: string }
@@ -87,6 +58,10 @@ interface HeldItem extends InboundMailItem {
 export class MailRelay implements InboundMailPort {
   private readonly resolveTarget: (target: string) => LocalDeliveryTarget;
   private readonly deliver: (key: string, message: string) => boolean;
+  private readonly postToClaude: (
+    sessionId: string,
+    text: string
+  ) => Promise<ClaudePost>;
   private readonly now: () => number;
   private readonly onChange: () => void;
   private readonly retryMs: number;
@@ -108,6 +83,7 @@ export class MailRelay implements InboundMailPort {
   constructor(private readonly options: MailRelayOptions) {
     this.resolveTarget = options.resolveTarget ?? resolveLocalRelayTarget;
     this.deliver = options.deliver ?? deliverToRunningSession;
+    this.postToClaude = options.postToClaude ?? postToClaudeSession;
     this.now = options.now ?? Date.now;
     this.onChange = options.onChange ?? (() => undefined);
     this.retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
@@ -192,7 +168,8 @@ export class MailRelay implements InboundMailPort {
     envelope: Envelope
   ): Promise<void> {
     if (conn !== this.conn) return;
-    const verdict = this.verdictFor(envelope);
+    const verdict = await this.verdictFor(conn, envelope);
+    if (conn !== this.conn) return; // stopped or resubscribed meanwhile
     this.record(envelope, verdict);
     await this.answer(conn, envelope, verdict);
   }
@@ -225,7 +202,10 @@ export class MailRelay implements InboundMailPort {
   /** A refusal stands until a person dismisses it: answered again from
    *  what was recorded, never resolved again (D14: a freed session name
    *  goes to the next session opened). */
-  private verdictFor(envelope: Envelope): Verdict {
+  private async verdictFor(
+    conn: ControlConnection,
+    envelope: Envelope
+  ): Promise<Verdict> {
     const { id } = envelope;
     if (this.delivered.has(id) || this.dismissed.has(id)) {
       return { kind: 'delivered' };
@@ -239,7 +219,7 @@ export class MailRelay implements InboundMailPort {
       };
     }
     try {
-      return this.handle(envelope);
+      return await this.handle(conn, envelope);
     } catch (err) {
       return {
         kind: 'refused',
@@ -249,7 +229,10 @@ export class MailRelay implements InboundMailPort {
     }
   }
 
-  private handle(envelope: Envelope): Verdict {
+  private async handle(
+    conn: ControlConnection,
+    envelope: Envelope
+  ): Promise<Verdict> {
     const parsed = parseRelayPayload(payloadText(envelope), 'utf8');
     if (!parsed) {
       return {
@@ -267,6 +250,19 @@ export class MailRelay implements InboundMailPort {
         reason: `the message is larger than the ${MAX_RELAY_MESSAGE_BYTES} bytes this machine accepts`,
       };
     }
+    // Typing into a session is `all`'s privilege; `msg` is the mailbox
+    // alone (D14).
+    const grant = await senderGrant(conn, envelope.from);
+    if (grant === undefined) return { kind: 'waiting', target: parsed.target };
+    if (grant !== 'all') {
+      return {
+        kind: 'refused',
+        target: parsed.target,
+        reason: grant
+          ? `this machine grants the sender "${grant}", which does not deliver into a session; "all" does`
+          : 'the sender is not a member of this fleet here',
+      };
+    }
     // Resolved afresh on every offer of a waiting envelope (D14).
     const resolved = this.resolveTarget(parsed.target);
     if (resolved.kind === 'refused') {
@@ -276,11 +272,28 @@ export class MailRelay implements InboundMailPort {
         reason: resolved.reason,
       };
     }
-    if (this.deliver(resolved.key, sanitizeRelayMessage(parsed.message))) {
-      this.delivered.add(envelope.id);
+    const message = sanitizeRelayMessage(parsed.message);
+    const outcome =
+      resolved.kind === 'claude'
+        ? await this.postToClaude(resolved.sessionId, message)
+        : this.deliver(resolved.key, message)
+        ? 'delivered'
+        : 'not-live';
+    return this.verdictOf(envelope.id, parsed.target, outcome);
+  }
+
+  private verdictOf(id: string, target: string, outcome: ClaudePost): Verdict {
+    if (outcome === 'delivered') {
+      this.delivered.add(id);
       return { kind: 'delivered' };
     }
-    return { kind: 'waiting', target: parsed.target };
+    return outcome === 'not-live'
+      ? { kind: 'waiting', target }
+      : {
+          kind: 'refused',
+          target,
+          reason: 'no Claude session by that id is registered here',
+        };
   }
 
   private record(envelope: Envelope, verdict: Verdict): void {
