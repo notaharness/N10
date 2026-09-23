@@ -149,16 +149,9 @@ const api: N10HostApi = {
   },
 
   listMachines: () => ipcRenderer.invoke(IPC.listMachines),
-  getAcceptingStatus: () => ipcRenderer.invoke(IPC.getAcceptingStatus),
-  setAccepting: (enabled) => ipcRenderer.invoke(IPC.setAccepting, enabled),
-  regeneratePairingUrl: () => ipcRenderer.invoke(IPC.regeneratePairingUrl),
-  previewPairing: (url) => ipcRenderer.invoke(IPC.previewPairing, url),
-  confirmPairing: (url, force) =>
-    ipcRenderer.invoke(IPC.confirmPairing, url, force),
   renameMachine: (peerId, label) =>
     ipcRenderer.invoke(IPC.renameMachine, peerId, label),
   revokeMachine: (peerId) => ipcRenderer.invoke(IPC.revokeMachine, peerId),
-  forgetMachine: (peerId) => ipcRenderer.invoke(IPC.forgetMachine, peerId),
   dismissInboundMail: (id) => ipcRenderer.invoke(IPC.dismissInboundMail, id),
   onMachinesChanged: (cb) => {
     const listener = (_e: unknown, payload: MachinesChangedEvent) =>

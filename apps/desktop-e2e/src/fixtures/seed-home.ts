@@ -15,8 +15,6 @@ import {
   startSurvivingTerminal,
   type TerminalSeed,
 } from '../setup/terminals.js';
-import { seedPeerTable, type PeerSeeds } from '../setup/beam-peer.js';
-import { seedIdentity } from '../setup/beam-identity.js';
 
 /**
  * Everything a test wants already on disk (or already running) when the
@@ -87,24 +85,12 @@ export interface HomeSeed {
    * `githubToken` is set, which is the real thing.
    */
   fakeGitHub?: FakeGitHub;
-  /**
-   * Paired-machine rows already in the peer table when the app starts —
-   * written straight to the isolated HOME's `$BEAM_DIR/peers.json`
-   * before launch, exactly as a real pairing would have left it (see
-   * `setup/beam-peer.ts`). Covers the D6 states a live second machine
-   * cannot honestly produce in this fixture (`unreachable`,
-   * `no-endpoint`, `revoked`); pairing with a real `startPeerHost()` for
-   * `reachable` happens live, inside the test. Keyed by peerId — see
-   * `PeerSeeds`.
-   */
-  beamPeers?: PeerSeeds;
 }
 
 /**
  * Write the isolated `$HOME` a test runs against: global config, the
  * per-project config (cwd-hashed, as the config store keys it), any
- * agent-authored drafts, desktop prefs, this machine's beam identity,
- * and — when a scenario is given — the fake `gh`. Returns the
+ * agent-authored drafts, desktop prefs and — when a scenario is given — the fake `gh`. Returns the
  * environment additions the app needs.
  */
 export function seedHome(
@@ -127,12 +113,6 @@ export function seedHome(
 
   seedProjectConfig(n10, repoPath, opts);
   seedDrafts(n10, opts.drafts);
-
-  // Unconditional: this machine's label and fingerprint are rendered in
-  // every machines surface, and an identity the app generates for itself
-  // makes both random per run — see `setup/beam-identity.ts`.
-  seedIdentity(homeDir);
-  if (opts.beamPeers) seedPeerTable(homeDir, opts.beamPeers);
 
   if (opts.desktopPrefs) {
     writeFileSync(

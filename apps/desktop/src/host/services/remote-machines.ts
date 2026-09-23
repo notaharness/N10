@@ -1,5 +1,5 @@
 /**
- * The main-process face of the beam node's remote-machine capability:
+ * The main-process face of the remote-machine capability:
  * running a command on another machine (a `MachineExecutor`) and
  * attaching an interactive `pty` stream to it (a `RemotePtyOpener`).
  * Both are what `@n10/core`'s `setMachineResolver` (installed in
@@ -7,7 +7,7 @@
  *
  * No `electron` import here, so this stays testable with a fake port —
  * same pattern as `services/machines.ts`. The real port is the beam
- * node bridge (`main/beam-node-bridge.ts`), installed once at startup.
+ * transport, installed once at startup.
  */
 import { setMachineResolver } from '@n10/core';
 import type {
@@ -48,9 +48,8 @@ export interface RemoteMachinePort {
 
 let port: RemoteMachinePort | null = null;
 
-/** Installed by `beam-node-bridge.ts` once the utility-process bridge
- *  is up. `null` (the default, and what tests reset to) means "no
- *  remote machines" — `machineFor` throws rather than silently
+/** Installed once the beam transport is up. `null` (the default, and
+ *  what tests reset to) means "no remote machines" — `machineFor` throws rather than silently
  *  returning something that looks like a working machine. */
 export function setRemoteMachinePort(next: RemoteMachinePort | null): void {
   port = next;

@@ -65,33 +65,3 @@ export async function pinMaskedBox(
   }, width);
   return locator;
 }
-
-/**
- * Put the settings pane at the offset its *final* content decides.
- *
- * `SettingsView.jump` scrolls the chosen section into view with
- * `behavior: 'smooth'`, and the browser clamps that scroll to the page
- * height it has when the animation is scheduled. `MachineRows` renders
- * a skeleton until `useMachines` resolves and then swaps in a taller
- * section, so a run whose machine list arrives after the nav click
- * scrolls a page about 110px shorter and comes to rest that much
- * higher — not a few pixels of the panel, but every row of the pane in
- * a different place. That is what made a settings screenshot pass on
- * one machine and fail on a slower one.
- *
- * Re-running the same scroll with no animation, after the section's
- * content is on screen, lands every run on the same offset: both this
- * scroll and any still-running smooth one now resolve against the same
- * layout. Call it once the assertions that prove the section is fully
- * rendered have passed, immediately before the screenshot.
- */
-export async function settleSettingsScroll(
-  page: Page,
-  section: string
-): Promise<void> {
-  const target = page.locator(`#settings-${section}`);
-  await expect(target).toBeVisible();
-  await target.evaluate((el) => {
-    el.scrollIntoView({ block: 'start', behavior: 'instant' });
-  });
-}

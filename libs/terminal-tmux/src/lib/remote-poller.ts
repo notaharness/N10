@@ -52,8 +52,7 @@ export class RemoteSessionPoller {
   ) {}
 
   /** Subscribe one backend's session name. The timer runs only while
-   *  there is something to poll — same discipline as the reachability
-   *  prober (beam-node-probe.ts) — and the first poll fires immediately
+   *  there is something to poll, and the first poll fires immediately
    *  so a backend attached mid-interval is not left waiting a full tick. */
   subscribe(name: string, subscriber: PollSubscriber): () => void {
     let set = this.subscribers.get(name);

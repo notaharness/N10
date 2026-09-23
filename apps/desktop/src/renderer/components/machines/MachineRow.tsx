@@ -51,9 +51,7 @@ function copyFingerprint(peerId: string): void {
 export function MachineRow({ machine }: { machine: MachineView }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(machine.label);
-  const [confirmAction, setConfirmAction] = useState<
-    'revoke' | 'remove' | null
-  >(null);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const rename = useRenameMachine();
 
   const presentation = machinePresentation(machine);
@@ -167,27 +165,18 @@ export function MachineRow({ machine }: { machine: MachineView }) {
             {!machine.isLocal && machine.state !== 'revoked' && (
               <DropdownMenuItem
                 variant="destructive"
-                onSelect={() => setConfirmAction('revoke')}
+                onSelect={() => setConfirmRevoke(true)}
               >
                 Revoke
-              </DropdownMenuItem>
-            )}
-            {!machine.isLocal && (
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setConfirmAction('remove')}
-              >
-                Remove
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {confirmAction && (
+        {confirmRevoke && (
           <ConfirmMachineActionDialog
-            action={confirmAction}
             machine={machine}
-            onClose={() => setConfirmAction(null)}
+            onClose={() => setConfirmRevoke(false)}
           />
         )}
       </div>

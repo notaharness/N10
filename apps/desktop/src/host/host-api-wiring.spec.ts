@@ -116,17 +116,7 @@ vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
 );
 vi.mock('./services/machines.js', () =>
-  recorder('machines', [
-    'listMachines',
-    'getAcceptingStatus',
-    'setAccepting',
-    'regeneratePairingUrl',
-    'previewPairing',
-    'confirmPairing',
-    'renameMachine',
-    'revokeMachine',
-    'forgetMachine',
-  ])
+  recorder('machines', ['listMachines', 'renameMachine', 'revokeMachine'])
 );
 vi.mock('./services/inbound-mail.js', () =>
   recorder('inboundMail', ['dismissInboundMail'])
@@ -235,18 +225,8 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['stopBabysit', [7], 'babysit.stopBabysit'],
 
   ['listMachines', [], 'machines.listMachines'],
-  ['getAcceptingStatus', [], 'machines.getAcceptingStatus'],
-  ['setAccepting', [true], 'machines.setAccepting'],
-  ['regeneratePairingUrl', [], 'machines.regeneratePairingUrl'],
-  ['previewPairing', ['http://host/pair#token=x'], 'machines.previewPairing'],
-  [
-    'confirmPairing',
-    ['http://host/pair#token=x', true],
-    'machines.confirmPairing',
-  ],
   ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox'], 'machines.renameMachine'],
   ['revokeMachine', ['bbbbbbbbbbbbbbbb'], 'machines.revokeMachine'],
-  ['forgetMachine', ['bbbbbbbbbbbbbbbb'], 'machines.forgetMachine'],
   ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 

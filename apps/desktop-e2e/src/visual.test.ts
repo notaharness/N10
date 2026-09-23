@@ -9,7 +9,7 @@ import {
 } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
-import { settleSettingsScroll, shot } from './setup/visual.js';
+import { shot } from './setup/visual.js';
 
 /**
  * Screenshot comparisons, kept to the surfaces where they earn their
@@ -68,21 +68,6 @@ test.describe('Visual @visual', () => {
       page.getByRole('button', { name: 'Appearance' })
     ).toBeVisible();
     await expect(page).toHaveScreenshot('settings.png', shot);
-  });
-
-  test('settings machines panel', async ({ desktop }) => {
-    const { page } = desktop;
-    await clickAppMenuItem(desktop.app, 'Settings…');
-    await expect(tab(page, /Settings/)).toBeVisible();
-    await page.getByRole('button', { name: 'Machines' }).click();
-    await expect(
-      page.getByRole('button', { name: 'Add a machine' })
-    ).toBeVisible();
-    await expect(
-      page.getByRole('switch', { name: 'Accept connections' })
-    ).toBeVisible();
-    await settleSettingsScroll(page, 'machines');
-    await expect(page).toHaveScreenshot('settings-machines-empty.png', shot);
   });
 
   test('remove worktree dialog', async ({ desktop }) => {

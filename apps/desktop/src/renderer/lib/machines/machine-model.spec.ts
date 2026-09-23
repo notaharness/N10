@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { MachineView } from '../../../host/contract-machines.js';
 import {
   fingerprintGroups,
-  formatCountdown,
   hasPeerMachines,
   inboundMailRows,
   inboundRefusedBadgeLabel,
@@ -113,22 +112,6 @@ describe('fingerprintGroups', () => {
   it('handles a length not divisible by four without dropping characters', () => {
     expect(fingerprintGroups('abc')).toBe('abc');
     expect(fingerprintGroups('abcde')).toBe('abcd e');
-  });
-});
-
-describe('formatCountdown', () => {
-  it('formats minutes and seconds, zero-padded', () => {
-    expect(formatCountdown(9 * 60_000 + 41_000)).toBe('9:41');
-    expect(formatCountdown(5_000)).toBe('0:05');
-  });
-
-  it('never goes negative — floors at 0:00', () => {
-    expect(formatCountdown(-5_000)).toBe('0:00');
-    expect(formatCountdown(0)).toBe('0:00');
-  });
-
-  it('rounds up to the next full second so it never briefly reads 0:00 while still counting', () => {
-    expect(formatCountdown(500)).toBe('0:01');
   });
 });
 

@@ -16,7 +16,7 @@ import type { RemoteSessionPoller } from './remote-poller.js';
 
 /** One remote pty stream's client contract — deliberately narrow, the
  *  same seam shape as `TmuxSessionPreparer`: the desktop supplies a
- *  concrete implementation over `beam-node-bridge.ts`; this package
+ *  concrete implementation over its beam transport; this package
  *  never imports beam or Electron. */
 export interface RemotePtyHandle {
   onData(cb: (data: string) => void): void;

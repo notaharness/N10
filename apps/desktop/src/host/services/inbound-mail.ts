@@ -1,12 +1,11 @@
 import type { InboundMailItem, MachineView } from '../contract-machines.js';
 
 /**
- * The main-process face of `MailRelay` (`main/beam-mail-relay.ts`): a
- * per-machine snapshot of waiting/refused mail, overlaid onto every
+ * The main-process face of the inbound mail relay: a per-machine snapshot of waiting/refused mail, overlaid onto every
  * `MachineView` `services/machines.ts` produces, plus the one write —
  * dismissing a refused item. No Electron import, mirroring
  * `services/remote-machines.ts`'s port pattern, so this is testable
- * with a fake port and no utility process.
+ * with a fake port.
  */
 export interface InboundMailPort {
   snapshotFor(peerId: string): {

@@ -194,8 +194,8 @@ async function resolveOpenTarget(
  * from) must carry this machine's `process.env` only for a *local*
  * launch, where it is genuinely the environment the spawned process
  * inherits. A remote launch has no business shipping this machine's
- * PATH, HOME or anything else it happens to have set — `docs/beam.md`'s
- * "the accepting machine expands `~/`" principle for cwd applies here
+ * PATH, HOME or anything else it happens to have set — beam's "the
+ * accepting machine expands `~/`" principle for cwd applies here
  * too: environment describing this machine must not travel, and the
  * remote server's own environment (which it retains from how it was
  * started) supplies the rest. `additions` — the launch's own

@@ -86,16 +86,6 @@ export function fingerprintGroups(peerId: string): string {
   return groups ? groups.join(' ') : peerId;
 }
 
-/** `9:41`-style countdown to a pairing token's expiry. Never negative —
- *  the caller shows the "generate a new code" affordance at `0:00`,
- *  not a clock running backwards. */
-export function formatCountdown(msRemaining: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
-
 /** `2 waiting`, or null when there is nothing to say — a zero queue
  *  shows no badge at all (the UX spec's copy rule: never call `queued`
  *  a failure, and never announce there being none of it either). */
@@ -103,7 +93,7 @@ export function queueBadgeLabel(depth: number): string | null {
   return depth > 0 ? `${depth} waiting` : null;
 }
 
-// ── Phase 8: inbound mail relay (docs/beam.md, decisions.md D13/D14) ──
+// ── Inbound mail relay (decisions.md D13/D14) ──
 //
 // A report from this machine that is waiting for its target session to
 // connect, or one that was refused, oldest-first. Never a failure for

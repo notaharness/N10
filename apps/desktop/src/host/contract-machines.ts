@@ -21,7 +21,7 @@ export type MachineState =
 
 /** One report from this machine, either waiting for its target session
  *  to connect or refused delivery — the inbound half of the mailbox
- *  relay (docs/beam.md, decisions.md D13/D14). `reason` is set only for
+ *  relay (decisions.md D13/D14). `reason` is set only for
  *  a refused item; a waiting one carries none because waiting is not a
  *  failure. */
 export interface InboundMailItem {
@@ -59,50 +59,3 @@ export interface MachineView {
    *  first; each can be dismissed. */
   inboundRefused: InboundMailItem[];
 }
-
-/** This machine's accept-connections state — the "B" side of pairing. */
-export interface AcceptingStatus {
-  accepting: boolean;
-  /** `host:port` while accepting; null otherwise. */
-  boundAddress: string | null;
-  /** Carries the current single-use pairing token; null while not
-   *  accepting, or once it has expired (regenerate to get a new one). */
-  pairingUrl: string | null;
-  pairingExpiresAt: number | null;
-  /** Live connections right now — shown when turning accepting off, so
-   *  the user knows whether that drops anyone. */
-  connectedCount: number;
-}
-
-/** What `previewPairing`/`confirmPairing` found before anything is
- *  stored — the fingerprint the two-step confirm exists to show. */
-export interface PairPreview {
-  label: string;
-  peerId: string;
-  endpoint: string;
-}
-
-export type PairFailureReason =
-  | 'invalid-url'
-  | 'unreachable'
-  | 'invalid-token'
-  | 'key-mismatch'
-  | 'protocol-mismatch';
-
-export interface PairFailure {
-  reason: PairFailureReason;
-  /** Actionable, specific text — never "something went wrong". */
-  message: string;
-  /** Present only for `key-mismatch`: the id and the label we already
-   *  hold it under, for the "reinstall or impostor" explanation. */
-  peerId?: string;
-  existingLabel?: string;
-}
-
-export type PairPreviewResult =
-  | { ok: true; preview: PairPreview }
-  | { ok: false; failure: PairFailure };
-
-export type PairConfirmResult =
-  | { ok: true; machine: MachineView }
-  | { ok: false; failure: PairFailure };
