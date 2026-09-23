@@ -172,7 +172,7 @@ export class MailRelay implements InboundMailPort {
   dismiss(id: string): void {
     if (!this.refused.delete(id)) return;
     this.dismissed.add(id);
-    this.onChange();
+    this.notify();
     this.resubscribe();
   }
 
@@ -193,8 +193,8 @@ export class MailRelay implements InboundMailPort {
   ): Promise<void> {
     if (conn !== this.conn) return;
     const verdict = this.verdictFor(envelope);
-    await this.answer(conn, envelope, verdict);
     this.record(envelope, verdict);
+    await this.answer(conn, envelope, verdict);
   }
 
   private async answer(
@@ -300,7 +300,17 @@ export class MailRelay implements InboundMailPort {
         reason: verdict.reason,
       });
     }
-    this.onChange();
+    this.notify();
+  }
+
+  /** A throw from the listener is reported, never raised into the
+   *  envelope's settling, which must still answer beam. */
+  private notify(): void {
+    try {
+      this.onChange();
+    } catch (err) {
+      this.options.log?.(`[beam] mail change: ${String(err)}`);
+    }
   }
 
   private scheduleRetry(): void {

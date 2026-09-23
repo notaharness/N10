@@ -125,7 +125,7 @@ describe('MailRelay', () => {
       deliver: () => (typed++, true),
     });
     await r.start(() => undefined);
-    // Listed once deferred: only a listed refusal can be dismissed.
+    // Only a listed refusal can be dismissed.
     await until(() => r.snapshotFor(PEER).inboundRefused.length === 1);
     r.dismiss('e1');
     await until(() => settled.length === 2);
