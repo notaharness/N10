@@ -140,3 +140,4 @@ export {
 
 export { stopSession } from './lib/session/stop-session.js';
 export { removeWorktreeSession } from './lib/session/remove-worktree.js';
+export { setLocalSessionEnv } from './lib/session/local-session-env.js';

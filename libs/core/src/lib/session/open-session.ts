@@ -32,6 +32,7 @@ import {
 import { readWorktreeHead } from '../discovery/worktree-origin.js';
 import type { LaunchSpec } from '../agents/registry.js';
 import type { SessionRequest } from './session-request.js';
+import { localSessionEnv } from './local-session-env.js';
 
 export interface OpenSessionParams {
   session: SessionRequest;
@@ -209,14 +210,18 @@ function sessionSpec(
   fresh: boolean,
   machineId: string
 ): SessionSpec {
-  const additions = {
+  const local =
+    machineId === LOCAL_MACHINE
+      ? localSessionEnv(launch.env?.['PATH'] ?? process.env['PATH'])
+      : null;
+  const additions: Record<string, string | undefined> = {
+    ...local?.vars,
     ...launch.env,
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
-  const env: Record<string, string | undefined> =
-    machineId === LOCAL_MACHINE
-      ? { ...process.env, ...additions }
-      : { ...additions };
+  const env: Record<string, string | undefined> = local
+    ? { ...process.env, ...additions, PATH: local.path }
+    : { ...additions };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return {
