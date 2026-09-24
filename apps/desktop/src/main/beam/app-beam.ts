@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { app } from 'electron';
 import { join } from 'node:path';
 import { setLocalSessionEnv } from '@n10/core';
 import { writeSessionBin } from '../session-bin.js';
@@ -43,5 +44,26 @@ export function installSessionBin(userData: string): void {
   setLocalSessionEnv({
     pathDirs,
     env: beamEnv(beamPaths(process.env, homedir()), process.env),
+  });
+}
+
+/**
+ * Runs `release` once on quit, then holds the quit until the daemon the
+ * app started has stopped (D15), and exits. `app.exit`, because an
+ * `app.quit` from here can land inside this quit and be ignored.
+ */
+export function quitAfterBeam(beam: BeamClient, release: () => void): void {
+  let quitting = false;
+  app.on('will-quit', (event) => {
+    event.preventDefault();
+    if (quitting) return;
+    quitting = true;
+    // A relaunch while this one waits on beam must win, not quit into it.
+    app.releaseSingleInstanceLock();
+    release();
+    beam
+      .shutdown()
+      .catch((err: unknown) => console.error('[desktop] beam shutdown', err))
+      .finally(() => app.exit());
   });
 }

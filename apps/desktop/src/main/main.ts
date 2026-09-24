@@ -27,7 +27,11 @@ import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installMachineResolver } from '../host/services/remote-machines.js';
-import { appBeamClient, installSessionBin } from './beam/app-beam.js';
+import {
+  appBeamClient,
+  installSessionBin,
+  quitAfterBeam,
+} from './beam/app-beam.js';
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -352,15 +356,8 @@ app.on('window-all-closed', () => {
 });
 
 // Release local terminal clients; the tmux-hosted processes survive app exit.
-// Then wait for the beam daemon the app started to stop (D15). `app.exit`,
-// because an `app.quit` from here can land inside this quit and be ignored.
-let quitting = false;
-app.on('will-quit', (event) => {
-  event.preventDefault();
-  if (quitting) return;
-  quitting = true;
-  // A relaunch while this one waits on beam must win, not quit into it.
-  app.releaseSingleInstanceLock();
+// Then wait for the beam daemon the app started to stop.
+quitAfterBeam(beam, () => {
   stopRemoteSyncLoop();
   stopDiscovery();
   stopAllBabysitters();
@@ -369,8 +366,4 @@ app.on('will-quit', (event) => {
   } catch {
     // nothing was running
   }
-  beam
-    .shutdown()
-    .catch((err: unknown) => console.error('[desktop] beam shutdown', err))
-    .finally(() => app.exit());
 });
