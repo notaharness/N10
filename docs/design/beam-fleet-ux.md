@@ -155,6 +155,18 @@ Accept only known `o=c|a|r`, unique required parameters `o,s,k,c,l,f` (and `n` f
 - Invalid/incomplete fragment: “This link is incomplete or invalid. Return to n10 Desktop or your terminal and start again for a fresh link.” No passkey button or slot write.
 - Safety copy on every valid request: “Continue only if you started this request just now. Compare the action, machine name and machine fingerprint with n10 Desktop or your terminal.” Labels: **Action**, **Machine**, **Machine fingerprint**; never call `f` a fleet fingerprint.
 
+### Literal Action values shared by Desktop and the page
+
+Both surfaces render the label **Action** with exactly the value below, derived from the current ceremony URL fragment. These are action-summary values, separate from the headings, step indicators and button labels above and below.
+
+| Fragment `o` | Exact Action value               | Fields and meaning                                                                                                                                                                                                        |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `c`          | `Create fleet passkey for “{n}”` | `n` is the fleet display name used for passkey registration, defaulting to `beam` when omitted. This creates the credential; it does not yet authorize the machine or finish fleet creation.                              |
+| `a`          | `Add “{l}” to fleet`             | `l` is the machine whose membership statement is being signed. Use this same value for init step 2, a new join and a re-join. The fragment cannot distinguish those flows and carries no fleet name or fleet fingerprint. |
+| `r`          | `Remove “{l}” from fleet`        | `l` is the machine being revoked, not necessarily the machine that initiated the request. This signs permanent revocation of that machine identity. The fragment carries no fleet name or fleet fingerprint.              |
+
+Decode `n` and `l` with `URLSearchParams`, validate them, then interpolate as text. Preserve the literal quotation marks shown above. For every kind, the adjacent **Machine** value is `{l}` and **Machine fingerprint** is `{f}` grouped in fours. `f` identifies that machine's node key, never the fleet. During `c`, these identify the machine that will be authorized in the next step; they do not imply registration already authorized it. `c` (the fragment field, as distinct from the value `o=c`) is the encoded challenge; `s` is the slot and `k` the answer-encryption public key. None is an additional human-readable action or fleet identifier. Unknown or invalid `o` has no Action value or approval button; use the invalid-link state.
+
 ### Capability detection before any passkey prompt
 
 1. Check secure context, `PublicKeyCredential`, and `navigator.credentials.create/get`. Missing: “This browser cannot run a WebAuthn passkey request. Open this link in an up-to-date browser.” No automatic prompt.
