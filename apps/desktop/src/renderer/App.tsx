@@ -1,7 +1,8 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { N10HostApi, RepoInfo } from '../host/contract.js';
+import { FleetScreen } from './components/fleet/FleetScreen.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
 import {
@@ -10,6 +11,7 @@ import {
   resetRepoScopedCache,
 } from './lib/data/query-keys.js';
 import { useRepoGate } from './lib/data/queries.js';
+import { FleetProvider, useFleet } from './lib/fleet/fleet-context.js';
 import { errorMessage } from './lib/utils.js';
 import { RepoOpen } from './screens/RepoOpen.js';
 import { Workspace } from './screens/Workspace.js';
@@ -30,11 +32,29 @@ export function App() {
             so switching repos must not unmount the tabs of the one being
             left — their agents keep running and stay in the strip. */}
         <TabsProvider>
-          <Gate />
+          <FleetProvider>
+            <FleetOver>
+              <Gate />
+            </FleetOver>
+          </FleetProvider>
         </TabsProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+/** Fleet over the screen underneath, which stays mounted but hidden
+ *  and inert: `visibility`, not unmounting, keeps its terminals sized. */
+function FleetOver({ children }: { children: ReactNode }) {
+  const { open } = useFleet();
+  return (
+    <>
+      <div className={open ? 'invisible' : undefined} inert={open}>
+        {children}
+      </div>
+      {open && <FleetScreen />}
+    </>
   );
 }
 

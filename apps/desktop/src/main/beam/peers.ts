@@ -13,7 +13,6 @@ export interface PeerView {
   path: string;
   lastSeenAt: number | null;
   grant: string;
-  revokedAt: number | null;
   queue: { outbound: number };
 }
 
@@ -53,7 +52,6 @@ export function machineFromPeer(peer: PeerView): MachineView {
     lastSeenAt: peer.lastSeenAt,
     // beam reads a grant it cannot parse as none (docs/04); so does this.
     grant: oneOf(GRANTS, peer.grant, 'none'),
-    revokedAt: peer.revokedAt,
     queued: peer.queue.outbound,
     inboundWaiting: [],
     inboundRefused: [],
@@ -69,7 +67,6 @@ export function localMachine(status: DaemonStatus): MachineView {
     path: null,
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],

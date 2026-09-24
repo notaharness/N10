@@ -21,9 +21,9 @@ import {
 
 /** What each grant lets that machine open here (beam docs/04). */
 const GRANTS: { grant: MachineGrant; label: string }[] = [
-  { grant: 'all', label: 'Shell, commands and messages' },
+  { grant: 'all', label: 'Shells and messages' },
   { grant: 'msg', label: 'Messages only' },
-  { grant: 'none', label: 'Nothing' },
+  { grant: 'none', label: 'No access' },
 ];
 
 export function copyFingerprint(peerId: string): void {
@@ -37,10 +37,12 @@ export function copyFingerprint(peerId: string): void {
  *  docs/08), copying the fingerprint for any row. */
 export function MachineMenu({
   machine,
+  disabled,
   onRename,
   onRevoke,
 }: {
   machine: MachineView;
+  disabled: boolean;
   onRename: () => void;
   onRevoke: () => void;
 }) {
@@ -61,15 +63,20 @@ export function MachineMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {member && (
-          <DropdownMenuItem onSelect={onRename}>Rename here…</DropdownMenuItem>
+          <DropdownMenuItem disabled={disabled} onSelect={onRename}>
+            Rename here…
+          </DropdownMenuItem>
         )}
         {member && (
           <DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Allow on this machine</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              Access this machine allows from {machine.label}
+            </DropdownMenuLabel>
             {GRANTS.map((g) => (
               <DropdownMenuCheckboxItem
                 key={g.grant}
+                disabled={disabled}
                 checked={machine.grant === g.grant}
                 onSelect={() => setGrant(g.grant)}
               >
@@ -83,7 +90,11 @@ export function MachineMenu({
           Copy fingerprint
         </DropdownMenuItem>
         {member && (
-          <DropdownMenuItem variant="destructive" onSelect={onRevoke}>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={disabled}
+            onSelect={onRevoke}
+          >
             Revoke…
           </DropdownMenuItem>
         )}

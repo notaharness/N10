@@ -14,8 +14,11 @@ import { CeremonyPanel } from './CeremonyPanel.js';
  */
 export function EnrolmentCard({
   ceremony,
+  disabled,
 }: {
   ceremony: ReturnType<typeof useCeremony>;
+  /** beam is reconnecting: nothing can start. */
+  disabled: boolean;
 }) {
   const [label, setLabel] = useState('');
   const [fleetName, setFleetName] = useState('');
@@ -54,7 +57,7 @@ export function EnrolmentCard({
       <div className="flex gap-2">
         <Button
           size="sm"
-          disabled={running}
+          disabled={running || disabled}
           onClick={() => start({ op: 'init', label, fleetName })}
         >
           Create a fleet
@@ -62,10 +65,10 @@ export function EnrolmentCard({
         <Button
           size="sm"
           variant="outline"
-          disabled={running}
+          disabled={running || disabled}
           onClick={() => start({ op: 'join', label })}
         >
-          Join my fleet
+          Join an existing fleet
         </Button>
       </div>
       {started && (

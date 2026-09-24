@@ -25,7 +25,6 @@ function machine(overrides: Partial<MachineView> = {}): MachineView {
     path: 'unknown',
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],
@@ -34,43 +33,52 @@ function machine(overrides: Partial<MachineView> = {}): MachineView {
 }
 
 describe('machinePresentation', () => {
-  it('connected: success tone, the path as secondary', () => {
-    const p = machinePresentation(
-      machine({ state: 'connected', path: 'relay fra' })
-    );
-    expect(p).toEqual({
-      label: 'Connected',
-      tone: 'success',
-      secondary: 'relay fra',
-    });
-  });
-
-  it('this machine: connected, with no path to show', () => {
+  it('this machine: its own label, with no invented network path', () => {
     const p = machinePresentation(
       machine({ state: 'connected', isLocal: true, path: null })
     );
-    expect(p.secondary).toBe('');
+    expect(p).toEqual({
+      label: 'This machine',
+      tone: 'success',
+      secondary: '',
+    });
+  });
+
+  it('connected: the route it takes, in words', () => {
+    const route = (path: string) =>
+      machinePresentation(machine({ state: 'connected', path }));
+    expect(route('direct')).toEqual({
+      label: 'Connected',
+      tone: 'success',
+      secondary: 'Direct',
+    });
+    expect(route('relay fra').secondary).toBe('Relay fra');
+    expect(route('unknown').secondary).toBe('Path unknown');
   });
 
   it('offline: muted, never a fault, with when it was last seen', () => {
     const p = machinePresentation(
-      machine({ state: 'offline', lastSeenAt: Date.now() - 60_000 })
+      machine({ state: 'offline', lastSeenAt: Date.now() - 5 * 60_000 })
     );
     expect(p.label).toBe('Offline');
     expect(p.tone).toBe('muted');
-    expect(p.secondary).toMatch(/^last seen /);
-    expect(machinePresentation(machine()).secondary).toBe('never seen');
+    expect(p.secondary).toBe('Last seen 5m ago');
+    expect(machinePresentation(machine()).secondary).toBe('Not connected yet');
   });
 
   it('revoked here and revoked by the fleet are both destructive, and read apart', () => {
-    const here = machinePresentation(
-      machine({ state: 'revoked', revokedAt: Date.now() - 3_600_000 })
-    );
+    const here = machinePresentation(machine({ state: 'revoked' }));
     const there = machinePresentation(machine({ state: 'revoked-by-fleet' }));
-    expect(here.tone).toBe('destructive');
-    expect(there.tone).toBe('destructive');
-    expect(here.secondary).toMatch(/^revoked /);
-    expect(there.label).toBe('Refuses this machine');
+    expect(here).toEqual({
+      label: 'Revoked',
+      tone: 'destructive',
+      secondary: '',
+    });
+    expect(there).toEqual({
+      label: 'Refuses this machine',
+      tone: 'destructive',
+      secondary: 'This machine was revoked from that peer’s fleet view.',
+    });
   });
 
   it('every state maps to a distinct label — no two states read the same', () => {
@@ -99,13 +107,13 @@ describe('fingerprintGroups', () => {
 });
 
 describe('queueBadgeLabel', () => {
-  it('is null at zero — no badge at all, not "0 waiting"', () => {
+  it('is null at zero — no badge at all, not "0 queued"', () => {
     expect(queueBadgeLabel(0)).toBeNull();
   });
 
   it('names the count once non-zero', () => {
-    expect(queueBadgeLabel(1)).toBe('1 waiting');
-    expect(queueBadgeLabel(4)).toBe('4 waiting');
+    expect(queueBadgeLabel(1)).toBe('1 queued');
+    expect(queueBadgeLabel(4)).toBe('4 queued');
   });
 });
 
@@ -125,7 +133,7 @@ describe('inbound mail (Phase 8: the desktop as a mailbox subscriber)', () => {
         { id: 'c', target: 'tmux:z', reason: 'nope', receivedAt: 1 },
       ],
     });
-    expect(inboundWaitingBadgeLabel(m)).toBe('1 waiting to be delivered');
+    expect(inboundWaitingBadgeLabel(m)).toBe('1 waiting');
     expect(inboundRefusedBadgeLabel(m)).toBe('2 refused');
   });
 
@@ -235,7 +243,7 @@ describe('machineSelectOptions', () => {
       machine({ state: 'offline', lastSeenAt: Date.now() - 60_000 }),
     ]);
     expect(opt.disabled).toBe(true);
-    expect(opt.reason).toMatch(/^Offline — last seen/);
+    expect(opt.reason).toMatch(/^Offline — Last seen/);
   });
 });
 

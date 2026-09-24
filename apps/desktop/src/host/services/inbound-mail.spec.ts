@@ -15,7 +15,6 @@ function machine(peerId: string): MachineView {
     path: 'direct',
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],

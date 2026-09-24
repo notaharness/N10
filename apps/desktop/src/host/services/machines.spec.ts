@@ -37,7 +37,6 @@ function localMachine(): MachineView {
     path: null,
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],

@@ -1,35 +1,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { test as base, expect } from './fixtures/desktop.js';
-import {
-  FakeBeam,
-  ceremonyUrl,
-  type FakeBeamScenario,
-} from './setup/fake-beam.js';
-import { openMachines } from './setup/machines.js';
+import { test, expect } from './fixtures/fake-beam.js';
+import { ceremonyUrl } from './setup/fake-beam.js';
+import { openFleet } from './setup/machines.js';
 
 /**
- * The machines panel over beam's control socket, with a scripted daemon
- * in the fixture HOME: enrolment with its passkey link, and a member's
- * row menu. The fake starts before the app, which finds it at launch.
+ * Fleet over beam's control socket, with a scripted daemon in the
+ * fixture HOME: enrolment with its passkey link, and a member's row
+ * menu.
  */
-const test = base.extend<{
-  beamScenario: FakeBeamScenario | null;
-  beam: FakeBeam | null;
-}>({
-  beamScenario: [null, { option: true }],
-  beam: async ({ fixtureHome, beamScenario }, provide) => {
-    const beam = beamScenario
-      ? await FakeBeam.start(fixtureHome, beamScenario)
-      : null;
-    await provide(beam);
-    await beam?.close();
-  },
-  desktop: async ({ beam, desktop }, provide) => {
-    void beam; // started first, so the app connects at launch
-    await provide(desktop);
-  },
-});
 
 const WORKBOX = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 
@@ -38,7 +17,7 @@ test.describe('Machines over beam', () => {
     desktop,
     fixtureHome,
   }) => {
-    await openMachines(desktop);
+    await openFleet(desktop);
     await expect(
       desktop.page.getByRole('button', { name: 'Create a fleet' })
     ).toBeVisible();
@@ -53,7 +32,7 @@ test.describe('Machines over beam', () => {
     desktop,
     fixtureHome,
   }) => {
-    await openMachines(desktop);
+    await openFleet(desktop);
     await expect(
       desktop.page.getByRole('button', { name: 'Create a fleet' })
     ).toBeVisible();
@@ -70,7 +49,7 @@ test.describe('Machines over beam', () => {
     test.use({ beamScenario: { enrolled: false } });
 
     test('is used and left running on quit', async ({ desktop, beam }) => {
-      await openMachines(desktop);
+      await openFleet(desktop);
       await expect(
         desktop.page.getByRole('button', { name: 'Create a fleet' })
       ).toBeVisible();
@@ -87,7 +66,7 @@ test.describe('Machines over beam', () => {
       beam,
     }) => {
       const { page } = desktop;
-      await openMachines(desktop);
+      await openFleet(desktop);
       await page.getByLabel("This machine's name").fill('laptop');
       await page.getByLabel('Fleet name (to create one)').fill('home');
       await page.getByRole('button', { name: 'Create a fleet' }).click();
@@ -112,7 +91,7 @@ test.describe('Machines over beam', () => {
         page.getByText(/^Created fleet 3f9a 0c4e 7d12 e805/)
       ).toBeVisible();
       await expect(page.getByTestId('machine-row')).toHaveCount(1);
-      await expect(page.getByText('You', { exact: true })).toBeVisible();
+      await expect(page.getByText('This machine', { exact: true })).toBeVisible();
     });
   });
 
@@ -129,7 +108,7 @@ test.describe('Machines over beam', () => {
       beam,
     }) => {
       const { page } = desktop;
-      await openMachines(desktop);
+      await openFleet(desktop);
       const row = page.locator(`[data-peer-id="${WORKBOX}"]`);
       await expect(row.getByText('workbox')).toBeVisible();
       await expect(row.getByText('Connected')).toBeVisible();
@@ -148,7 +127,7 @@ test.describe('Machines over beam', () => {
       await page
         .getByRole('menuitemcheckbox', { name: 'Messages only' })
         .click();
-      await expect(row.getByText('messages only')).toBeVisible();
+      await expect(row.getByText('Messages only')).toBeVisible();
 
       await row.getByRole('button', { name: 'Machine actions' }).click();
       await page.getByRole('menuitem', { name: 'Revoke…' }).click();

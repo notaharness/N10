@@ -15,6 +15,7 @@ import type {
 } from '../../host/contract.js';
 import { useRepo } from '../lib/repo-context.js';
 import { useMachines, useSyncState, useVersion } from '../lib/data/queries.js';
+import { useFleet } from '../lib/fleet/fleet-context.js';
 import { useRefreshRemote } from '../lib/data/mutations.js';
 import {
   hasPeerMachines,
@@ -40,6 +41,7 @@ export function StatusBar({
   const refresh = useRefreshRemote(repo.cwd);
   const version = useVersion();
   const machines = useMachines();
+  const fleet = useFleet();
   const running = items.filter(itemRunning).length;
 
   // Re-render every 15s so "synced Xm ago" stays honest.
@@ -69,10 +71,7 @@ export function StatusBar({
 
       <div className="flex-1" />
 
-      <MachinesSegment
-        machines={machines.data}
-        onOpenSettings={onOpenSettings}
-      />
+      <MachinesSegment machines={machines.data} onOpenFleet={fleet.show} />
 
       {running > 0 && (
         <Segment label={`${running} agent${running === 1 ? '' : 's'} running`}>
@@ -171,10 +170,10 @@ function ProviderSegment({
  */
 function MachinesSegment({
   machines,
-  onOpenSettings,
+  onOpenFleet,
 }: {
   machines: MachineView[] | undefined;
-  onOpenSettings: () => void;
+  onOpenFleet: () => void;
 }) {
   if (!hasPeerMachines(machines ?? [])) return null;
 
@@ -189,8 +188,8 @@ function MachinesSegment({
 
   return (
     <Segment
-      label="Open Settings → Machines"
-      onClick={onOpenSettings}
+      label="Open Fleet"
+      onClick={onOpenFleet}
       className={offline > 0 ? 'text-warning' : undefined}
     >
       <MonitorIcon className="size-3" />

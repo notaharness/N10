@@ -2,7 +2,7 @@ import type { MachineView } from '../../../host/contract-machines.js';
 import { useMachines } from '../../lib/data/queries.js';
 import { ceremonyOutcomeText } from '../../lib/machines/ceremony-model.js';
 import { isFleetMember } from '../../lib/machines/machine-model.js';
-import { useCeremony } from '../../lib/machines/use-ceremony.js';
+import { useFleet } from '../../lib/fleet/fleet-context.js';
 import { Button } from '../ui/button.js';
 import {
   Dialog,
@@ -25,16 +25,15 @@ function otherMembers(machines: MachineView[], peerId: string): number {
  * connected members within seconds, and on the rest when they next
  * connect. Anything already running on that machine keeps running.
  */
-export function RevokeMachineDialog({
-  machine,
-  onClose,
-}: {
-  machine: MachineView;
-  onClose: () => void;
-}) {
+export function RevokeMachineDialog({ machine }: { machine: MachineView }) {
   const machines = useMachines().data ?? [];
-  const { view, running, outcome, start, cancel } = useCeremony();
+  const { ceremony, close } = useFleet().revocation;
+  const { view, running, outcome, start, cancel, reset } = ceremony;
   const started = running || outcome !== null;
+  const onClose = () => {
+    reset();
+    close();
+  };
 
   return (
     <Dialog open onOpenChange={(o) => !o && !running && onClose()}>

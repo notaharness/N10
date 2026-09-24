@@ -10,13 +10,13 @@ import {
   queueBadgeLabel,
 } from '../../lib/machines/machine-model.js';
 import { useSetMachineAlias } from '../../lib/data/mutations-machines.js';
+import { useFleet } from '../../lib/fleet/fleet-context.js';
 import type { MachineView } from '../../../host/contract-machines.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.js';
 import { Tip } from '../ui/tooltip.js';
 import { InboundMailPanel } from './InboundMailPanel.js';
 import { MachineMenu, copyFingerprint } from './MachineMenu.js';
-import { RevokeMachineDialog } from './RevokeMachineDialog.js';
 
 const DOT_CLASS: Record<MachineTone, string> = {
   success: 'bg-success',
@@ -72,19 +72,14 @@ function RowBadges({ machine }: { machine: MachineView }) {
   const refusedLabel = inboundRefusedBadgeLabel(machine);
   return (
     <>
-      {machine.isLocal && <Badge variant="secondary">You</Badge>}
       {machine.grant !== 'all' && (
-        <Tip label="What this machine may open here">
+        <Tip label={`Access this machine allows from ${machine.label}`}>
           <Badge variant="secondary">
-            {machine.grant === 'msg' ? 'messages only' : 'no access'}
+            {machine.grant === 'msg' ? 'Messages only' : 'No access'}
           </Badge>
         </Tip>
       )}
-      {queueLabel && (
-        <Tip label="Waiting to deliver">
-          <Badge variant="warning">{queueLabel}</Badge>
-        </Tip>
-      )}
+      {queueLabel && <Badge variant="warning">{queueLabel}</Badge>}
       {waitingLabel && (
         <Tip label="A report from this machine is waiting for its session to reconnect">
           <Badge variant="warning">{waitingLabel}</Badge>
@@ -99,10 +94,17 @@ function RowBadges({ machine }: { machine: MachineView }) {
   );
 }
 
-/** One row of the machine list — this machine, or a fleet member. */
-export function MachineRow({ machine }: { machine: MachineView }) {
+/** One row of the machine list — this machine, or a fleet member.
+ *  `disabled` while beam reconnects: the row shows, nothing changes. */
+export function MachineRow({
+  machine,
+  disabled,
+}: {
+  machine: MachineView;
+  disabled: boolean;
+}) {
   const [editing, setEditing] = useState(false);
-  const [revoking, setRevoking] = useState(false);
+  const revocation = useFleet().revocation;
   const presentation = machinePresentation(machine);
 
   return (
@@ -132,13 +134,18 @@ export function MachineRow({ machine }: { machine: MachineView }) {
                 {presentation.secondary}
               </span>
             )}
+            {machine.queued > 0 && (
+              <span className="truncate text-muted-foreground">
+                Waiting to deliver when this machine connects.
+              </span>
+            )}
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => copyFingerprint(machine.peerId)}
-          className="hidden shrink-0 select-all rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground sm:block"
+          className="shrink-0 select-all rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Copy fingerprint"
         >
           {fingerprintGroups(machine.peerId)}
@@ -146,16 +153,10 @@ export function MachineRow({ machine }: { machine: MachineView }) {
 
         <MachineMenu
           machine={machine}
+          disabled={disabled}
           onRename={() => setEditing(true)}
-          onRevoke={() => setRevoking(true)}
+          onRevoke={() => revocation.open(machine)}
         />
-
-        {revoking && (
-          <RevokeMachineDialog
-            machine={machine}
-            onClose={() => setRevoking(false)}
-          />
-        )}
       </div>
       <InboundMailPanel
         waiting={inboundMailRows(machine.inboundWaiting)}

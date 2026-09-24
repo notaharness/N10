@@ -31,7 +31,6 @@ function peer(id: string, label: string, state = 'connected'): PeerView {
     path: 'direct',
     lastSeenAt: 1000,
     grant: 'all',
-    revokedAt: null,
     queue: { outbound: 0 },
   };
 }

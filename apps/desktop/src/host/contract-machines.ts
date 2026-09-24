@@ -43,7 +43,6 @@ export interface MachineView {
   path: string | null;
   lastSeenAt: number | null;
   grant: MachineGrant;
-  revokedAt: number | null;
   /** Mail waiting here to go to the peer. */
   queued: number;
   /** Reports from this machine known locally and waiting for their

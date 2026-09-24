@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CeremonyOutcome,
   CeremonyRequest,
@@ -42,6 +42,12 @@ export function useCeremony() {
       });
   }, []);
 
+  /** Forgets a finished ceremony, for the next one to start clean. */
+  const reset = useCallback(() => {
+    setView(EMPTY_CEREMONY);
+    setOutcome(null);
+  }, []);
+
   const cancel = useCallback(() => {
     window.n10.cancelCeremony().catch(() => undefined);
   }, []);
@@ -53,5 +59,8 @@ export function useCeremony() {
     [cancel]
   );
 
-  return { view, running, outcome, start, cancel };
+  return useMemo(
+    () => ({ view, running, outcome, start, cancel, reset }),
+    [view, running, outcome, start, cancel, reset]
+  );
 }
