@@ -7,7 +7,18 @@ Run `n10` from your repository root to open the terminal UI. It shares the
 desktop app's core, configuration and worktrees, so you can use either
 interface with the same projects.
 
+> Beta. Expect rough edges, and pin a version if you depend on it.
+
 You can check pull request status, read diffs and review threads, and send
-plans to agents from the terminal. Most development now focuses on the
-desktop app; some features, such as whole-file diffs, are only available
-there.
+plans to agents from the terminal. Images in comments render inline on
+kitty and Ghostty. An agent reviewing a pull request records its draft
+comments with `n10 util add-comment`, and you walk through them to edit,
+discard or post.
+
+Most development focuses on the desktop app; some features, such as
+whole-file diffs, are only available there. The terminal UI has no Fleet
+features: running agents on other machines is a desktop feature. See the
+[Fleet guide](/docs/guides/fleet).
+
+The terminal UI needs Node.js 20 or later. See
+[Installation](/docs/installation) for the other prerequisites.

@@ -113,7 +113,7 @@ Providers share an interface in `libs/vcs/`. Contributions adding support for ot
 
 ### Pair with Orchestra
 
-Pair n10 with my [Orchestra plugin](https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in n10.
+Pair n10 with my [Orchestra plugin](https://github.com/notaharness/plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in n10.
 
 ## Contributing
 
