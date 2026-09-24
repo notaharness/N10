@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   __resetLaunchMenuRequestForTests,
   clearLaunchMenuRequest,
-  launchMenuOpen,
+  LAUNCH_MENU_REQUEST_TTL_MS,
   pendingLaunchMenu,
   requestLaunchMenu,
   subscribeLaunchMenu,
@@ -44,25 +44,12 @@ describe('launch menu request', () => {
     clearLaunchMenuRequest('alpha');
     expect(cb).not.toHaveBeenCalled();
   });
-});
 
-describe('launchMenuOpen', () => {
-  it('opens from the tab itself regardless of the item', () => {
+  it('expires after the TTL instead of popping a menu later', () => {
+    requestLaunchMenu('alpha', 1_000);
+    expect(pendingLaunchMenu(1_000 + LAUNCH_MENU_REQUEST_TTL_MS)).toBe('alpha');
     expect(
-      launchMenuOpen({
-        own: true,
-        requested: false,
-        hasItem: false,
-        running: true,
-      })
-    ).toBe(true);
-  });
-
-  it('honors a request once the item exists, including a running agent', () => {
-    const base = { own: false, requested: true, hasItem: true, running: false };
-    expect(launchMenuOpen(base)).toBe(true);
-    expect(launchMenuOpen({ ...base, hasItem: false })).toBe(false);
-    expect(launchMenuOpen({ ...base, running: true })).toBe(true);
-    expect(launchMenuOpen({ ...base, requested: false })).toBe(false);
+      pendingLaunchMenu(1_000 + LAUNCH_MENU_REQUEST_TTL_MS + 1)
+    ).toBeNull();
   });
 });

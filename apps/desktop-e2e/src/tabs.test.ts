@@ -3,6 +3,7 @@ import { test, expect } from './fixtures/desktop.js';
 import {
   createWorktree,
   dismissSessionMenu,
+  sessionMenu,
   sidebarRow,
   tab,
   tabs,
@@ -56,6 +57,24 @@ test.describe('Editor tabs', () => {
     await expect(tabs(page)).toHaveCount(2);
     await expect(tab(page, /alpha/)).toBeVisible();
     await expect(tab(page, /beta/)).toBeVisible();
+  });
+
+  test('Enter on a row whose tab is open behind another opens its session menu', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'alpha');
+    await createWorktree(page, 'beta');
+    await expect(tab(page, /beta/)).toHaveAttribute('aria-selected', 'true');
+
+    // alpha's pane is mounted but not in front: the request must reach
+    // it as it comes forward, not be dropped for arriving while it is
+    // still behind.
+    await sidebarRow(page, /alpha/).focus();
+    await page.keyboard.press('Enter');
+    await expect(sessionMenu(page)).toBeVisible();
+    await dismissSessionMenu(page);
+    await expect(tab(page, /alpha/)).toHaveAttribute('aria-selected', 'true');
   });
 
   test('Close Others from the tab context menu keeps only that tab', async ({

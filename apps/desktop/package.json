@@ -115,7 +115,10 @@
         ],
         "options": {
           "command": "npx vite build",
-          "cwd": "apps/desktop"
+          "cwd": "apps/desktop",
+          "env": {
+            "NODE_ENV": "production"
+          }
         }
       },
       "build": {

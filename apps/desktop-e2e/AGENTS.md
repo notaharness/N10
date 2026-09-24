@@ -2,7 +2,9 @@
 
 The nx targets depend on `desktop:build`; `node run-e2e.mjs` and
 `node run-visual.mjs` do not, so **rebuild first** (`npx nx build desktop`) or
-you are testing the previous bundle. Full notes: `docs/testing.md`.
+you are testing the previous bundle. `run-e2e.mjs` refuses a development
+React bundle (a shell exporting `NODE_ENV=development` at build time; the
+build target pins production). Full notes: `docs/testing.md`.
 
 - Fixture `src/fixtures/desktop.ts`: per-test repo (optionally seeded with
   branches, worktrees, mid-rebase / detached-HEAD / deleted-directory states),
