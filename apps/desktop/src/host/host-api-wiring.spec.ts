@@ -279,6 +279,7 @@ describe('host API wiring', () => {
       'onMachinesChanged',
       'onBeamStatusChanged',
       'onCeremonyProgress',
+      'onDirectoryPublished',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

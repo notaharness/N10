@@ -4,6 +4,7 @@ import type {
   MachineGrant,
   MachineView,
 } from '../../../host/contract-machines.js';
+import { copyText } from '../../lib/copy-text.js';
 import { useSetMachineGrant } from '../../lib/data/mutations-machines.js';
 import { isFleetMember } from '../../lib/machines/machine-model.js';
 import { errorMessage } from '../../lib/utils.js';
@@ -27,10 +28,7 @@ const GRANTS: { grant: MachineGrant; label: string }[] = [
 ];
 
 export function copyFingerprint(peerId: string): void {
-  navigator.clipboard.writeText(peerId).then(
-    () => toast.success('Fingerprint copied'),
-    () => toast.error('Could not copy the fingerprint')
-  );
+  copyText(peerId, 'Fingerprint copied');
 }
 
 /** A machine row's actions: alias, grant and revoke for a member (beam

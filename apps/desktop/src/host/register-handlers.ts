@@ -145,6 +145,7 @@ export function createHostApi(): N10HostApi {
     cancelCeremony: () => machines.cancelCeremony(),
     resetFleet: () => machines.resetFleet(),
     onCeremonyProgress: () => () => undefined,
+    onDirectoryPublished: () => () => undefined,
     dismissInboundMail: (id) => inboundMail.dismissInboundMail(id),
     onMachinesChanged: () => () => undefined,
   };

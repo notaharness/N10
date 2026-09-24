@@ -75,6 +75,7 @@ export const MACHINES_EVENTS = {
   changed: 'n10/machines/changed',
   beamStatus: 'n10/machines/beam-status-changed',
   ceremony: 'n10/machines/ceremony-progress',
+  published: 'n10/machines/directory-published',
 } as const;
 
 export type MachinesChangedEvent = MachineView[];

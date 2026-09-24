@@ -31,6 +31,7 @@ import { setBabysitNotifier } from '../host/services/babysit.js';
 import {
   setBeamStatusNotifier,
   setCeremonyProgressNotifier,
+  setDirectoryPublishedNotifier,
   setMachinesNotifier,
 } from '../host/services/machines.js';
 
@@ -88,5 +89,8 @@ export function installHostEventBridge(): void {
   );
   setCeremonyProgressNotifier((progress) =>
     broadcast(MACHINES_EVENTS.ceremony, progress)
+  );
+  setDirectoryPublishedNotifier((landed) =>
+    broadcast(MACHINES_EVENTS.published, landed)
   );
 }

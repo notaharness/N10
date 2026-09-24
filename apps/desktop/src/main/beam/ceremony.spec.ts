@@ -84,6 +84,7 @@ describe('runCeremony', () => {
     ).resolves.toEqual({
       ok: true,
       op: 'revoke',
+      peerId: PEER,
       published: true,
       acknowledgedBy: 2,
     });

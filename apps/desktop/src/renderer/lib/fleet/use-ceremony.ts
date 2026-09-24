@@ -10,6 +10,11 @@ import {
   type CeremonyView,
 } from './ceremony-progress.js';
 
+/** Told how a ceremony ended; pass a stable one. */
+export interface CeremonyHooks {
+  onSettled: (outcome: CeremonyOutcome) => void;
+}
+
 /**
  * Runs one passkey ceremony through the host and folds its pushed
  * progress into a `CeremonyView`. A second start while one runs is
@@ -17,32 +22,39 @@ import {
  * ceremony cancels it: beam runs one at a time, and an abandoned one
  * would hold the daemon `busy` until its five-minute timeout.
  */
-export function useCeremony() {
+export function useCeremony({ onSettled }: CeremonyHooks) {
   const [view, setView] = useState<CeremonyView | null>(null);
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<CeremonyOutcome | null>(null);
   const runningRef = useRef(false);
 
-  const start = useCallback((request: CeremonyRequest) => {
-    if (runningRef.current) return;
-    runningRef.current = true;
-    setView(startView(request.op));
-    setOutcome(null);
-    setRunning(true);
-    const off = window.n10.onCeremonyProgress((progress) =>
-      setView((v) => v && ceremonyStep(v, progress))
-    );
-    window.n10
-      .runCeremony(request)
-      .then(setOutcome, (err: unknown) =>
-        setOutcome({ ok: false, code: 'internal', detail: errorMessage(err) })
-      )
-      .finally(() => {
-        off();
-        runningRef.current = false;
-        setRunning(false);
-      });
-  }, []);
+  const start = useCallback(
+    (request: CeremonyRequest) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
+      setView(startView(request.op));
+      setOutcome(null);
+      setRunning(true);
+      const off = window.n10.onCeremonyProgress((progress) =>
+        setView((v) => v && ceremonyStep(v, progress))
+      );
+      const settle = (result: CeremonyOutcome) => {
+        setOutcome(result);
+        onSettled(result);
+      };
+      window.n10
+        .runCeremony(request)
+        .then(settle, (err: unknown) =>
+          settle({ ok: false, code: 'internal', detail: errorMessage(err) })
+        )
+        .finally(() => {
+          off();
+          runningRef.current = false;
+          setRunning(false);
+        });
+    },
+    [onSettled]
+  );
 
   /** Forgets a finished ceremony, for the next one to start clean. */
   const reset = useCallback(() => {

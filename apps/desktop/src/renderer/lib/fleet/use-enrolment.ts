@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { CeremonyRequest } from '../../../host/contract-machines.js';
-import { useCeremony } from './use-ceremony.js';
+import { useCeremony, type CeremonyHooks } from './use-ceremony.js';
 
 type EnrolmentMode = 'create' | 'join';
 
@@ -9,11 +9,13 @@ type EnrolmentMode = 'create' | 'join';
  * and joining, that choice's form, then its ceremony. The form's values
  * outlive a failure, so **Back** and **Try again** start from them.
  */
-export function useEnrolment() {
-  const ceremony = useCeremony();
+export function useEnrolment(hooks: CeremonyHooks) {
+  const ceremony = useCeremony(hooks);
   const { start, reset } = ceremony;
   /** Null while the two choices show. */
   const [mode, setMode] = useState<EnrolmentMode | null>(null);
+  /** The owner said a join's fleet fingerprint does not match theirs. */
+  const [mismatch, setMismatch] = useState(false);
   const [label, setLabel] = useState('');
   const [fleetName, setFleetName] = useState('');
 
@@ -29,7 +31,9 @@ export function useEnrolment() {
   const leave = useCallback(() => {
     reset();
     setMode(null);
+    setMismatch(false);
   }, [reset]);
+  const reportMismatch = useCallback(() => setMismatch(true), []);
 
   return useMemo(
     () => ({
@@ -42,8 +46,10 @@ export function useEnrolment() {
       setFleetName,
       submit,
       leave,
+      mismatch,
+      reportMismatch,
     }),
-    [ceremony, mode, label, fleetName, submit, leave]
+    [ceremony, mode, label, fleetName, submit, leave, mismatch, reportMismatch]
   );
 }
 

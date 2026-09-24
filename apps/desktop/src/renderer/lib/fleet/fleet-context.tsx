@@ -14,6 +14,7 @@ import { keys } from '../data/query-keys.js';
 import { useCeremony, type Ceremony } from './use-ceremony.js';
 import { useEnrolment, type Enrolment } from './use-enrolment.js';
 import { useFleetReset } from './use-fleet-reset.js';
+import { usePublication, type Publication } from './publication.js';
 
 interface FleetContextValue {
   open: boolean;
@@ -32,6 +33,7 @@ interface FleetContextValue {
     close: () => void;
   };
   reset: ReturnType<typeof useFleetReset>;
+  publication: Publication;
 }
 
 const FleetContext = createContext<FleetContextValue | null>(null);
@@ -80,10 +82,18 @@ function useFleetPushes(): void {
  */
 export function FleetProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const enrolment = useEnrolment();
+  const publication = usePublication();
+  const { settle, clear } = publication;
+  const hooks = useMemo(() => ({ onSettled: settle }), [settle]);
+  const enrolment = useEnrolment(hooks);
   const [revokeTarget, setRevokeTarget] = useState<MachineView | null>(null);
-  const revokeCeremony = useCeremony();
-  const reset = useFleetReset(enrolment.leave);
+  const revokeCeremony = useCeremony(hooks);
+  const { leave } = enrolment;
+  const afterReset = useCallback(() => {
+    leave();
+    clear();
+  }, [leave, clear]);
+  const reset = useFleetReset(afterReset);
   useFleetPushes();
 
   // Focus goes back to whatever opened Fleet, once it is no longer inert.
@@ -121,6 +131,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
         close: closeRevocation,
       },
       reset,
+      publication,
     }),
     [
       open,
@@ -131,6 +142,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
       revokeCeremony,
       closeRevocation,
       reset,
+      publication,
     ]
   );
   return (

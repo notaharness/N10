@@ -6,6 +6,7 @@ import { fingerprintGroups } from '../../lib/machines/machine-model.js';
 import { Button } from '../ui/button.js';
 import { CeremonyFailure } from './CeremonyFailure.js';
 import { CeremonyProgress, InitSteps } from './CeremonyProgress.js';
+import { FingerprintCheck } from './FingerprintCheck.js';
 
 function Success({
   outcome,
@@ -15,30 +16,37 @@ function Success({
   onClose: () => void;
 }) {
   const focus = useFocusOnMount<HTMLHeadingElement>();
+  const published = useFleet().publication.isPublished(outcome);
   return (
-    <div className="space-y-2" role="status">
-      {outcome.op === 'init' ? (
-        <>
+    <div className="space-y-2">
+      <div className="space-y-2" role="status">
+        {outcome.op === 'init' ? (
+          <>
+            <h3 ref={focus} tabIndex={-1} className="font-medium outline-none">
+              Fleet created
+            </h3>
+            <p className="text-sm">
+              This machine is enrolled. Use this fleet’s passkey to add your
+              other machines.
+            </p>
+          </>
+        ) : (
           <h3 ref={focus} tabIndex={-1} className="font-medium outline-none">
-            Fleet created
+            Joined fleet {fingerprintGroups(outcome.fleetId)}. {outcome.members}{' '}
+            other machines known; connecting…
           </h3>
-          <p className="text-sm">
-            This machine is enrolled. Use this fleet’s passkey to add your other
-            machines.
-          </p>
-        </>
+        )}
+        <p className="text-sm text-muted-foreground">
+          {publicationText(published)}
+        </p>
+      </div>
+      {outcome.op === 'join' ? (
+        <FingerprintCheck fleetId={outcome.fleetId} />
       ) : (
-        <h3 ref={focus} tabIndex={-1} className="font-medium outline-none">
-          Joined fleet {fingerprintGroups(outcome.fleetId)}. {outcome.members}{' '}
-          other machines known; connecting…
-        </h3>
+        <Button size="sm" onClick={onClose}>
+          Close
+        </Button>
       )}
-      <p className="text-sm text-muted-foreground">
-        {publicationText(outcome.published)}
-      </p>
-      <Button size="sm" onClick={onClose}>
-        Close
-      </Button>
     </div>
   );
 }

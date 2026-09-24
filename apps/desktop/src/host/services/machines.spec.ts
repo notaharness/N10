@@ -66,6 +66,7 @@ function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
       return Promise.resolve({
         ok: true as const,
         op: 'revoke' as const,
+        peerId: PEER,
         published: true,
         acknowledgedBy: 1,
       });
@@ -148,6 +149,7 @@ describe('the push channel', () => {
       state: 'ready',
       detail: null,
       enrolled: true,
+      fleetId: 'f'.repeat(64),
     };
     const seen: BeamStatus[] = [];
     setBeamStatusNotifier((s) => seen.push(s));

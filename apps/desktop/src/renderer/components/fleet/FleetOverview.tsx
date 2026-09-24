@@ -4,7 +4,8 @@ import type { BeamStatus, MachineView } from '../../../host/contract.js';
 import { useBeamStatus, useMachines } from '../../lib/data/queries.js';
 import { keys } from '../../lib/data/query-keys.js';
 import { useFleet } from '../../lib/fleet/fleet-context.js';
-import { errorMessage } from '../../lib/utils.js';
+import { publicationText } from '../../lib/fleet/publication.js';
+import { cn, errorMessage } from '../../lib/utils.js';
 import { MachineRow } from '../machines/MachineRow.js';
 import { RevokeMachineDialog } from '../machines/RevokeMachineDialog.js';
 import { Button } from '../ui/button.js';
@@ -20,11 +21,15 @@ function Card({ children }: { children: ReactNode }) {
   );
 }
 
-function Loading() {
+/** Until beam can answer for its fleet: its socket, then (`starting`)
+ *  its transport, which every operation but `status` waits for. */
+function Loading({ starting }: { starting: boolean }) {
   return (
     <Card>
       <div className="space-y-2 p-4" role="status">
-        <p className="text-sm text-muted-foreground">Connecting to beam…</p>
+        <p className="text-sm text-muted-foreground">
+          {starting ? 'Preparing network…' : 'Connecting to beam…'}
+        </p>
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-12 w-full" />
       </div>
@@ -62,13 +67,25 @@ function Failure({
   );
 }
 
-function Reconnecting() {
+/** A banner of beam's own state above whatever Fleet shows. */
+function Notice({
+  warning = false,
+  children,
+}: {
+  warning?: boolean;
+  children: ReactNode;
+}) {
   return (
     <p
       role="status"
-      className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm"
+      className={cn(
+        'rounded-md border px-3 py-2 text-sm',
+        warning
+          ? 'border-warning/30 bg-warning/10'
+          : 'border-border bg-muted/40'
+      )}
     >
-      Reconnecting to beam… Machine information may be out of date.
+      {children}
     </p>
   );
 }
@@ -100,6 +117,21 @@ function FleetRows({
   );
 }
 
+/** Reconnecting, or an observed write still pending once the card
+ *  that reported it has gone, while this machine is still enrolled. */
+function StatusNotices({ beam }: { beam: BeamStatus }) {
+  const { enrolment, revocation, publication } = useFleet();
+  const cardShowing = enrolment.ceremony.view !== null || !!revocation.target;
+  if (beam.state === 'restarting')
+    return (
+      <Notice warning>
+        Reconnecting to beam… Machine information may be out of date.
+      </Notice>
+    );
+  if (!publication.pending || cardShowing || !beam.enrolled) return null;
+  return <Notice>{publicationText(false)}</Notice>;
+}
+
 /** Beam's machines once it answers: an enrolment under way or just
  *  ended, the first-run choices until this machine is in a fleet, and
  *  this machine's fleet once it is. */
@@ -121,11 +153,12 @@ function FleetBody({
       {reset.open && <ResetFleetDialog />}
       {beam.enrolled && (
         <FleetHeader
+          fleetId={beam.fleetId}
           disabled={reconnecting || enrolment.ceremony.running}
           onReset={reset.show}
         />
       )}
-      {reconnecting && <Reconnecting />}
+      <StatusNotices beam={beam} />
       {loadFailure}
       {(enrolling || !beam.enrolled) && (
         <Card>
@@ -143,6 +176,11 @@ function FleetBody({
       )}
     </div>
   );
+}
+
+/** beam can answer for its fleet: connected, and past starting. */
+function answering(beam: BeamStatus | undefined): beam is BeamStatus {
+  return !!beam && beam.state !== 'connecting' && beam.state !== 'starting';
 }
 
 /** Fleet's body behind beam's availability (beam-fleet-ux.md §1). */
@@ -166,8 +204,8 @@ export function FleetOverview() {
       />
     );
   }
-  if (!beam || beam.state === 'connecting' || machines.isLoading) {
-    return <Loading />;
+  if (!answering(beam) || machines.isLoading) {
+    return <Loading starting={beam?.state === 'starting'} />;
   }
   const loadFailure = machines.isError && (
     <Failure

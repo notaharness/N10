@@ -19,6 +19,10 @@ export interface PeerView {
 /** The subset of beam docs/06's `status` result this client reads. */
 export interface DaemonStatus {
   enrolled: boolean;
+  /** Bumped by every enrolment and reset, and restarts with the
+   *  daemon, so the relay key also changes on a daemon restart (unacked
+   *  mail is redelivered). Absent on older daemons. */
+  generation?: number;
   peerId?: string;
   label?: string;
   fleetId?: string;

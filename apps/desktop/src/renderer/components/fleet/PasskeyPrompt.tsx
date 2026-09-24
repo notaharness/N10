@@ -1,16 +1,9 @@
 import { CopyIcon, ExternalLinkIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import { copyText } from '../../lib/copy-text.js';
 import { ceremonySummary } from '../../lib/fleet/ceremony-url.js';
 import { openLink } from '../../lib/open-link.js';
 import { QrCode } from '../machines/QrCode.js';
 import { Button } from '../ui/button.js';
-
-function copyLink(url: string): void {
-  navigator.clipboard.writeText(url).then(
-    () => toast.success('Link copied'),
-    () => toast.error('Could not copy the link')
-  );
-}
 
 /**
  * One passkey step's link: its QR code, what it asks for as the page
@@ -48,7 +41,11 @@ export function PasskeyPrompt({ url }: { url: string }) {
             <ExternalLinkIcon className="size-3.5" />
             Open in browser
           </Button>
-          <Button size="sm" variant="outline" onClick={() => copyLink(url)}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => copyText(url, 'Link copied')}
+          >
             <CopyIcon className="size-3.5" />
             Copy link
           </Button>

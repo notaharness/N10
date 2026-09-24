@@ -245,24 +245,6 @@ test.describe('First run', () => {
       view.getByRole('heading', { name: 'Create a fleet' })
     ).toBeVisible();
   });
-
-  test('a pending publication is saved, not failed', async ({
-    desktop,
-    beam,
-  }) => {
-    const { page } = desktop;
-    await openFleet(desktop);
-    const view = fleetView(page);
-    await startCreate(page);
-    await expect(view.getByTestId('ceremony-url')).toBeVisible();
-    beam!.nextPasskeyStep();
-    beam!.finishCeremony('pending');
-    await expect(
-      view.getByText(
-        'Saved on this machine. Directory publication is pending; beam will retry while it runs.'
-      )
-    ).toBeVisible();
-  });
 });
 
 test.describe('Revoking a member', () => {

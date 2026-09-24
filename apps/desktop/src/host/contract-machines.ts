@@ -54,12 +54,23 @@ export interface MachineView {
   inboundRefused: InboundMailItem[];
 }
 
-/** The beam daemon as the desktop sees it. `restarting` is an
+/** The beam daemon as the desktop sees it. `starting` is a first
+ *  connection whose socket answers while beam still brings up its
+ *  transport (every op but `status` waits for it); `restarting` is an
  *  unexpected loss being retried; `unavailable` says why in `detail`. */
 export interface BeamStatus {
-  state: 'connecting' | 'ready' | 'restarting' | 'unavailable';
+  state: 'connecting' | 'starting' | 'ready' | 'restarting' | 'unavailable';
   detail: string | null;
   enrolled: boolean;
+  /** The fleet this machine belongs to, as beam's `status` last said. */
+  fleetId: string | null;
+}
+
+/** beam's `directory.published` event: a queued membership (`member`)
+ *  or revocation (`revoke`) write for `peerId` reached the directory. */
+export interface DirectoryPublished {
+  kind: string;
+  peerId: string;
 }
 
 /** A passkey ceremony (beam docs/02, Flows): create the fleet on its
@@ -86,11 +97,20 @@ export type CeremonyOutcome =
   | {
       ok: true;
       op: 'join';
+      /** This machine, as enrolled. */
+      peerId: string;
       fleetId: string;
       members: number;
       published: boolean;
     }
-  | { ok: true; op: 'revoke'; published: boolean; acknowledgedBy: number }
+  | {
+      ok: true;
+      op: 'revoke';
+      /** The machine revoked. */
+      peerId: string;
+      published: boolean;
+      acknowledgedBy: number;
+    }
   | BeamFailure;
 
 /** A refused operation. `code` is beam's error token (docs/06), or

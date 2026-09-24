@@ -1,8 +1,13 @@
-import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
+import type {
+  BeamStatus,
+  DirectoryPublished,
+  MachineView,
+} from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
 import {
   getLastKnownMachines,
   receiveBeamStatus,
+  receiveDirectoryPublished,
   receiveMachinesUpdate,
   refreshMailOverlay,
   setMachinesPort,
@@ -63,6 +68,7 @@ export class BeamClient {
     state: 'connecting',
     detail: null,
     enrolled: false,
+    fleetId: null,
   };
 
   constructor(private readonly options: BeamClientOptions) {
@@ -134,6 +140,10 @@ export class BeamClient {
     }
     conn.onClose(() => this.lost(conn));
     conn.onEvent((event, data) => this.onEvent(event, data));
+    // The socket answers before beam's transport is up, and the
+    // subscribe waits for it. A reconnect stays `restarting` meanwhile.
+    if (!this.everConnected)
+      this.publish({ ...this.status, state: 'starting', detail: null });
     try {
       await conn.request('events.subscribe');
     } catch (err) {
@@ -180,6 +190,10 @@ export class BeamClient {
   }
 
   private onEvent(event: string, data: unknown): void {
+    if (event === 'directory.published') {
+      receiveDirectoryPublished(data as DirectoryPublished);
+      return;
+    }
     if (event !== 'peer' && event !== 'peer.new') return;
     const peer = data as PeerView;
     for (const heard of this.listings) heard.push(peer);
@@ -204,7 +218,12 @@ export class BeamClient {
     this.listings.add(heard);
     try {
       const status = await conn.request<DaemonStatus>('status');
-      this.publish({ state: 'ready', detail: null, enrolled: status.enrolled });
+      this.publish({
+        state: 'ready',
+        detail: null,
+        enrolled: status.enrolled,
+        fleetId: status.fleetId ?? null,
+      });
       this.syncRelay(status);
       if (!status.enrolled) return [];
       const peers: PeerView[] = [];
@@ -229,10 +248,11 @@ export class BeamClient {
   /** The relay is subscribed under the daemon's current enrolment:
    *  `msg.subscribe` is `not-enrolled` before one, and a subscription
    *  outlives a `beam fleet reset` in the daemon, so a new enrolment
-   *  needs a new one. */
+   *  needs a new one. beam's `generation` tells a reset and re-join of
+   *  the same fleet apart, where a daemon reports it. */
   private syncRelay(status: DaemonStatus): void {
     const enrolment = status.enrolled
-      ? `${status.fleetId}/${status.peerId}`
+      ? `${status.fleetId}/${status.peerId}/${status.generation ?? ''}`
       : null;
     if (enrolment !== this.mailFor) {
       // beam discards an enrolment's queued mail with it (a reset).

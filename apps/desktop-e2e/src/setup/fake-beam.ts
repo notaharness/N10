@@ -22,6 +22,9 @@ export interface FakePeer {
 export interface FakeBeamScenario {
   enrolled: boolean;
   peers?: FakePeer[];
+  /** False while beam's transport is still starting: `events.subscribe`
+   *  then waits, as every op but `status` does in beam. */
+  started?: boolean;
 }
 
 /** A member for scenarios that need one. */
@@ -51,6 +54,8 @@ export class FakeBeam {
   private readonly subscribers = new Set<Socket>();
   private readonly sockets = new Set<Socket>();
   private enrolled: boolean;
+  /** A subscribe held until beam has started. */
+  private held: { socket: Socket; id: number }[] | null;
   private readonly peers: Map<string, Required<FakePeer>>;
   private waiting: {
     start: Request;
@@ -64,6 +69,7 @@ export class FakeBeam {
     scenario: FakeBeamScenario
   ) {
     this.enrolled = scenario.enrolled;
+    this.held = scenario.started === false ? [] : null;
     this.peers = new Map(
       (scenario.peers ?? []).map((p) => [
         p.peerId,
@@ -101,6 +107,22 @@ export class FakeBeam {
 
   /** The URL the latest `*.start` answered, or step 2's once sent. */
   currentUrl = '';
+
+  /** beam's transport comes up, and the held subscribes are answered. */
+  setStarted(): void {
+    const held = this.held ?? [];
+    this.held = null;
+    for (const { socket, id } of held) {
+      if (socket.destroyed) continue;
+      this.subscribers.add(socket);
+      this.reply(socket, id, {});
+    }
+  }
+
+  /** beam's `directory.published`: a queued directory write landed. */
+  published(kind: 'member' | 'revoke', peerId: string): void {
+    this.emit('directory.published', { kind, peerId });
+  }
 
   /** `init`'s second passkey step: the `ceremony` event its wait hears. */
   nextPasskeyStep(): string {
@@ -236,7 +258,8 @@ export class FakeBeam {
     if (answer !== undefined) this.reply(socket, req.id, answer);
   }
 
-  /** The op's result, or `undefined` for a `*.wait` answered later. */
+  /** The op's result, or `undefined` for one answered later: a
+   *  `*.wait`, or a subscribe held until beam has started. */
   private answer(socket: Socket, req: Request): unknown {
     const [subject, verb] = req.op.split('.');
     if (verb === 'start') return this.start(req, subject);
@@ -255,14 +278,13 @@ export class FakeBeam {
               label: 'laptop',
               fleetId: FLEET_ID,
             }
-          : { ready: true, enrolled: false };
+          : { ready: false, enrolled: false };
       case 'fleet.reset':
         this.enrolled = false;
         this.peers.clear();
         return {};
       case 'events.subscribe':
-        this.subscribers.add(socket);
-        return {};
+        return this.subscribe(socket, req);
       case 'peers':
         return { peers: [...this.peers.values()].map((p) => this.view(p)) };
       case 'peer.alias':
@@ -271,6 +293,16 @@ export class FakeBeam {
       default:
         return {};
     }
+  }
+
+  /** `events.subscribe`, held while beam has not started. */
+  private subscribe(socket: Socket, req: Request): unknown {
+    if (this.held) {
+      this.held.push({ socket, id: req.id });
+      return undefined;
+    }
+    this.subscribers.add(socket);
+    return {};
   }
 
   private updatePeer(req: Request): unknown {

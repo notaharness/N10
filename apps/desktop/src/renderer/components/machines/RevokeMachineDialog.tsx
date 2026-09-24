@@ -18,19 +18,19 @@ import {
 } from '../ui/dialog.js';
 
 function Revoked({
-  label,
+  machine,
   outcome,
 }: {
-  label: string;
+  machine: MachineView;
   outcome: Extract<CeremonyOutcome, { op: 'revoke' }>;
 }) {
+  const published = useFleet().publication.isPublished(outcome);
+  const label = machine.label;
   const n = outcome.acknowledgedBy;
   return (
     <div role="status" className="space-y-1 text-sm">
       <p className="font-medium">Revoked {label} on this machine.</p>
-      <p className="text-muted-foreground">
-        {publicationText(outcome.published)}
-      </p>
+      <p className="text-muted-foreground">{publicationText(published)}</p>
       <p className="text-muted-foreground">
         Acknowledged by {n} peers. Offline peers learn when they connect.
       </p>
@@ -40,14 +40,15 @@ function Revoked({
 
 /** The dialog's body: the warning, the ceremony, or how it ended. */
 function RevokeBody({
-  label,
+  machine,
   revoke,
   onClose,
 }: {
-  label: string;
+  machine: MachineView;
   revoke: () => void;
   onClose: () => void;
 }) {
+  const label = machine.label;
   const { view, running, outcome, cancel } = useFleet().revocation.ceremony;
   if (view && running) {
     return (
@@ -67,7 +68,7 @@ function RevokeBody({
   if (outcome?.ok && outcome.op === 'revoke') {
     return (
       <>
-        <Revoked label={label} outcome={outcome} />
+        <Revoked machine={machine} outcome={outcome} />
         <DialogFooter>
           <Button onClick={onClose}>Close</Button>
         </DialogFooter>
@@ -122,7 +123,7 @@ export function RevokeMachineDialog({ machine }: { machine: MachineView }) {
             </span>
           </DialogDescription>
         </DialogHeader>
-        <RevokeBody label={machine.label} revoke={revoke} onClose={onClose} />
+        <RevokeBody machine={machine} revoke={revoke} onClose={onClose} />
       </DialogContent>
     </Dialog>
   );

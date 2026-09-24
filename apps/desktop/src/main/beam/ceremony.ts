@@ -54,6 +54,7 @@ function outcome(request: CeremonyRequest, r: WaitResult): CeremonyOutcome {
       return {
         ok: true,
         op: 'join',
+        peerId: r.peerId ?? '',
         fleetId: r.fleetId ?? '',
         members: r.members ?? 0,
         published,
@@ -62,6 +63,7 @@ function outcome(request: CeremonyRequest, r: WaitResult): CeremonyOutcome {
       return {
         ok: true,
         op: 'revoke',
+        peerId: request.peerId,
         published,
         acknowledgedBy: r.acknowledgedBy ?? 0,
       };

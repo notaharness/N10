@@ -47,6 +47,7 @@ import type {
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
+  DirectoryPublished,
   FleetResetOutcome,
   MachineGrant,
   MachineView,
@@ -462,6 +463,7 @@ export interface N10HostApi {
    *  `fleet.reset`). Resolved, never rejected, with the outcome. */
   resetFleet(): Promise<FleetResetOutcome>;
   onCeremonyProgress(cb: (progress: CeremonyProgress) => void): () => void;
+  onDirectoryPublished(cb: (landed: DirectoryPublished) => void): () => void;
   onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
   /** Discards a refused inbound report without delivering it — the
    *  only thing that acks it, removing it from the sender's mailbox
