@@ -56,9 +56,10 @@ export function OrchestraInstall() {
             ))}
           </div>
           <p className="text-fd-muted-foreground mx-auto mt-10 max-w-xl text-center text-sm text-pretty">
-            Requires tmux 3.x, Git, and an authenticated claude or codex CLI for
-            each player type. Beam is optional and only needed for players on
-            other machines.
+            Requires tmux 3.x, Git, python3 and an authenticated claude or codex
+            CLI for each player type. Delivering reports into a Claude Code
+            orchestrator&apos;s inbox needs OpenBSD nc or socat. Beam is only
+            needed for players on other machines.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -71,7 +72,7 @@ export function OrchestraInstall() {
               href="/beam"
               className={buttonVariants({ variant: 'outline' })}
             >
-              Pair a machine with Beam
+              Add a machine with Beam
             </Link>
           </div>
         </div>

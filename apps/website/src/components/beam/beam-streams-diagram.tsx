@@ -10,7 +10,7 @@ export function BeamStreamsDiagram() {
         viewBox="0 0 640 190"
         className="h-auto w-full"
         role="img"
-        aria-label="One beam connection between two machines carries three channels at once: pty, exec and msg."
+        aria-label="One Beam tunnel between two machines carries three kinds of stream at once: pty, exec and msg."
       >
         <rect
           x="16"
@@ -48,7 +48,7 @@ export function BeamStreamsDiagram() {
           fontWeight="600"
           fill="var(--color-fd-foreground)"
         >
-          paired machine
+          another machine
         </text>
 
         <line
@@ -115,7 +115,7 @@ export function BeamStreamsDiagram() {
           fontSize="11"
           fill="var(--color-fd-muted-foreground)"
         >
-          all three run over the one connection opened after pairing
+          all three share one encrypted tunnel between the machines
         </text>
       </svg>
     </div>

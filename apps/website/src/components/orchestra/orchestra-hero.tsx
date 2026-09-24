@@ -15,7 +15,8 @@ export function OrchestraHero() {
         <p className="text-fd-muted-foreground max-w-2xl text-lg text-pretty">
           Orchestra gives one coding agent two skills for assigning work to
           others. Each player works in its own tmux session and Git worktree,
-          using Claude Code or Codex locally or on a machine paired with Beam.
+          using Claude Code or Codex locally or on another machine in your Beam
+          fleet.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href="#install" className={buttonVariants({ size: 'lg' })}>

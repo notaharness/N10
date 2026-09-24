@@ -25,7 +25,7 @@ export function BeamCta() {
             <CopyButton text={INSTALL} label="Copy the Beam install command" />
           </div>
           <p className="text-fd-muted-foreground mx-auto mt-5 max-w-md text-sm text-pretty">
-            Beam is still early. Open an issue if its behaviour does not match
+            Beam is in early beta. Open an issue if its behaviour does not match
             the docs.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -33,7 +33,7 @@ export function BeamCta() {
               Read the docs
             </Link>
             <Link
-              href="https://github.com/notaharness/n10/issues"
+              href="https://github.com/notaharness/beam/issues"
               className={buttonVariants({ variant: 'outline' })}
             >
               Report an issue

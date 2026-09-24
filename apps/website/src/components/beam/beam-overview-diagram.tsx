@@ -12,7 +12,7 @@ export function BeamOverviewDiagram() {
         viewBox="0 0 640 220"
         className="h-auto w-full"
         role="img"
-        aria-label="Without beam, tmux and your agent run only on your machine. With beam, a paired machine runs the same two things, reached over one connection."
+        aria-label="Your laptop runs n10 or Orchestra with tmux and your agent. Beam connects it to another machine in your fleet, where the beam daemon runs tmux and another agent."
       >
         <defs>
           <marker
@@ -46,7 +46,7 @@ export function BeamOverviewDiagram() {
           fontWeight="600"
           fill="var(--color-fd-foreground)"
         >
-          Your machine
+          Your laptop
         </text>
         <rect
           x="36"
@@ -112,7 +112,7 @@ export function BeamOverviewDiagram() {
           fontWeight="600"
           fill="var(--color-fd-foreground)"
         >
-          A paired machine
+          A machine in your fleet
         </text>
         <rect
           x="424"
@@ -130,7 +130,7 @@ export function BeamOverviewDiagram() {
           fontSize="12"
           fill="var(--color-fd-foreground)"
         >
-          beam node
+          beam daemon
         </text>
         <line
           x1="514"
@@ -191,7 +191,7 @@ export function BeamOverviewDiagram() {
       </svg>
       <p className="text-fd-muted-foreground mt-4 text-center text-sm">
         Beam connects the machines. Your tmux sessions, worktrees and agents
-        keep working as they do now.
+        work there as they do on your laptop.
       </p>
     </div>
   );

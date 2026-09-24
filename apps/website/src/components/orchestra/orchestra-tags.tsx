@@ -20,7 +20,7 @@ const tags = [
   {
     name: '@orchestra-session-type',
     value: 'worktree',
-    note: 'every player; n10’s terminal tabs are shell or agent',
+    note: 'worktree or dir for players; n10’s terminal tabs are shell or agent',
   },
   {
     name: '@orchestra-agent',
@@ -34,7 +34,7 @@ const tags = [
   },
   {
     name: '@orchestra-last-report',
-    value: 'DONE 2026-09-21T14:02Z delivered',
+    value: 'DONE 2026-09-21T14:02:07Z inbox',
     note: 'kind, time and outcome of the last report',
   },
 ];
@@ -44,13 +44,13 @@ const tools = [
     name: 'n10',
     href: '/',
     blurb:
-      'n10 reads the tags and lists players beside its own worktrees. Players launched by n10 Desktop and Orchestra use the same sessions, and n10 Desktop relays reports from other machines.',
+      'n10 reads the same tags and lists worktree players beside its own worktrees. n10 Desktop is the relay that delivers a remote player’s reports into the orchestrator’s pane or Claude session.',
   },
   {
     name: 'Beam',
     href: '/beam',
     blurb:
-      'Beam adds --machine to every Orchestra script. The tmux and Git commands run on the named paired machine, and reports return over the pairing or wait on disk while your laptop is closed.',
+      'Every orchestrator script except relay.sh takes --machine with the name of a machine in your Beam fleet. The Git and tmux commands run on that machine, and reports come back through the fleet or wait on disk while your laptop is closed.',
   },
 ];
 
@@ -68,8 +68,9 @@ export function OrchestraTags() {
             and anything connected to the tmux server can read them.
           </p>
           <p className="text-fd-muted-foreground mt-4 leading-relaxed text-pretty">
-            n10 and Beam use the same tags. The tools work together without
-            depending on each other&apos;s internals.
+            n10 reads the same tags, and Beam carries commands and reports
+            between machines. The tools work together without depending on each
+            other&apos;s internals.
           </p>
           <div className="mt-8 flex flex-col gap-6">
             {tools.map((tool) => (

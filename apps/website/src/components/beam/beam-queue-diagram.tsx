@@ -3,9 +3,9 @@
  * this walks through what happens to a message sent while it's asleep.
  */
 const panels = [
-  { label: 'sent while offline', sub: 'held on disk, nothing lost' },
+  { label: 'sent while offline', sub: 'kept on disk by the sender' },
   { label: 'the machine reconnects', sub: 'over whichever side dials' },
-  { label: 'delivered', sub: 'exactly once, in order' },
+  { label: 'delivered', sub: 'when the machine is back' },
 ];
 
 export function BeamQueueDiagram() {
@@ -15,7 +15,7 @@ export function BeamQueueDiagram() {
         viewBox="0 0 640 150"
         className="h-auto w-full"
         role="img"
-        aria-label="A message sent to an offline machine is held on disk, then delivered as soon as that machine reconnects."
+        aria-label="A message sent to an offline machine is kept on disk by the sender, then delivered when that machine reconnects."
       >
         <defs>
           <marker

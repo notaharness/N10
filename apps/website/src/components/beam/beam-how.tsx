@@ -1,18 +1,18 @@
 const steps = [
   {
-    title: 'Pair once',
+    title: 'Create a fleet',
     description:
-      'Run beam serve on the machine you want to reach. Open its link on your laptop and confirm the fingerprint to pair the machines.',
+      'Run beam init --label laptop on the first machine. Two passkey prompts, in a browser or through a QR code on a terminal, create the fleet passkey and authorize the machine.',
   },
   {
-    title: 'Connect when needed',
+    title: 'Join from each machine',
     description:
-      'Either machine can dial the other, depending on what the network allows. If neither is reachable, sent items wait until they reconnect.',
+      'Run beam join --label buildbox and approve with the same passkey, from your phone if the machine is headless. Check that the fleet fingerprint it prints matches beam status on a machine already in the fleet.',
   },
   {
-    title: 'Run the agent remotely',
+    title: 'Run the agent there',
     description:
-      'n10 and Orchestra still start tmux, check out a worktree and launch an agent. Beam runs those calls on the paired machine instead of locally.',
+      'n10 and Orchestra start tmux, create a worktree and launch an agent on the machine you name. Beam runs those calls there and returns the results.',
   },
 ];
 

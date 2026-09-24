@@ -11,7 +11,7 @@ import { Footer } from '@/components/landing/footer';
 export const metadata: Metadata = {
   title: 'Beam',
   description:
-    'Pair two machines and run terminals, commands and messages between them. n10 and Orchestra use Beam to run agents on another machine.',
+    'Pool the machines you own into a fleet and open shells, run commands and leave durable messages between them; n10 and Orchestra use Beam to run agents on another machine.',
 };
 
 export default function BeamPage() {

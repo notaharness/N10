@@ -8,7 +8,7 @@ import { OrchestraTags } from '@/components/orchestra/orchestra-tags';
 export const metadata: Metadata = {
   title: 'Orchestra',
   description:
-    'Two skills that let one coding agent delegate branch-sized tasks to agents in separate tmux sessions and Git worktrees. Orchestra shares session tags with n10 and can run players on paired machines over Beam.',
+    'Two skills that let one coding agent delegate branch-sized tasks to agents in separate tmux sessions and Git worktrees. Orchestra shares session tags with n10 and can run players on machines in your Beam fleet.',
 };
 
 export default function OrchestraPage() {

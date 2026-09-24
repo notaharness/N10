@@ -14,16 +14,16 @@ export function BeamHero() {
             Run agents on another machine
           </h1>
           <p className="text-fd-muted-foreground max-w-xl text-lg text-pretty">
-            Pair your laptop with a workstation or headless build box. Open a
-            terminal, run a command or queue a message without setting up SSH
-            keys or tunnels.
+            Pool your laptop, workstation and headless boxes into a fleet with
+            one passkey. Open a shell, run a command or leave a message for a
+            machine that is asleep. No SSH keys, no Tailscale account.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Link href="/docs/beam" className={buttonVariants({ size: 'lg' })}>
               Read the docs
             </Link>
             <Link
-              href="https://github.com/notaharness/n10"
+              href="https://github.com/notaharness/beam"
               className={buttonVariants({ variant: 'outline', size: 'lg' })}
             >
               GitHub

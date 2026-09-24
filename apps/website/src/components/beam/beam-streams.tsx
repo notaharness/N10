@@ -5,19 +5,19 @@ const streams = [
     name: 'beam connect',
     title: 'Open an interactive terminal',
     description:
-      'Open a terminal on the paired machine, resize it, run a shell or attach a tmux client.',
+      'Open a terminal on another machine in your fleet and run a shell or a tmux client in it. It resizes with your window.',
   },
   {
     name: 'beam exec',
     title: 'Run one command',
     description:
-      'Run one command on the paired machine and receive its output and exit code, like ssh host cmd. Scripts that use SSH can switch with few changes.',
+      'Run one command on another machine, like ssh host cmd. Input and output are piped through, and beam exec exits with the remote exit code.',
   },
   {
     name: 'beam msg',
     title: 'Queue a message',
     description:
-      'Send a short message while the paired machine is asleep or offline. Beam stores it on disk and delivers it when the machine returns.',
+      'Leave a message for a machine that is asleep or offline. Beam stores it on disk and delivers it when the machine returns.',
   },
 ];
 
@@ -25,7 +25,7 @@ export function BeamStreams() {
   return (
     <section className="mx-auto w-full max-w-5xl px-4 py-12">
       <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-        Three ways to use a paired machine
+        Three ways to reach a machine in your fleet
       </h2>
       <div className="mt-8">
         <BeamStreamsDiagram />
