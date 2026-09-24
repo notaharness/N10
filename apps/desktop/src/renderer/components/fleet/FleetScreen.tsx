@@ -1,6 +1,6 @@
 import { ArrowLeftIcon } from 'lucide-react';
-import { useEffect, useRef } from 'react';
 import { useFleet } from '../../lib/fleet/fleet-context.js';
+import { useFocusOnMount } from '../../lib/fleet/use-focus-on-mount.js';
 import { TitleBar } from '../TitleBar.js';
 import { Button } from '../ui/button.js';
 import { FleetOverview } from './FleetOverview.js';
@@ -8,8 +8,7 @@ import { FleetOverview } from './FleetOverview.js';
 /** Fleet, full height over the screen underneath (`FleetOver`). */
 export function FleetScreen() {
   const { close } = useFleet();
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), []);
+  const heading = useFocusOnMount<HTMLHeadingElement>();
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-background text-foreground">
       <TitleBar repo={null} onSwitchRepo={() => undefined} />

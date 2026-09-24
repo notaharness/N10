@@ -7,6 +7,7 @@ import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
 import {
   cancelCeremony,
+  runCeremony,
   listMachines,
   setBeamStatusNotifier,
   setMachineGrant,
@@ -17,7 +18,7 @@ import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
 import { BeamClient } from './client.js';
 import type { DaemonExit, OwnedDaemon } from './owned-daemon.js';
 import type { PeerView } from './peers.js';
-import { FakeDaemon } from './test-support/fake-daemon.js';
+import { FakeDaemon, FakeOpError } from './test-support/fake-daemon.js';
 import { until } from './test-support/until.js';
 
 const SELF = 'a'.repeat(32);
@@ -226,6 +227,23 @@ describe('BeamClient', () => {
     );
     expect(relays).toHaveLength(2);
     await until(() => relays[0].socket.destroyed);
+  });
+
+  it('re-reads status after a failed ceremony: beam may have committed first', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    daemon.on('status', () => ({ ready: true, enrolled: false }));
+    daemon.on('join.start', () => ({ ceremonyUrl: 'https://beam.n10.is/#j' }));
+    daemon.on('join.wait', () => {
+      enrolledDaemon(daemon!, []);
+      throw new FakeOpError('directory-unavailable');
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(runCeremony({ op: 'join', label: '' })).resolves.toMatchObject(
+      { ok: false, code: 'directory-unavailable' }
+    );
+    await until(() => last(statuses)?.enrolled === true);
   });
 
   it('cancels only a ceremony of its own', async () => {

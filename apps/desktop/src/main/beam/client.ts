@@ -275,7 +275,8 @@ export class BeamClient {
             onProgress,
             abort.signal
           );
-          if (outcome.ok) this.refresh();
+          // A failure too: the daemon may have committed before it failed.
+          if (this.main) this.refresh();
           return outcome;
         } finally {
           if (this.ceremony === abort) this.ceremony = null;

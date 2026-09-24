@@ -1,20 +1,16 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import type {
-  BeamStatus,
-  CeremonyOutcome,
-  MachineView,
-} from '../../../host/contract.js';
+import type { BeamStatus, MachineView } from '../../../host/contract.js';
 import { useBeamStatus, useMachines } from '../../lib/data/queries.js';
 import { keys } from '../../lib/data/query-keys.js';
 import { useFleet } from '../../lib/fleet/fleet-context.js';
-import { ceremonyOutcomeText } from '../../lib/machines/ceremony-model.js';
 import { errorMessage } from '../../lib/utils.js';
-import { EnrolmentCard } from '../machines/EnrolmentCard.js';
 import { MachineRow } from '../machines/MachineRow.js';
 import { RevokeMachineDialog } from '../machines/RevokeMachineDialog.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
+import { EnrolmentFlow } from './EnrolmentFlow.js';
+import { FirstRun } from './FirstRun.js';
 
 function Card({ children }: { children: ReactNode }) {
   return (
@@ -75,15 +71,12 @@ function Reconnecting() {
   );
 }
 
-/** This machine and its fleet, after the enrolment that just finished
- *  (if any) — a join's fleet fingerprint is what the owner compares. */
+/** This machine first, then the rest of its fleet. */
 function FleetRows({
   machines,
-  enrolled,
   disabled,
 }: {
   machines: MachineView[];
-  enrolled: CeremonyOutcome | null;
   disabled: boolean;
 }) {
   const local = machines.find((m) => m.isLocal);
@@ -91,13 +84,6 @@ function FleetRows({
   return (
     <Card>
       <div className="divide-y divide-border">
-        {enrolled?.ok && (
-          <p className="px-4 py-4 text-sm text-muted-foreground" role="status">
-            {ceremonyOutcomeText(enrolled, { thisMachine: local?.label })}
-            {enrolled.op === 'join' &&
-              ' Check that this fleet fingerprint matches the one a machine already in your fleet shows.'}
-          </p>
-        )}
         {local && <MachineRow machine={local} disabled={disabled} />}
         {others.map((m) => (
           <MachineRow key={m.peerId} machine={m} disabled={disabled} />
@@ -112,8 +98,9 @@ function FleetRows({
   );
 }
 
-/** Beam's machines once it answers: the first-run choices until this
- *  machine is in a fleet, then this machine first and its fleet. */
+/** Beam's machines once it answers: an enrolment under way or just
+ *  ended, the first-run choices until this machine is in a fleet, and
+ *  this machine's fleet once it is. */
 function FleetBody({
   beam,
   machines,
@@ -125,26 +112,25 @@ function FleetBody({
 }) {
   const { enrolment, revocation } = useFleet();
   const reconnecting = beam.state === 'restarting';
+  const enrolling = enrolment.ceremony.view !== null;
   return (
     <div className="space-y-4">
       {revocation.target && <RevokeMachineDialog machine={revocation.target} />}
       {reconnecting && <Reconnecting />}
       {loadFailure}
-      {!beam.enrolled || enrolment.running ? (
-        <section aria-labelledby="fleet-first-machine">
-          <h2 id="fleet-first-machine" className="mb-3 text-lg font-semibold">
-            Connect your first machine
-          </h2>
-          <Card>
-            <EnrolmentCard ceremony={enrolment} disabled={reconnecting} />
-          </Card>
-        </section>
-      ) : (
-        <FleetRows
-          machines={machines ?? []}
-          enrolled={enrolment.outcome}
-          disabled={reconnecting}
-        />
+      {(enrolling || !beam.enrolled) && (
+        <Card>
+          <div className="p-4">
+            {enrolling ? (
+              <EnrolmentFlow />
+            ) : (
+              <FirstRun disabled={reconnecting} />
+            )}
+          </div>
+        </Card>
+      )}
+      {beam.enrolled && (
+        <FleetRows machines={machines ?? []} disabled={reconnecting} />
       )}
     </div>
   );

@@ -91,4 +91,7 @@ export type CeremonyOutcome =
       published: boolean;
     }
   | { ok: true; op: 'revoke'; published: boolean; acknowledgedBy: number }
-  | { ok: false; code: string; message: string };
+  /** `code` is beam's error token (docs/06), or `connection-lost` when
+   *  the connection dropped mid-request; `detail` is beam's own words.
+   *  The renderer owns what each one tells the owner. */
+  | { ok: false; code: string; detail: string | null };

@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures/fake-beam.js';
+import { WORKBOX } from './setup/fake-beam.js';
 import { tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
-import { ceremonyUrl } from './setup/fake-beam.js';
 import { fleetView, leaveFleet, openFleet } from './setup/machines.js';
 
 /**
@@ -73,7 +73,7 @@ test.describe('Fleet destination', () => {
     await openFleet(desktop);
   });
 
-  test('keeps a running ceremony across Back to workspace', async ({
+  test('keeps the form and a running ceremony across Back to workspace', async ({
     desktop,
     beam,
   }) => {
@@ -81,11 +81,18 @@ test.describe('Fleet destination', () => {
     await openFleet(desktop);
     const fleet = fleetView(page);
     await fleet.getByRole('button', { name: 'Create a fleet' }).click();
+    await fleet.getByLabel('This machine’s name').fill('laptop');
+    await leaveFleet(page);
+    await openFleet(desktop);
+    await expect(fleet.getByLabel('This machine’s name')).toHaveValue('laptop');
+    await fleet.getByRole('button', { name: 'Create fleet' }).click();
     await expect(fleet.getByTestId('ceremony-url')).toBeVisible();
 
     await leaveFleet(page);
     await openFleet(desktop);
-    await expect(fleet.getByTestId('ceremony-url')).toBeVisible();
+    await expect(fleet.getByTestId('ceremony-url')).toHaveText(
+      beam!.currentUrl
+    );
     expect(beam!.ops('init.start')).toHaveLength(1);
     expect(beam!.ops('ceremony.cancel')).toHaveLength(0);
   });
@@ -126,9 +133,7 @@ test.describe('Fleet destination', () => {
     test.use({
       beamScenario: {
         enrolled: true,
-        peers: [
-          { peerId: 'c0ffee00c0ffee00c0ffee00c0ffee00', label: 'workbox' },
-        ],
+        peers: [{ peerId: WORKBOX, label: 'workbox' }],
       },
     });
 
@@ -142,13 +147,14 @@ test.describe('Fleet destination', () => {
         .getByTestId('machine-row')
         .filter({ hasText: 'workbox' });
       await row.getByRole('button', { name: 'Machine actions' }).click();
-      await page.getByRole('menuitem', { name: 'Revoke…' }).click();
+      await page.getByRole('menuitem', { name: 'Revoke workbox…' }).click();
       await page
         .getByRole('dialog')
-        .getByRole('button', { name: 'Revoke' })
+        .getByRole('button', { name: 'Continue to passkey' })
         .click();
+      await expect(page.getByTestId('ceremony-url')).toBeVisible();
       await expect(page.getByTestId('ceremony-url')).toHaveText(
-        ceremonyUrl('revoke', 'first')
+        beam!.currentUrl
       );
 
       await clickAppMenuItem(desktop.app, 'Settings…');

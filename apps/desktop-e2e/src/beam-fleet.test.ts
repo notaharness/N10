@@ -49,12 +49,13 @@ const test = base.extend<{
  *  and waits for the app to show workbox connected. */
 async function formFleet(page: Page, workbox: BeamMachine): Promise<void> {
   await openFleet({ page });
-  await page.getByLabel("This machine's name").fill('laptop');
-  await page.getByLabel('Fleet name (to create one)').fill('home');
   await page.getByRole('button', { name: 'Create a fleet' }).click();
-  await expect(page.getByText(/^Created fleet/)).toBeVisible({
-    timeout: 60_000,
-  });
+  await page.getByLabel('This machine’s name').fill('laptop');
+  await page.getByLabel('Fleet name').fill('home');
+  await page.getByRole('button', { name: 'Create fleet' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Fleet created' })
+  ).toBeVisible({ timeout: 60_000 });
 
   const joined = await workbox.cli(['join', '--label', 'workbox']);
   expect(joined.code, joined.stderr).toBe(0);

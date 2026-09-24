@@ -11,20 +11,22 @@ import {
 } from 'react';
 import type { MachineView, MenuCommand } from '../../../host/contract.js';
 import { keys } from '../data/query-keys.js';
-import { useCeremony } from '../machines/use-ceremony.js';
+import { useCeremony, type Ceremony } from './use-ceremony.js';
+import { useEnrolment, type Enrolment } from './use-enrolment.js';
 
 interface FleetContextValue {
   open: boolean;
   show: () => void;
   close: () => void;
-  /** The enrolment under way, if any. Owned here, above the repository
-   *  gate, so leaving Fleet or switching repositories keeps it. */
-  enrolment: ReturnType<typeof useCeremony>;
+  /** The first run: its choice, form values and ceremony. Owned here,
+   *  above the repository gate, so leaving Fleet or switching
+   *  repositories keeps them. */
+  enrolment: Enrolment;
   /** The revocation dialog's machine and ceremony, kept the same way:
    *  leaving Fleet must not cancel a revocation waiting on a passkey. */
   revocation: {
     target: MachineView | null;
-    ceremony: ReturnType<typeof useCeremony>;
+    ceremony: Ceremony;
     open: (machine: MachineView) => void;
     close: () => void;
   };
@@ -76,7 +78,7 @@ function useFleetPushes(): void {
  */
 export function FleetProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const enrolment = useCeremony();
+  const enrolment = useEnrolment();
   const [revokeTarget, setRevokeTarget] = useState<MachineView | null>(null);
   const revokeCeremony = useCeremony();
   useFleetPushes();
