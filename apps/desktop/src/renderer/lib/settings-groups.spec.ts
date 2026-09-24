@@ -11,7 +11,7 @@ function field(
 
 describe('visibleSettingsGroups', () => {
   it('shows Appearance and Machines even when the host sends nothing at all', () => {
-    // The theme/window-frame rows and the machines list are this
+    // The theme/window-frame rows and the link to Fleet are this
     // shell's own; a host that is unreachable or still loading must
     // not empty the page, and machines is repo-independent so it has
     // nothing to wait on in the first place.

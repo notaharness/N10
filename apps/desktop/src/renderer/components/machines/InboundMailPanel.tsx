@@ -10,14 +10,16 @@ import { Tip } from '../ui/tooltip.js';
  * first (ux-machines.md §7: visible and durable, never a toast that
  * disappears before the user returns). Split out of `MachineRow.tsx`
  * to keep that component's own complexity within budget. Renders
- * nothing when both lists are empty.
+ * nothing when both lists are empty. `disabled` while beam reconnects.
  */
 export function InboundMailPanel({
   waiting,
   refused,
+  disabled,
 }: {
   waiting: InboundMailRow[];
   refused: InboundMailRow[];
+  disabled: boolean;
 }) {
   const dismissMail = useDismissInboundMail();
   if (waiting.length === 0 && refused.length === 0) return null;
@@ -46,6 +48,7 @@ export function InboundMailPanel({
               variant="ghost"
               size="sm"
               className="h-5 shrink-0 px-1.5 text-xs"
+              disabled={disabled}
               onClick={() =>
                 dismissMail.mutate(row.id, {
                   onError: (err: unknown) => toast.error(errorMessage(err)),

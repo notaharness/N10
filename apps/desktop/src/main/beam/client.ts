@@ -1,15 +1,20 @@
-import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
+import type {
+  BeamStatus,
+  DirectoryPublished,
+  MachineView,
+} from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
 import {
   getLastKnownMachines,
   receiveBeamStatus,
+  receiveDirectoryPublished,
   receiveMachinesUpdate,
   refreshMailOverlay,
   setMachinesPort,
   type MachinesPort,
 } from '../../host/services/machines.js';
 import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
-import { runCeremony } from './ceremony.js';
+import { failure, runCeremony } from './ceremony.js';
 import type { ControlConnection } from './control.js';
 import { DaemonLauncher } from './launcher.js';
 import { MailRelay } from './mail-relay.js';
@@ -50,6 +55,8 @@ export class BeamClient {
   private readonly launcher: DaemonLauncher;
   /** The enrolment (`fleetId/peerId`) the relay is subscribed under. */
   private relayFor: string | null = null;
+  /** The enrolment the relay's held reports came under. */
+  private mailFor: string | null = null;
   /** Peer events heard while each list in flight is read. */
   private readonly listings = new Set<PeerView[]>();
   private ceremony: AbortController | null = null;
@@ -61,6 +68,7 @@ export class BeamClient {
     state: 'connecting',
     detail: null,
     enrolled: false,
+    fleetId: null,
   };
 
   constructor(private readonly options: BeamClientOptions) {
@@ -132,6 +140,10 @@ export class BeamClient {
     }
     conn.onClose(() => this.lost(conn));
     conn.onEvent((event, data) => this.onEvent(event, data));
+    // The socket answers before beam's transport is up, and the
+    // subscribe waits for it. A reconnect stays `restarting` meanwhile.
+    if (!this.everConnected)
+      this.publish({ ...this.status, state: 'starting', detail: null });
     try {
       await conn.request('events.subscribe');
     } catch (err) {
@@ -178,6 +190,10 @@ export class BeamClient {
   }
 
   private onEvent(event: string, data: unknown): void {
+    if (event === 'directory.published') {
+      receiveDirectoryPublished(data as DirectoryPublished);
+      return;
+    }
     if (event !== 'peer' && event !== 'peer.new') return;
     const peer = data as PeerView;
     for (const heard of this.listings) heard.push(peer);
@@ -202,7 +218,12 @@ export class BeamClient {
     this.listings.add(heard);
     try {
       const status = await conn.request<DaemonStatus>('status');
-      this.publish({ state: 'ready', detail: null, enrolled: status.enrolled });
+      this.publish({
+        state: 'ready',
+        detail: null,
+        enrolled: status.enrolled,
+        fleetId: status.fleetId ?? null,
+      });
       this.syncRelay(status);
       if (!status.enrolled) return [];
       const peers: PeerView[] = [];
@@ -227,11 +248,17 @@ export class BeamClient {
   /** The relay is subscribed under the daemon's current enrolment:
    *  `msg.subscribe` is `not-enrolled` before one, and a subscription
    *  outlives a `beam fleet reset` in the daemon, so a new enrolment
-   *  needs a new one. */
+   *  needs a new one. beam's `generation` tells a reset and re-join of
+   *  the same fleet apart, where a daemon reports it. */
   private syncRelay(status: DaemonStatus): void {
     const enrolment = status.enrolled
-      ? `${status.fleetId}/${status.peerId}`
+      ? `${status.fleetId}/${status.peerId}/${status.generation ?? ''}`
       : null;
+    if (enrolment !== this.mailFor) {
+      // beam discards an enrolment's queued mail with it (a reset).
+      if (this.mailFor) this.relay.forget();
+      this.mailFor = enrolment;
+    }
     if (enrolment === this.relayFor || this.stopped) return;
     this.stopRelay();
     if (enrolment) this.startRelay(enrolment);
@@ -275,7 +302,8 @@ export class BeamClient {
             onProgress,
             abort.signal
           );
-          if (outcome.ok) this.refresh();
+          // A failure too: the daemon may have committed before it failed.
+          if (this.main) this.refresh();
           return outcome;
         } finally {
           if (this.ceremony === abort) this.ceremony = null;
@@ -285,6 +313,18 @@ export class BeamClient {
       // one the daemon runs, and that may be the CLI's.
       cancelCeremony: async () => {
         this.ceremony?.abort();
+      },
+      resetFleet: async () => {
+        const conn = this.main;
+        try {
+          await this.requireMain().request('fleet.reset', { confirm: 'reset' });
+          return { ok: true };
+        } catch (err) {
+          // Lost under the request, the reset may still have happened.
+          return failure(err, conn !== null && this.main !== conn);
+        } finally {
+          if (this.main) this.refresh();
+        }
       },
     };
   }

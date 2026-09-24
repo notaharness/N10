@@ -84,6 +84,7 @@ describe('runCeremony', () => {
     ).resolves.toEqual({
       ok: true,
       op: 'revoke',
+      peerId: PEER,
       published: true,
       acknowledgedBy: 2,
     });
@@ -91,19 +92,29 @@ describe('runCeremony', () => {
     expect(progress[1]).toMatchObject({ kind: 'passkey', step: 'sign' });
   });
 
-  it('resolves a refusal as its owner-facing message, never a rejection', async () => {
+  it('resolves a refusal as its code and beam’s own detail, never a rejection', async () => {
     daemon.on('join.start', () => ({ ceremonyUrl: 'https://beam.n10.is/#j' }));
     daemon.on('join.wait', () => {
-      throw new FakeOpError('prf-unsupported');
+      throw new FakeOpError('prf-unsupported', 'no prf.results.first');
     });
     await expect(
       runCeremony(daemon.socketPath, { op: 'join', label: '' }, () => undefined)
     ).resolves.toEqual({
       ok: false,
       code: 'prf-unsupported',
-      message:
-        "This passkey provider doesn't support what beam needs; try another.",
+      detail: 'no prf.results.first',
     });
+  });
+
+  it('names a connection that drops mid-wait as lost: the request may have completed', async () => {
+    daemon.on('join.start', () => ({ ceremonyUrl: 'https://beam.n10.is/#j' }));
+    daemon.on('join.wait', () => {
+      for (const c of daemon.controls) c.destroy();
+      return new Promise(() => undefined);
+    });
+    await expect(
+      runCeremony(daemon.socketPath, { op: 'join', label: '' }, () => undefined)
+    ).resolves.toEqual({ ok: false, code: 'connection-lost', detail: null });
   });
 
   it('resolves a missing daemon as a failure too', async () => {

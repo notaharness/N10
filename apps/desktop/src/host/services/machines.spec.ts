@@ -37,7 +37,6 @@ function localMachine(): MachineView {
     path: null,
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],
@@ -67,11 +66,13 @@ function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
       return Promise.resolve({
         ok: true as const,
         op: 'revoke' as const,
+        peerId: PEER,
         published: true,
         acknowledgedBy: 1,
       });
     },
     cancelCeremony: record('cancelCeremony', () => Promise.resolve()),
+    resetFleet: record('resetFleet', () => Promise.resolve({ ok: true })),
   };
 }
 
@@ -148,6 +149,7 @@ describe('the push channel', () => {
       state: 'ready',
       detail: null,
       enrolled: true,
+      fleetId: 'f'.repeat(64),
     };
     const seen: BeamStatus[] = [];
     setBeamStatusNotifier((s) => seen.push(s));

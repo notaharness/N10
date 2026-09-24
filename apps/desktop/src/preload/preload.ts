@@ -10,6 +10,7 @@ import {
   SYNC_EVENTS,
   type BeamStatus,
   type CeremonyProgress,
+  type DirectoryPublished,
   type N10HostApi,
   type LaunchStepEvent,
   type MachinesChangedEvent,
@@ -164,12 +165,19 @@ const api: N10HostApi = {
     ipcRenderer.invoke(IPC.setMachineGrant, peerId, grant),
   runCeremony: (request) => ipcRenderer.invoke(IPC.runCeremony, request),
   cancelCeremony: () => ipcRenderer.invoke(IPC.cancelCeremony),
+  resetFleet: () => ipcRenderer.invoke(IPC.resetFleet),
   onCeremonyProgress: (cb) => {
     const listener = (_e: unknown, payload: CeremonyProgress) => cb(payload);
     ipcRenderer.on(MACHINES_EVENTS.ceremony, listener);
     return () => ipcRenderer.removeListener(MACHINES_EVENTS.ceremony, listener);
   },
   dismissInboundMail: (id) => ipcRenderer.invoke(IPC.dismissInboundMail, id),
+  onDirectoryPublished: (cb) => {
+    const listener = (_e: unknown, payload: DirectoryPublished) => cb(payload);
+    ipcRenderer.on(MACHINES_EVENTS.published, listener);
+    return () =>
+      ipcRenderer.removeListener(MACHINES_EVENTS.published, listener);
+  },
   onMachinesChanged: (cb) => {
     const listener = (_e: unknown, payload: MachinesChangedEvent) =>
       cb(payload);

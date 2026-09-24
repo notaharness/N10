@@ -57,6 +57,7 @@ const EVENT_METHODS = [
   'onMachinesChanged',
   'onBeamStatusChanged',
   'onCeremonyProgress',
+  'onDirectoryPublished',
 ] as const;
 
 describe('preload bridge', () => {

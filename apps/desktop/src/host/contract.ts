@@ -47,6 +47,8 @@ import type {
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
+  DirectoryPublished,
+  FleetResetOutcome,
   MachineGrant,
   MachineView,
 } from './contract-machines.js';
@@ -457,7 +459,11 @@ export interface N10HostApi {
   runCeremony(request: CeremonyRequest): Promise<CeremonyOutcome>;
   /** Ends the ceremony under way; its `runCeremony` resolves cancelled. */
   cancelCeremony(): Promise<void>;
+  /** Removes this machine from its fleet, keeping its identity (beam's
+   *  `fleet.reset`). Resolved, never rejected, with the outcome. */
+  resetFleet(): Promise<FleetResetOutcome>;
   onCeremonyProgress(cb: (progress: CeremonyProgress) => void): () => void;
+  onDirectoryPublished(cb: (landed: DirectoryPublished) => void): () => void;
   onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
   /** Discards a refused inbound report without delivering it — the
    *  only thing that acks it, removing it from the sender's mailbox
@@ -548,6 +554,7 @@ export const IPC = {
   setMachineGrant: 'n10/machines/grant',
   runCeremony: 'n10/machines/ceremony/run',
   cancelCeremony: 'n10/machines/ceremony/cancel',
+  resetFleet: 'n10/machines/fleet-reset',
   dismissInboundMail: 'n10/machines/dismiss-inbound-mail',
 } as const;
 

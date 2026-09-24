@@ -13,13 +13,16 @@ export interface PeerView {
   path: string;
   lastSeenAt: number | null;
   grant: string;
-  revokedAt: number | null;
   queue: { outbound: number };
 }
 
 /** The subset of beam docs/06's `status` result this client reads. */
 export interface DaemonStatus {
   enrolled: boolean;
+  /** Bumped by every enrolment and reset, and restarts with the
+   *  daemon, so the relay key also changes on a daemon restart (unacked
+   *  mail is redelivered). Absent on older daemons. */
+  generation?: number;
   peerId?: string;
   label?: string;
   fleetId?: string;
@@ -53,7 +56,6 @@ export function machineFromPeer(peer: PeerView): MachineView {
     lastSeenAt: peer.lastSeenAt,
     // beam reads a grant it cannot parse as none (docs/04); so does this.
     grant: oneOf(GRANTS, peer.grant, 'none'),
-    revokedAt: peer.revokedAt,
     queued: peer.queue.outbound,
     inboundWaiting: [],
     inboundRefused: [],
@@ -69,7 +71,6 @@ export function localMachine(status: DaemonStatus): MachineView {
     path: null,
     lastSeenAt: null,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],

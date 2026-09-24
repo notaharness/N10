@@ -289,7 +289,6 @@ function connectedMachine(peerId: string, label: string): MachineView {
     path: 'direct',
     lastSeenAt: 1000,
     grant: 'all',
-    revokedAt: null,
     queued: 0,
     inboundWaiting: [],
     inboundRefused: [],

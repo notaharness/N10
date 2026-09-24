@@ -1,38 +1,22 @@
 import type {
+  BeamFailure,
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
 } from '../../host/contract-machines.js';
 import { BeamOpError, ControlConnection } from './control.js';
 
-/** What each failure tells the owner, in beam docs/07's and docs/08's
- *  words where they have some. */
-const FAILURES: Record<string, string> = {
-  'prf-unsupported':
-    "This passkey provider doesn't support what beam needs; try another.",
-  'directory-unavailable': 'Directory unavailable; try again.',
-  'wrong-passkey': 'That passkey is not the one this fleet was created with.',
-  'ceremony-timeout': 'The passkey step timed out.',
-  'ceremony-cancelled': 'Cancelled.',
-  'ceremony-state': 'The ceremony answer did not match; start again.',
-  busy: 'Another passkey ceremony is already under way.',
-  'already-enrolled': 'This machine is already in a fleet.',
-  'bad-assertion': 'The passkey answer did not verify.',
-  'revoked-peer': 'This machine has been revoked from the fleet.',
-};
-
-function failure(err: unknown): CeremonyOutcome {
+/** A failure as beam named it. A connection that closed under a
+ *  request is `connection-lost`: the request may have completed. */
+export function failure(err: unknown, lost = false): BeamFailure {
   if (err instanceof BeamOpError) {
-    return {
-      ok: false,
-      code: err.code,
-      message: FAILURES[err.code] ?? err.message,
-    };
+    return { ok: false, code: err.code, detail: err.detail || null };
   }
+  if (lost) return { ok: false, code: 'connection-lost', detail: null };
   return {
     ok: false,
     code: 'internal',
-    message: err instanceof Error ? err.message : String(err),
+    detail: err instanceof Error ? err.message : String(err),
   };
 }
 
@@ -70,6 +54,7 @@ function outcome(request: CeremonyRequest, r: WaitResult): CeremonyOutcome {
       return {
         ok: true,
         op: 'join',
+        peerId: r.peerId ?? '',
         fleetId: r.fleetId ?? '',
         members: r.members ?? 0,
         published,
@@ -78,6 +63,7 @@ function outcome(request: CeremonyRequest, r: WaitResult): CeremonyOutcome {
       return {
         ok: true,
         op: 'revoke',
+        peerId: request.peerId,
         published,
         acknowledgedBy: r.acknowledgedBy ?? 0,
       };
@@ -107,8 +93,10 @@ export async function runCeremony(
   signal: AbortSignal
 ): Promise<CeremonyOutcome> {
   let conn: ControlConnection | null = null;
+  let lost = false;
   try {
     const c = (conn = await ControlConnection.connect(socketPath));
+    c.onClose(() => (lost = true));
     onProgress({ kind: 'stage', stage: 'preparing network' });
     const start = await c.request<{ ceremonyUrl: string }>(
       `${request.op}.start`,
@@ -117,7 +105,7 @@ export async function runCeremony(
     const cancel = () => c.request('ceremony.cancel').catch(() => undefined);
     if (signal.aborted) {
       await cancel();
-      return failure(new BeamOpError('ceremony-cancelled', ''));
+      return { ok: false, code: 'ceremony-cancelled', detail: null };
     }
     signal.addEventListener('abort', () => void cancel(), { once: true });
     onProgress({
@@ -136,7 +124,7 @@ export async function runCeremony(
     });
     return outcome(request, await c.request<WaitResult>(`${request.op}.wait`));
   } catch (err) {
-    return failure(err);
+    return failure(err, lost);
   } finally {
     conn?.close();
   }

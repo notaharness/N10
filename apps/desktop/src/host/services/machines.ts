@@ -3,6 +3,8 @@ import type {
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
+  DirectoryPublished,
+  FleetResetOutcome,
   MachineGrant,
   MachineView,
 } from '../contract-machines.js';
@@ -23,18 +25,21 @@ export interface MachinesPort {
     onProgress: (progress: CeremonyProgress) => void
   ): Promise<CeremonyOutcome>;
   cancelCeremony(): Promise<void>;
+  resetFleet(): Promise<FleetResetOutcome>;
 }
 
 let port: MachinesPort | null = null;
 let changed: ((machines: MachineView[]) => void) | null = null;
 let statusChanged: ((status: BeamStatus) => void) | null = null;
 let ceremonyProgress: ((progress: CeremonyProgress) => void) | null = null;
+let directoryPublished: ((landed: DirectoryPublished) => void) | null = null;
 /** The last list any source (a call or a push) produced. */
 let lastKnown: MachineView[] = [];
 let beamStatus: BeamStatus = {
   state: 'connecting',
   detail: null,
   enrolled: false,
+  fleetId: null,
 };
 
 /** Installed by main.ts once the transport is up. */
@@ -60,6 +65,17 @@ export function setCeremonyProgressNotifier(
   fn: ((progress: CeremonyProgress) => void) | null
 ): void {
   ceremonyProgress = fn;
+}
+
+export function setDirectoryPublishedNotifier(
+  fn: ((landed: DirectoryPublished) => void) | null
+): void {
+  directoryPublished = fn;
+}
+
+/** Fed by the transport when beam says a directory write landed. */
+export function receiveDirectoryPublished(landed: DirectoryPublished): void {
+  directoryPublished?.(landed);
 }
 
 /** Fed by the transport whenever it pushes a fresh list. Also the seam
@@ -132,4 +148,8 @@ export async function runCeremony(
 
 export async function cancelCeremony(): Promise<void> {
   return requirePort().cancelCeremony();
+}
+
+export async function resetFleet(): Promise<FleetResetOutcome> {
+  return requirePort().resetFleet();
 }

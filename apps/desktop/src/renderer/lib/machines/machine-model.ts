@@ -33,24 +33,32 @@ const STATE_TONE: Record<MachineState, MachineTone> = {
   'revoked-by-fleet': 'destructive',
 };
 
+/** beam's `path`: `direct`, `relay <region>` or `unknown`. */
+function routeText(path: string | null): string {
+  if (path === 'direct') return 'Direct';
+  const region = path?.match(/^relay (.+)$/)?.[1];
+  return region ? `Relay ${region}` : 'Path unknown';
+}
+
 function secondaryText(machine: MachineView): string {
   switch (machine.state) {
     case 'connected':
-      return machine.isLocal ? '' : machine.path ?? '';
+      return routeText(machine.path);
     case 'offline':
       return machine.lastSeenAt == null
-        ? 'never seen'
-        : `last seen ${relativeTime(machine.lastSeenAt)}`;
+        ? 'Not connected yet'
+        : `Last seen ${relativeTime(machine.lastSeenAt)}`;
     case 'revoked':
-      return machine.revokedAt == null
-        ? 'revoked here'
-        : `revoked ${relativeTime(machine.revokedAt)}`;
+      return '';
     case 'revoked-by-fleet':
-      return 'it has revoked this machine';
+      return 'This machine was revoked from that peer’s fleet view.';
   }
 }
 
 export function machinePresentation(machine: MachineView): MachinePresentation {
+  if (machine.isLocal) {
+    return { label: 'This machine', tone: 'success', secondary: '' };
+  }
   return {
     label: STATE_LABEL[machine.state],
     tone: STATE_TONE[machine.state],
@@ -65,10 +73,10 @@ export function fingerprintGroups(id: string): string {
   return groups ? groups.join(' ') : id;
 }
 
-/** `2 waiting`, or null at zero — mail queued for a peer is not a
+/** `2 queued`, or null at zero — mail queued for a peer is not a
  *  failure, and no badge shows for none. */
 export function queueBadgeLabel(depth: number): string | null {
-  return depth > 0 ? `${depth} waiting` : null;
+  return depth > 0 ? `${depth} queued` : null;
 }
 
 // ── Inbound mail relay (decisions.md D13/D14) ──
@@ -78,12 +86,11 @@ export function queueBadgeLabel(depth: number): string | null {
 // failure; a refusal is always visible and named — machine label,
 // target, reason.
 
-/** `1 waiting to be delivered` / `3 waiting to be delivered`, or null
- *  when there is nothing waiting — same "no badge at zero" rule as
- *  `queueBadgeLabel`. */
+/** `1 waiting` / `3 waiting`, or null when there is nothing waiting —
+ *  same "no badge at zero" rule as `queueBadgeLabel`. */
 export function inboundWaitingBadgeLabel(machine: MachineView): string | null {
   const n = machine.inboundWaiting.length;
-  return n > 0 ? `${n} waiting to be delivered` : null;
+  return n > 0 ? `${n} waiting` : null;
 }
 
 /** `1 refused` / `2 refused`, or null when there is nothing refused. */

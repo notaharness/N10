@@ -28,6 +28,7 @@ import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { useForeignSessions, useSidebarModel } from '../lib/data/queries.js';
+import { useFleet } from '../lib/fleet/fleet-context.js';
 import {
   useRefreshRemote,
   useRemovingBranches,
@@ -230,21 +231,27 @@ function WorkspaceInner({
   // handled here: palette (⌘K). Tab cycling was removed for now — it
   // collided with Shift+Tab inside agent terminals (Claude Code's mode
   // switch).
+  // Under Fleet, ⌘K leaves Fleet for the palette, as the menu's does.
+  const { open: fleetOpen, close: closeFleet } = useFleet();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setPaletteOpen((o) => !o);
+        if (fleetOpen) closeFleet();
+        setPaletteOpen((o) => fleetOpen || !o);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [fleetOpen, closeFleet]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div
+      data-testid="workspace-screen"
+      className="flex h-screen flex-col overflow-hidden bg-background text-foreground"
+    >
       <TitleBar
         repo={repo}
         onSwitchRepo={onSwitchRepo}

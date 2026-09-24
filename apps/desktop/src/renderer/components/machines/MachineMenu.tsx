@@ -4,8 +4,12 @@ import type {
   MachineGrant,
   MachineView,
 } from '../../../host/contract-machines.js';
+import { copyText } from '../../lib/copy-text.js';
 import { useSetMachineGrant } from '../../lib/data/mutations-machines.js';
-import { isFleetMember } from '../../lib/machines/machine-model.js';
+import {
+  fingerprintGroups,
+  isFleetMember,
+} from '../../lib/machines/machine-model.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -21,26 +25,27 @@ import {
 
 /** What each grant lets that machine open here (beam docs/04). */
 const GRANTS: { grant: MachineGrant; label: string }[] = [
-  { grant: 'all', label: 'Shell, commands and messages' },
+  { grant: 'all', label: 'Shells and messages' },
   { grant: 'msg', label: 'Messages only' },
-  { grant: 'none', label: 'Nothing' },
+  { grant: 'none', label: 'No access' },
 ];
 
+/** Copies the 64-bit fingerprint as displayed, not the full peerId
+ *  (beam-fleet-ux.md §1). */
 export function copyFingerprint(peerId: string): void {
-  navigator.clipboard.writeText(peerId).then(
-    () => toast.success('Fingerprint copied'),
-    () => toast.error('Could not copy the fingerprint')
-  );
+  copyText(fingerprintGroups(peerId), 'Fingerprint copied');
 }
 
 /** A machine row's actions: alias, grant and revoke for a member (beam
  *  docs/08), copying the fingerprint for any row. */
 export function MachineMenu({
   machine,
+  disabled,
   onRename,
   onRevoke,
 }: {
   machine: MachineView;
+  disabled: boolean;
   onRename: () => void;
   onRevoke: () => void;
 }) {
@@ -61,15 +66,20 @@ export function MachineMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {member && (
-          <DropdownMenuItem onSelect={onRename}>Rename here…</DropdownMenuItem>
+          <DropdownMenuItem disabled={disabled} onSelect={onRename}>
+            Rename here…
+          </DropdownMenuItem>
         )}
         {member && (
           <DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Allow on this machine</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              Access this machine allows from {machine.label}
+            </DropdownMenuLabel>
             {GRANTS.map((g) => (
               <DropdownMenuCheckboxItem
                 key={g.grant}
+                disabled={disabled}
                 checked={machine.grant === g.grant}
                 onSelect={() => setGrant(g.grant)}
               >
@@ -83,8 +93,12 @@ export function MachineMenu({
           Copy fingerprint
         </DropdownMenuItem>
         {member && (
-          <DropdownMenuItem variant="destructive" onSelect={onRevoke}>
-            Revoke…
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={disabled}
+            onSelect={onRevoke}
+          >
+            Revoke {machine.label}…
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

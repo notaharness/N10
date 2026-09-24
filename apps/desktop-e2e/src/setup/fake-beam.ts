@@ -7,8 +7,8 @@ import { dirname, join } from 'node:path';
  * fixture HOME (`$XDG_CONFIG_HOME/beam/run/beam.sock`, beam docs/06):
  * newline-delimited JSON requests and events, enough of each op to drive
  * the machines UI. It never dials a peer or runs a ceremony; a test
- * finishes a ceremony with `finishCeremony`. The real daemon is
- * exercised by the beam e2e suite.
+ * walks one with `nextPasskeyStep`, `stage`, `failCeremony` and
+ * `finishCeremony`. The real daemon is exercised by the beam e2e suite.
  */
 
 export interface FakePeer {
@@ -22,15 +22,31 @@ export interface FakePeer {
 export interface FakeBeamScenario {
   enrolled: boolean;
   peers?: FakePeer[];
+  /** False while beam's transport is still starting: `events.subscribe`
+   *  then waits, as every op but `status` does in beam. */
+  started?: boolean;
 }
+
+/** A member for scenarios that need one. */
+export const WORKBOX = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 
 export const SELF_PEER_ID = 'a1b2c3d4e5f60718a1b2c3d4e5f60718';
 export const FLEET_ID = '3f9a0c4e7d12e805'.padEnd(64, '0');
 
 type Request = Record<string, unknown> & { id: number; op: string };
 
-export function ceremonyUrl(op: string, step: string): string {
-  return `https://beam.n10.is/#op=${op}&step=${step}&state=e2e`;
+/** A ceremony URL shaped as beam writes one (docs/02): `o` the
+ *  operation, `l` and `f` the machine and its fingerprint, `n` the
+ *  fleet for a create; `s` differs per request. */
+function ceremonyUrl(
+  o: 'c' | 'a' | 'r',
+  fields: { l: string; f: string; n?: string; s: string }
+): string {
+  const fragment = new URLSearchParams({ o, s: fields.s, k: 'k', c: 'c' });
+  fragment.set('l', fields.l);
+  fragment.set('f', fields.f.slice(0, 16));
+  if (fields.n !== undefined) fragment.set('n', fields.n);
+  return `https://beam.n10.is/#${fragment.toString()}`;
 }
 
 export class FakeBeam {
@@ -38,19 +54,22 @@ export class FakeBeam {
   private readonly subscribers = new Set<Socket>();
   private readonly sockets = new Set<Socket>();
   private enrolled: boolean;
+  /** A subscribe held until beam has started. */
+  private held: { socket: Socket; id: number }[] | null;
   private readonly peers: Map<string, Required<FakePeer>>;
   private waiting: {
-    op: string;
-    peer?: string;
+    start: Request;
     socket: Socket;
     id: number;
   } | null = null;
+  private slots = 0;
 
   private constructor(
     private readonly server: Server,
     scenario: FakeBeamScenario
   ) {
     this.enrolled = scenario.enrolled;
+    this.held = scenario.started === false ? [] : null;
     this.peers = new Map(
       (scenario.peers ?? []).map((p) => [
         p.peerId,
@@ -76,30 +95,103 @@ export class FakeBeam {
     return this.requests.filter((r) => r.op === op);
   }
 
+  private readonly refusals = new Map<
+    string,
+    { code: string; detail: string }
+  >();
+
+  /** Answers every later `op` with beam's error. */
+  refuse(op: string, code: string, detail = ''): void {
+    this.refusals.set(op, { code, detail });
+  }
+
+  /** The URL the latest `*.start` answered, or step 2's once sent. */
+  currentUrl = '';
+
+  /** beam's transport comes up, and the held subscribes are answered. */
+  setStarted(): void {
+    const held = this.held ?? [];
+    this.held = null;
+    for (const { socket, id } of held) {
+      if (socket.destroyed) continue;
+      this.subscribers.add(socket);
+      this.reply(socket, id, {});
+    }
+  }
+
+  /** beam's `directory.published`: a queued directory write landed. */
+  published(kind: 'member' | 'revoke', peerId: string): void {
+    this.emit('directory.published', { kind, peerId });
+  }
+
+  /** `init`'s second passkey step: the `ceremony` event its wait hears. */
+  nextPasskeyStep(): string {
+    const w = this.requireWaiting();
+    this.currentUrl = this.urlFor('a', w.start);
+    this.send(w.socket, {
+      event: 'ceremony',
+      data: { ceremonyUrl: this.currentUrl },
+    });
+    return this.currentUrl;
+  }
+
+  /** A `stage` event to the waiting client. */
+  stage(stage: string): void {
+    const w = this.requireWaiting();
+    this.send(w.socket, { event: 'stage', data: { stage } });
+  }
+
+  /** Ends the `*.wait` under way with beam's error. */
+  failCeremony(code: string, detail = ''): void {
+    const w = this.requireWaiting();
+    this.waiting = null;
+    this.fail(w.socket, w.id, code, detail);
+  }
+
   /** Answers the `*.wait` under way as the daemon would once the owner's
    *  passkey is done. */
-  finishCeremony(): void {
-    const w = this.waiting;
-    if (!w) throw new Error('no ceremony is waiting');
+  finishCeremony(published: true | 'pending' = true): void {
+    const w = this.requireWaiting();
     this.waiting = null;
     let result: Record<string, unknown>;
-    if (w.op === 'revoke') {
-      const peer = w.peer ? this.peers.get(w.peer) : undefined;
+    if (w.start.op === 'revoke.start') {
+      const peer = this.peers.get(String(w.start.peer));
       if (peer) {
         peer.state = 'revoked';
         this.emit('peer', this.view(peer));
       }
-      result = { local: true, published: true, acknowledgedBy: 0 };
+      result = { local: true, published, acknowledgedBy: 0 };
     } else {
       this.enrolled = true;
       result = {
         peerId: SELF_PEER_ID,
         fleetId: FLEET_ID,
         members: this.peers.size,
-        published: true,
+        published,
       };
     }
     this.reply(w.socket, w.id, result);
+  }
+
+  private requireWaiting(): NonNullable<FakeBeam['waiting']> {
+    if (!this.waiting) throw new Error('no ceremony is waiting');
+    return this.waiting;
+  }
+
+  private urlFor(o: 'c' | 'a' | 'r', start: Request): string {
+    this.slots += 1;
+    const s = `slot${this.slots}`;
+    if (o === 'r') {
+      const peer = this.peers.get(String(start.peer));
+      return ceremonyUrl('r', {
+        l: peer?.label ?? '',
+        f: String(start.peer),
+        s,
+      });
+    }
+    const l = String(start.label || 'laptop');
+    const n = o === 'c' ? String(start.fleetName || 'beam') : undefined;
+    return ceremonyUrl(o, { l, f: SELF_PEER_ID, n, s });
   }
 
   async close(): Promise<void> {
@@ -146,6 +238,10 @@ export class FakeBeam {
     socket.write(`${JSON.stringify(value)}\n`);
   }
 
+  private fail(socket: Socket, id: number, code: string, detail: string): void {
+    this.send(socket, { id, ok: false, error: code, detail });
+  }
+
   private reply(socket: Socket, id: number, result: unknown): void {
     this.send(socket, { id, ok: true, result });
   }
@@ -156,15 +252,22 @@ export class FakeBeam {
 
   private handle(socket: Socket, req: Request): void {
     this.requests.push(req);
+    const refusal = this.refusals.get(req.op);
+    if (refusal) return this.fail(socket, req.id, refusal.code, refusal.detail);
     const answer = this.answer(socket, req);
     if (answer !== undefined) this.reply(socket, req.id, answer);
   }
 
-  /** The op's result, or `undefined` for a `*.wait` answered later. */
+  /** The op's result, or `undefined` for one answered later: a
+   *  `*.wait`, or a subscribe held until beam has started. */
   private answer(socket: Socket, req: Request): unknown {
     const [subject, verb] = req.op.split('.');
-    if (verb === 'start') return { ceremonyUrl: ceremonyUrl(subject, 'first') };
+    if (verb === 'start') return this.start(req, subject);
     if (verb === 'wait') return this.wait(socket, req);
+    if (req.op === 'ceremony.cancel') {
+      if (this.waiting) this.failCeremony('ceremony-cancelled');
+      return {};
+    }
     switch (req.op) {
       case 'status':
         return this.enrolled
@@ -175,10 +278,13 @@ export class FakeBeam {
               label: 'laptop',
               fleetId: FLEET_ID,
             }
-          : { ready: true, enrolled: false };
-      case 'events.subscribe':
-        this.subscribers.add(socket);
+          : { ready: false, enrolled: false };
+      case 'fleet.reset':
+        this.enrolled = false;
+        this.peers.clear();
         return {};
+      case 'events.subscribe':
+        return this.subscribe(socket, req);
       case 'peers':
         return { peers: [...this.peers.values()].map((p) => this.view(p)) };
       case 'peer.alias':
@@ -187,6 +293,16 @@ export class FakeBeam {
       default:
         return {};
     }
+  }
+
+  /** `events.subscribe`, held while beam has not started. */
+  private subscribe(socket: Socket, req: Request): unknown {
+    if (this.held) {
+      this.held.push({ socket, id: req.id });
+      return undefined;
+    }
+    this.subscribers.add(socket);
+    return {};
   }
 
   private updatePeer(req: Request): unknown {
@@ -199,23 +315,19 @@ export class FakeBeam {
     return {};
   }
 
+  private start(req: Request, subject: string): unknown {
+    const o = subject === 'init' ? 'c' : subject === 'join' ? 'a' : 'r';
+    this.currentUrl = this.urlFor(o, req);
+    return { ceremonyUrl: this.currentUrl };
+  }
+
   private wait(socket: Socket, req: Request): undefined {
     const op = req.op.split('.')[0];
     const start = [...this.requests]
       .reverse()
       .find((r) => r.op === `${op}.start`);
-    this.waiting = {
-      op,
-      peer: start?.peer as string | undefined,
-      socket,
-      id: req.id,
-    };
-    if (op === 'init') {
-      this.send(socket, {
-        event: 'ceremony',
-        data: { ceremonyUrl: ceremonyUrl('init', 'sign') },
-      });
-    }
+    if (!start) throw new Error(`${req.op} without its start`);
+    this.waiting = { start, socket, id: req.id };
     return undefined;
   }
 }

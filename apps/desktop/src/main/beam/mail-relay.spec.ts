@@ -130,6 +130,30 @@ describe('MailRelay', () => {
     r.stop();
   });
 
+  it('forgets what it held from an enrolment that has ended', async () => {
+    inbound = [
+      envelope('e1', 'target: tmux:x\n\nhi'),
+      envelope('e2', 'target: tmux:y\n\nhi'),
+    ];
+    const r = relay({
+      resolve: (target) =>
+        target === 'tmux:x'
+          ? { kind: 'refused', reason: 'shell terminal' }
+          : { kind: 'agent', key: 'key-of-target' },
+      deliver: () => false,
+    });
+    await r.start(() => undefined);
+    await until(() => settled.length === 2);
+    expect(r.snapshotFor(PEER).inboundWaiting).toHaveLength(1);
+    expect(r.snapshotFor(PEER).inboundRefused).toHaveLength(1);
+    r.stop();
+    r.forget();
+    expect(r.snapshotFor(PEER)).toEqual({
+      inboundWaiting: [],
+      inboundRefused: [],
+    });
+  });
+
   it('dismissing a refusal acks it on the next offer without typing it', async () => {
     inbound = [envelope('e1', 'target: tmux:x\n\nhi')];
     let typed = 0;

@@ -1,5 +1,6 @@
 import {
   ChevronRightIcon,
+  NetworkIcon,
   PanelLeftCloseIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -8,6 +9,7 @@ import { useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useRefreshRemote } from '../../lib/data/mutations.js';
+import { useFleet } from '../../lib/fleet/fleet-context.js';
 import {
   groupSections,
   itemKey,
@@ -52,6 +54,7 @@ export function Sidebar({
   const { repo } = useRepo();
   const tabs = useRepoTabs();
   const refresh = useRefreshRemote(repo.cwd);
+  const fleet = useFleet();
   const sections = groupSections(items);
   const [collapsed, setCollapsed] = useState<
     Partial<Record<SectionKey, boolean>>
@@ -181,6 +184,17 @@ export function Sidebar({
           {error}
         </div>
       )}
+      <div className="shrink-0 border-t border-border p-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={fleet.show}
+        >
+          <NetworkIcon />
+          Fleet
+        </Button>
+      </div>
     </aside>
   );
 }

@@ -319,7 +319,7 @@ const MACHINES_POLL_MS = 5 * 60_000;
 /**
  * Every machine: this one first, then fleet members. Not repo-
  * scoped — survives a repo switch (CROSS_REPO_KEYS). Pushed on every
- * change (`onMachinesChanged` in use-host-events.ts writes straight
+ * change (`onMachinesChanged` in fleet-context.tsx writes straight
  * into this cache), so the poll here is only the fallback for the
  * first load and for a missed push.
  */

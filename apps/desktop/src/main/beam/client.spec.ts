@@ -3,10 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
+import type {
+  BeamStatus,
+  DirectoryPublished,
+  MachineView,
+} from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
 import {
   cancelCeremony,
+  setDirectoryPublishedNotifier,
+  resetFleet,
+  runCeremony,
   listMachines,
   setBeamStatusNotifier,
   setMachineGrant,
@@ -17,7 +24,7 @@ import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
 import { BeamClient } from './client.js';
 import type { DaemonExit, OwnedDaemon } from './owned-daemon.js';
 import type { PeerView } from './peers.js';
-import { FakeDaemon } from './test-support/fake-daemon.js';
+import { FakeDaemon, FakeOpError } from './test-support/fake-daemon.js';
 import { until } from './test-support/until.js';
 
 const SELF = 'a'.repeat(32);
@@ -31,7 +38,6 @@ function peer(id: string, label: string, state = 'connected'): PeerView {
     path: 'direct',
     lastSeenAt: 1000,
     grant: 'all',
-    revokedAt: null,
     queue: { outbound: 0 },
   };
 }
@@ -96,6 +102,7 @@ describe('BeamClient', () => {
       state: 'ready',
       detail: null,
       enrolled: false,
+      fleetId: null,
     });
     expect(daemon.requests('events.subscribe')).toHaveLength(1);
     await expect(listMachines()).resolves.toEqual([]);
@@ -155,10 +162,15 @@ describe('BeamClient', () => {
     await until(() => last(statuses)?.state === 'ready');
     await daemon.close();
     await until(() => last(statuses)?.state === 'restarting');
+    const lostAt = statuses.length;
     daemon = await FakeDaemon.start(socketPath);
     enrolledDaemon(daemon, []);
     await until(() => last(statuses)?.state === 'ready');
     expect(daemon.requests('events.subscribe')).toHaveLength(1);
+    // The list stays up under Reconnecting, not behind a loading state.
+    expect(statuses.slice(lostAt).map((s) => s.state)).not.toContain(
+      'starting'
+    );
   });
 
   it('sends a grant change to the daemon', async () => {
@@ -227,6 +239,137 @@ describe('BeamClient', () => {
     );
     expect(relays).toHaveLength(2);
     await until(() => relays[0].socket.destroyed);
+  });
+
+  it('re-reads status after a failed ceremony: beam may have committed first', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    daemon.on('status', () => ({ ready: true, enrolled: false }));
+    daemon.on('join.start', () => ({ ceremonyUrl: 'https://beam.n10.is/#j' }));
+    daemon.on('join.wait', () => {
+      enrolledDaemon(daemon!, []);
+      throw new FakeOpError('directory-unavailable');
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(runCeremony({ op: 'join', label: '' })).resolves.toMatchObject(
+      { ok: false, code: 'directory-unavailable' }
+    );
+    await until(() => last(statuses)?.enrolled === true);
+  });
+
+  it('resets this machine’s fleet through beam, then re-reads status', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      daemon!.on('status', () => ({ ready: true, enrolled: false }));
+      return {};
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.enrolled === true);
+    await expect(resetFleet()).resolves.toEqual({ ok: true });
+    expect(daemon.requests('fleet.reset')[0]).toMatchObject({
+      confirm: 'reset',
+    });
+    await until(() => last(statuses)?.enrolled === false);
+  });
+
+  it('names a reset whose connection dropped as lost: it may have happened', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      for (const c of daemon!.controls) c.destroy();
+      return new Promise(() => undefined);
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(resetFleet()).resolves.toEqual({
+      ok: false,
+      code: 'connection-lost',
+      detail: null,
+    });
+  });
+
+  it('resolves a refused reset with beam’s code and detail', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      throw new FakeOpError('storage-failure', 'disk full');
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(resetFleet()).resolves.toEqual({
+      ok: false,
+      code: 'storage-failure',
+      detail: 'disk full',
+    });
+  });
+
+  it('reads the fleet this machine belongs to from status', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.enrolled === true);
+    expect(last(statuses).fleetId).toBe('f'.repeat(64));
+  });
+
+  it('says beam is starting while its socket answers and its transport does not', async () => {
+    const d = (daemon = await FakeDaemon.start(socketPath));
+    d.on('status', () => ({ enrolled: false }));
+    let started: (v: unknown) => void = () => undefined;
+    d.on('events.subscribe', () => new Promise((r) => (started = r)));
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'starting');
+    await until(() => d.requests('events.subscribe').length === 1);
+    started({});
+    await until(() => last(statuses)?.state === 'ready');
+    expect(statuses.map((s) => s.state).slice(-2)).toEqual([
+      'starting',
+      'ready',
+    ]);
+  });
+
+  it('passes on a directory write that landed', async () => {
+    const landed: DirectoryPublished[] = [];
+    setDirectoryPublishedNotifier((p) => landed.push(p));
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.enrolled === true);
+    daemon.emit('directory.published', { kind: 'member', peerId: SELF });
+    await until(() => landed.length === 1);
+    expect(landed[0]).toEqual({ kind: 'member', peerId: SELF });
+    setDirectoryPublishedNotifier(null);
+  });
+
+  it('subscribes the relay again when beam re-enrols into the same fleet', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    const status = (generation: number) => () => ({
+      ready: true,
+      enrolled: true,
+      peerId: SELF,
+      label: 'laptop',
+      fleetId: 'f'.repeat(64),
+      generation,
+    });
+    daemon.on('status', status(1));
+    daemon.on('peers', () => ({ peers: [] }));
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => daemon!.requests('msg.subscribe').length === 1);
+    daemon.on('status', status(3));
+    await listMachines();
+    await until(() => daemon!.requests('msg.subscribe').length === 2);
+    const relays = daemon.controls.filter((c) =>
+      c.requests.some((r) => r.op === 'msg.subscribe')
+    );
+    expect(relays).toHaveLength(2);
   });
 
   it('cancels only a ceremony of its own', async () => {

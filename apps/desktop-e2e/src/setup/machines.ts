@@ -1,15 +1,22 @@
-import { expect, type ElectronApplication, type Page } from '@playwright/test';
-import { tab } from './app.js';
-import { clickAppMenuItem } from './menu.js';
+import { expect, type Page } from '@playwright/test';
 
-/** Opens Settings on its Machines group. */
-export async function openMachines(desktop: {
-  app: ElectronApplication;
-  page: Page;
-}): Promise<void> {
-  await clickAppMenuItem(desktop.app, 'Settings…');
-  await expect(tab(desktop.page, /Settings/)).toBeVisible();
+/** The Fleet view, opened from the title bar. */
+export async function openFleet(desktop: { page: Page }): Promise<void> {
   await desktop.page
-    .getByRole('button', { name: 'Machines', exact: true })
+    .getByRole('banner')
+    .getByRole('button', { name: 'Fleet', exact: true })
     .click();
+  await expect(fleetView(desktop.page)).toBeVisible();
+}
+
+export function fleetView(page: Page) {
+  return page.getByRole('region', { name: 'Fleet' });
+}
+
+/** Back to the screen under Fleet. */
+export async function leaveFleet(page: Page): Promise<void> {
+  await fleetView(page)
+    .getByRole('button', { name: 'Back to workspace' })
+    .click();
+  await expect(fleetView(page)).toBeHidden();
 }
