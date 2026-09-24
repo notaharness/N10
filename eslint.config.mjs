@@ -85,23 +85,6 @@ export default tseslint.config(
               sourceTag: 'scope:core',
               notDependOnLibsWithTags: ['scope:app-core'],
             },
-            // libs/beam is the one library here that is meant to be
-            // publishable on its own: it pairs machines and carries
-            // streams, and knows nothing about worktrees, agents, report
-            // kinds or `@orchestra-*` tags. An empty allow-list is the
-            // whole of that rule — it may depend on no workspace library
-            // at all, n10's included. libs/beam/AGENTS.md and
-            // docs/beam.md both stated this as lint-enforced while it was
-            // only ever true by discipline; the constraint is here now so
-            // the claim and the check are the same thing.
-            //
-            // Both tags, because `apps/beam` carries `scope:beam` too and
-            // exists precisely to consume the library: the rule is about
-            // what the publishable unit may import, not about the scope.
-            {
-              allSourceTags: ['scope:beam', 'type:lib'],
-              onlyDependOnLibsWithTags: [],
-            },
           ],
         },
       ],

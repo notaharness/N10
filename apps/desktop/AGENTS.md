@@ -17,25 +17,19 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are prepared in `main/tmux-session-worker.ts`, an Electron utility process:
   direct Node child-process spawning on Linux inherits Chromium descriptors
   into the persistent server. The main process only attaches local clients.
-- The beam node's mailbox subscriber runs in the utility process
-  (`main/beam-node-mail.ts`); resolving a target and delivering into a pane
-  runs in main (`main/beam-mail-relay.ts`), since the PTY registry only
-  exists here. Only a successful delivery acks; a refusal or a target with
-  no live connection leaves the envelope unacked and durable
-  (`docs/beam.md`, `libs/core/AGENTS.md`'s relay-targeting rule).
-- The beam node is the only thing here that can make a connection happen, so
-  it owns the two decisions the library cannot: a peer a probe finds
-  reachable with mail queued for it is dialed (`main/beam-node-mail-dial.ts`
-  — otherwise `send()`'s "delivered the next time it comes online" never
-  comes true), and revoking or forgetting a machine terminates its live
-  connection rather than closing it politely, the rule `docs/beam.md` states
-  for every revocation path. An op that is replacing a stream that just died
-  passes `reconnect`, and `RemoteOps.connectionFor` then pings the pooled
-  connection and replaces it only if it does not answer — a pty stream can
-  end for its own reasons, and that connection is shared with every other
-  pane on the machine and with the mailbox. One dial per peer is in flight at
-  a time; without that the session poller, the reconnect timer and a mail
-  flush race, and `ConnectionRegistry.add` closes the loser.
+- `main/beam/` is a client of the beam daemon's control socket (beam's
+  docs/06) and installs the three machine ports: `MachinesPort`,
+  `RemoteMachinePort` and `InboundMailPort`. Nothing above them knows beam.
+  Attach input stays within beam's four-frame window. The mail relay's
+  ack and defer rules are decisions.md D13/D14; it delivers into a
+  session only for a sender granted `all` (D17).
+- Start the beam daemon only through `spawnOwnedDaemon`, which runs it
+  under `main/beam-daemon-worker.ts`, a utility process, for the same
+  descriptor reason as the tmux worker. Keep `@notaharness/beam` external
+  in both `build-main` and `scripts/dev.mjs`. Ownership rules: D15.
+- `main/n10-shim.ts` is an entry point in both `build-main` and
+  `scripts/dev.mjs`. The desktop package declares no `n10` bin, and the shim
+  gets no `beam` subcommand (D16).
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo

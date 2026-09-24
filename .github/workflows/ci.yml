@@ -45,11 +45,15 @@ jobs:
       # and the comparison can hold at zero tolerance.
       - run: npx nx affected -t lint test build typecheck e2e e2e:visual
 
-      # Both desktop e2e targets land under `apps/desktop-e2e/test-output`,
+      # The app against real beam daemons (apps/desktop-e2e/run-beam-e2e.mjs),
+      # after the offline suite rather than beside it on the same X server.
+      - run: npx nx affected -t e2e:beam
+
+      # The desktop e2e targets land under `apps/desktop-e2e/test-output`,
       # each in its own subdirectory (`playwright/` for the offline suite,
-      # `visual/` for the screenshot suite), so a failing screenshot's
-      # expected/actual/diff PNGs travel with the offline suite's traces
-      # instead of one run erasing the other's.
+      # `visual/` for the screenshot suite, `beam/` for the beam suite),
+      # so a failing screenshot's expected/actual/diff PNGs travel with
+      # the offline suite's traces instead of one run erasing another's.
       - name: Upload Playwright test output on failure
         if: failure()
         uses: actions/upload-artifact@v4

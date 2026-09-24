@@ -11,7 +11,7 @@ import { machineFor } from './remote-machines.js';
  * `checkoutPlanCore` (`@n10/core`'s `checkoutPlan`) and
  * `getSessionLaunchContext` (`session-launch-options.ts`) both resolve a
  * branch's session by *local* state only, so a branch whose agent runs
- * on another paired machine finds nothing there — the plan pane would
+ * on another fleet member finds nothing there — the plan pane would
  * create a second local worktree and spawn a second agent for it, and
  * the main launch dialog would offer "Start new session" with the local
  * default and do the same, the duplicate-agent shape a whole review
@@ -23,10 +23,8 @@ import { machineFor } from './remote-machines.js';
  * threading a machine through either surface, this refuses loudly and
  * names the machine: a known limitation, not a silent duplicate.
  *
- * Only machines with a live connection are asked — a
- * `reachable`/`unknown`/`unreachable` peer would need dialing first,
- * which this check is not the place to do — and a probe failure for
- * one machine must not block the others or the local path.
+ * Only connected peers are asked, and a failure on one must not block
+ * the others or the local path.
  */
 export async function findRemoteBranchOwner(
   repoCwd: string,
@@ -36,7 +34,7 @@ export async function findRemoteBranchOwner(
   try {
     machines = await listMachines();
   } catch {
-    return null; // No beam node running — nothing to check against.
+    return null; // Machines unavailable — nothing to check against.
   }
   for (const machine of machines) {
     if (machine.isLocal || machine.state !== 'connected') continue;
@@ -59,7 +57,7 @@ async function ownerLabelIfRunning(
     const found = resolveWorktreeSession(repoCwd, branch, sessions);
     return found && !found.paneDead ? machine.label : null;
   } catch {
-    return null; // Unreachable mid-check — do not block on it.
+    return null; // Lost mid-check — do not block on it.
   }
 }
 
@@ -78,7 +76,7 @@ function hasLocalAgent(name: string): boolean {
 
 /**
  * Refuse a *local* launch/send when `branch` already has a live agent
- * on a paired machine and nothing local claims it first — the
+ * on a fleet member and nothing local claims it first — the
  * duplicate-agent shape closed on the discovery launch path
  * (`open-session.ts`'s `findSession`) and reopened on the plan pane
  * (finding 1) and the main launch dialog (finding 4). Both call sites

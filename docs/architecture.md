@@ -12,6 +12,7 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
 apps/desktop/                    — Electron GUI shell over @n10/app-core (n10-desktop)
   src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
   src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), N10_QA_STEPS hook
+  src/main/beam/                 — Client of the beam daemon's control socket: machines, remote exec/pty, ceremonies, mail relay, and the daemon the app starts
   src/preload/preload.ts         — Typed contextBridge → window.n10
   src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names (incl. MenuCommand, ContextMenuItem, DesktopPrefs)
   src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings, desktop-prefs…)
@@ -85,15 +86,6 @@ libs/terminal-tmux/              — Required tmux backend (system tmux 3.2+)
 libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
   src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete
   src/lib/placement.ts           — px→cells placement heuristic (~10px/col, 2:1 aspect, 24-row cap)
-libs/beam/                       — Pairing, mutual auth, streams and the durable mailbox between machines (no n10/git/tmux imports)
-  src/lib/identity.ts            — Ed25519 keypair, derivePeerId
-  src/lib/peer-table.ts          — Symmetric peer table (trust) and endpoints (reachability)
-  src/lib/protocol.ts            — Frame codec (pure, no I/O) + SeqTracker/SeqSender
-  src/lib/muxer.ts               — Frame bytes <-> stream events for one connection; Open carries name+params in one frame
-  src/lib/host.ts, host-routes.ts, client.ts — HTTP auth surface + WS host; pair/dial client
-  src/lib/pty-handler.ts, exec-handler.ts — `pty`/`exec` stream handlers (argv runs directly, never shelled)
-  src/lib/mailbox/               — Durable per-peer outbound queue, dedup, flusher, `msg` stream wiring
-  src/lib/ipc-socket.ts          — `$BEAM_DIR/run/inbox.sock` local JSON-lines IPC (send/subscribe/status)
 libs/image-loader/               — Comment-image download + decode
   src/lib/image-format.ts        — magic-byte sniff + header-only dimensions (PNG/JPEG/GIF/WebP)
   src/lib/decode-image.ts        — PNG passthrough; JPEG/GIF/WebP → RGBA (@cwasm/webp wasm, lazy-loaded)

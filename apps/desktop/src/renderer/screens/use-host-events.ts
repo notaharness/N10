@@ -95,9 +95,15 @@ export function useHostEvents(
   // straight into the cache rather than invalidating and refetching,
   // since the host already did the work of computing it.
   useEffect(() => {
-    const off = window.n10.onMachinesChanged((machines) => {
+    const offMachines = window.n10.onMachinesChanged((machines) => {
       qc.setQueryData(keys.machines, machines);
     });
-    return off;
+    const offStatus = window.n10.onBeamStatusChanged((status) => {
+      qc.setQueryData(keys.beamStatus, status);
+    });
+    return () => {
+      offMachines();
+      offStatus();
+    };
   }, [qc]);
 }

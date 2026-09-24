@@ -25,8 +25,8 @@ const appRoot = join(workspaceRoot, 'apps', 'desktop');
 const electronBin = join(workspaceRoot, 'node_modules', '.bin', 'electron');
 const DEV_URL = 'http://localhost:5173';
 
-// Must mirror the build-main nx target exactly: electron + node-pty
-// stay external, and the ESM output needs a require shim for them.
+// Must mirror the build-main nx target exactly: electron, node-pty and
+// @notaharness/beam stay external, and the ESM output needs a require shim for them.
 const REQUIRE_BANNER =
   'import { createRequire as __n10CreateRequire } from "node:module";' +
   'const require = __n10CreateRequire(import.meta.url);';
@@ -35,13 +35,14 @@ const mainOptions = {
   entryPoints: [
     join(appRoot, 'src/main/main.ts'),
     join(appRoot, 'src/main/tmux-session-worker.ts'),
-    join(appRoot, 'src/main/beam-node-worker.ts'),
+    join(appRoot, 'src/main/beam-daemon-worker.ts'),
+    join(appRoot, 'src/main/n10-shim.ts'),
   ],
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node20',
-  external: ['electron', 'node-pty'],
+  external: ['electron', 'node-pty', '@notaharness/beam'],
   banner: { js: REQUIRE_BANNER },
   outdir: join(appRoot, 'dist/main'),
 };
@@ -79,8 +80,16 @@ function electronArgs() {
   return args;
 }
 
-function startElectron() {
-  if (electronProcess) electronProcess.kill();
+async function startElectron() {
+  const previous = electronProcess;
+  electronProcess = null;
+  if (previous && previous.exitCode === null && previous.signalCode === null) {
+    // It stops its beam daemon before exiting, and holds the
+    // single-instance lock until it lets go of it.
+    const exited = new Promise((resolve) => previous.once('exit', resolve));
+    previous.kill();
+    await exited;
+  }
   electronProcess = spawn(electronBin, [...electronArgs(), '.'], {
     cwd: appRoot,
     stdio: 'inherit',
@@ -123,7 +132,9 @@ function scheduleRestart(label) {
   restartTimer = setTimeout(() => {
     restartTimer = null;
     console.log(`[desktop] ${label} bundle changed — restarting electron…`);
-    startElectron();
+    startElectron().catch((err) =>
+      console.error('[desktop] restart failed', err)
+    );
   }, 250);
 }
 function restartOnRebuild(label) {
@@ -156,7 +167,7 @@ async function watch(options, label) {
 await watch(mainOptions, 'main');
 await watch(preloadOptions, 'preload');
 
-startElectron();
+await startElectron();
 
 process.on('SIGINT', () => {
   electronProcess?.kill();

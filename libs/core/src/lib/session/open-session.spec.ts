@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaggedSession } from '../session-identity.js';
 const state = vi.hoisted(() => ({
   existing: null as TaggedSession | null,
@@ -68,6 +68,7 @@ vi.mock('../machine-registry.js', () => ({
   pollerFor: state.pollerFor,
 }));
 import { openSession, type OpenSessionParams } from './open-session.js';
+import { setLocalSessionEnv } from './local-session-env.js';
 const build = vi.fn(() => ({
   spec: { cmd: 'codex', args: [] },
   agent: 'codex',
@@ -169,6 +170,7 @@ describe('session launch boundary', () => {
       tags: {
         '@orchestra-agent': 'codex',
         '@orchestra-orchestrator': null,
+        '@orchestra-orchestrator-config': null,
         '@orchestra-last-report': null,
       },
     });
@@ -209,6 +211,48 @@ describe('session launch boundary', () => {
     await expect(openSession(base)).rejects.toThrow('other');
     expect(state.create).not.toHaveBeenCalled();
     expect(state.register).not.toHaveBeenCalled();
+  });
+});
+
+describe('the local session environment', () => {
+  afterEach(() => setLocalSessionEnv({ pathDirs: [], env: {} }));
+
+  it("puts its directories first on a local session's PATH and pins its variables", async () => {
+    const previousPath = process.env['PATH'];
+    process.env['PATH'] = '/usr/bin';
+    try {
+      setLocalSessionEnv({
+        pathDirs: ['/app/bin'],
+        env: { BEAM_CONFIG_DIR: '/b' },
+      });
+      await openSession(base);
+      const spec = state.create.mock.calls[0][0] as {
+        env: { PATH?: string };
+        envAdditions: Record<string, string>;
+      };
+      expect(spec.env.PATH).toBe('/app/bin:/usr/bin');
+      expect(spec.envAdditions).toEqual({ BEAM_CONFIG_DIR: '/b' });
+    } finally {
+      process.env['PATH'] = previousPath;
+    }
+  });
+
+  it("leaves a remote session's environment alone: it is this machine's", async () => {
+    setLocalSessionEnv({
+      pathDirs: ['/app/bin'],
+      env: { BEAM_CONFIG_DIR: '/b' },
+    });
+    await openSession({
+      ...base,
+      session: {
+        type: 'worktree',
+        repo: '/repo',
+        branch: 'feature/x',
+        machine: 'peer-abc',
+      },
+    });
+    const spec = state.createRemote.mock.calls[0][0] as { env?: object };
+    expect(spec.env).toEqual({});
   });
 });
 

@@ -8,6 +8,8 @@ import {
   MENU_EVENTS,
   SESSION_EVENTS,
   SYNC_EVENTS,
+  type BeamStatus,
+  type CeremonyProgress,
   type N10HostApi,
   type LaunchStepEvent,
   type MachinesChangedEvent,
@@ -149,16 +151,24 @@ const api: N10HostApi = {
   },
 
   listMachines: () => ipcRenderer.invoke(IPC.listMachines),
-  getAcceptingStatus: () => ipcRenderer.invoke(IPC.getAcceptingStatus),
-  setAccepting: (enabled) => ipcRenderer.invoke(IPC.setAccepting, enabled),
-  regeneratePairingUrl: () => ipcRenderer.invoke(IPC.regeneratePairingUrl),
-  previewPairing: (url) => ipcRenderer.invoke(IPC.previewPairing, url),
-  confirmPairing: (url, force) =>
-    ipcRenderer.invoke(IPC.confirmPairing, url, force),
-  renameMachine: (peerId, label) =>
-    ipcRenderer.invoke(IPC.renameMachine, peerId, label),
-  revokeMachine: (peerId) => ipcRenderer.invoke(IPC.revokeMachine, peerId),
-  forgetMachine: (peerId) => ipcRenderer.invoke(IPC.forgetMachine, peerId),
+  getBeamStatus: () => ipcRenderer.invoke(IPC.getBeamStatus),
+  onBeamStatusChanged: (cb) => {
+    const listener = (_e: unknown, payload: BeamStatus) => cb(payload);
+    ipcRenderer.on(MACHINES_EVENTS.beamStatus, listener);
+    return () =>
+      ipcRenderer.removeListener(MACHINES_EVENTS.beamStatus, listener);
+  },
+  setMachineAlias: (peerId, alias) =>
+    ipcRenderer.invoke(IPC.setMachineAlias, peerId, alias),
+  setMachineGrant: (peerId, grant) =>
+    ipcRenderer.invoke(IPC.setMachineGrant, peerId, grant),
+  runCeremony: (request) => ipcRenderer.invoke(IPC.runCeremony, request),
+  cancelCeremony: () => ipcRenderer.invoke(IPC.cancelCeremony),
+  onCeremonyProgress: (cb) => {
+    const listener = (_e: unknown, payload: CeremonyProgress) => cb(payload);
+    ipcRenderer.on(MACHINES_EVENTS.ceremony, listener);
+    return () => ipcRenderer.removeListener(MACHINES_EVENTS.ceremony, listener);
+  },
   dismissInboundMail: (id) => ipcRenderer.invoke(IPC.dismissInboundMail, id),
   onMachinesChanged: (cb) => {
     const listener = (_e: unknown, payload: MachinesChangedEvent) =>

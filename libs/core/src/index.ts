@@ -72,6 +72,7 @@ export * from './lib/session/session-menu-request.js';
 export * from './lib/session/review-prompt.js';
 export * from './lib/session/checkout-plan.js';
 export * from './lib/session/relay-target.js';
+export * from './lib/session/claude-inbox.js';
 export * from './lib/sync/remote-sync.js';
 export * from './lib/sync/conflicts.js';
 export * from './lib/sync/fetch-queue.js';
@@ -140,3 +141,4 @@ export {
 
 export { stopSession } from './lib/session/stop-session.js';
 export { removeWorktreeSession } from './lib/session/remove-worktree.js';
+export { setLocalSessionEnv } from './lib/session/local-session-env.js';

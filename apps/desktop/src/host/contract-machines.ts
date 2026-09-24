@@ -1,27 +1,25 @@
 /**
- * Machines: other n10 hosts paired over beam, plus this one's own
- * identity and accept-connections state. Split from `contract.ts`
- * because it is one subject, and because that file is a catalogue
- * already.
- *
- * D6 (docs/decisions.md) fixes five reachability states, `revoked`
- * shown separately. Two of them are not faults: `no-endpoint` is a
- * normal, permanent condition for a laptop that only dials out;
- * `unknown` means "paired, not yet probed" and must never render as
- * `unreachable`.
+ * Machines: this one and the other members of its beam fleet, as the
+ * beam daemon reports them (beam docs/06, `PeerView`), plus enrolment.
+ * Split from `contract.ts` because it is one subject, and because that
+ * file is a catalogue already.
  */
 
+/** beam's peer states. `revoked-by-fleet` is the peer refusing this
+ *  machine as revoked: it will not take this machine again. */
 export type MachineState =
   | 'connected'
-  | 'reachable'
-  | 'unreachable'
-  | 'unknown'
-  | 'no-endpoint'
-  | 'revoked';
+  | 'offline'
+  | 'revoked'
+  | 'revoked-by-fleet';
+
+/** What this machine lets a peer open here: `all` is a shell as your
+ *  user, `msg` only mail, `none` nothing (beam docs/04, Grants). */
+export type MachineGrant = 'all' | 'msg' | 'none';
 
 /** One report from this machine, either waiting for its target session
  *  to connect or refused delivery — the inbound half of the mailbox
- *  relay (docs/beam.md, decisions.md D13/D14). `reason` is set only for
+ *  relay (decisions.md D13/D14). `reason` is set only for
  *  a refused item; a waiting one carries none because waiting is not a
  *  failure. */
 export interface InboundMailItem {
@@ -33,24 +31,21 @@ export interface InboundMailItem {
   receivedAt: number;
 }
 
-/** One row of the machines list — the local machine, or a paired peer. */
+/** One row of the machines list — this machine, or a fleet member. */
 export interface MachineView {
   /** beam peerId — the fingerprint, grouped in fours for display. */
   peerId: string;
+  /** The alias when one is set here, else the machine's own label. */
   label: string;
   isLocal: boolean;
   state: MachineState;
-  /** Set while `state === 'connected'`; null otherwise. */
-  transport: 'WebSocket' | 'WebRTC' | null;
-  /** Where this machine may be dialed. Empty means `no-endpoint`. */
-  endpoints: string[];
+  /** `direct`, `relay <region>` or `unknown`; null for this machine. */
+  path: string | null;
   lastSeenAt: number | null;
-  /** Messages waiting for this peer — D7: part of its displayed state. */
-  queueDepth: number;
-  /** null for the local row, which was never "paired". */
-  pairedAt: number | null;
-  /** Set only once `state === 'revoked'`. */
+  grant: MachineGrant;
   revokedAt: number | null;
+  /** Mail waiting here to go to the peer. */
+  queued: number;
   /** Reports from this machine known locally and waiting for their
    *  target session to connect. Oldest first. */
   inboundWaiting: InboundMailItem[];
@@ -60,49 +55,41 @@ export interface MachineView {
   inboundRefused: InboundMailItem[];
 }
 
-/** This machine's accept-connections state — the "B" side of pairing. */
-export interface AcceptingStatus {
-  accepting: boolean;
-  /** `host:port` while accepting; null otherwise. */
-  boundAddress: string | null;
-  /** Carries the current single-use pairing token; null while not
-   *  accepting, or once it has expired (regenerate to get a new one). */
-  pairingUrl: string | null;
-  pairingExpiresAt: number | null;
-  /** Live connections right now — shown when turning accepting off, so
-   *  the user knows whether that drops anyone. */
-  connectedCount: number;
+/** The beam daemon as the desktop sees it. `restarting` is an
+ *  unexpected loss being retried; `unavailable` says why in `detail`. */
+export interface BeamStatus {
+  state: 'connecting' | 'ready' | 'restarting' | 'unavailable';
+  detail: string | null;
+  enrolled: boolean;
 }
 
-/** What `previewPairing`/`confirmPairing` found before anything is
- *  stored — the fingerprint the two-step confirm exists to show. */
-export interface PairPreview {
-  label: string;
-  peerId: string;
-  endpoint: string;
-}
+/** A passkey ceremony (beam docs/02, Flows): create the fleet on its
+ *  first machine, join another machine to it, or revoke a member. */
+export type CeremonyRequest =
+  | { op: 'init'; label: string; fleetName: string }
+  | { op: 'join'; label: string }
+  | { op: 'revoke'; peerId: string };
 
-export type PairFailureReason =
-  | 'invalid-url'
-  | 'unreachable'
-  | 'invalid-token'
-  | 'key-mismatch'
-  | 'protocol-mismatch';
+/** Pushed while a ceremony runs. `passkey` carries the URL the owner's
+ *  browser or phone opens; `stage` names what the daemon does now. */
+export type CeremonyProgress =
+  | { kind: 'passkey'; step: 'create' | 'sign'; ceremonyUrl: string }
+  | { kind: 'stage'; stage: string };
 
-export interface PairFailure {
-  reason: PairFailureReason;
-  /** Actionable, specific text — never "something went wrong". */
-  message: string;
-  /** Present only for `key-mismatch`: the id and the label we already
-   *  hold it under, for the "reinstall or impostor" explanation. */
-  peerId?: string;
-  existingLabel?: string;
-}
-
-export type PairPreviewResult =
-  | { ok: true; preview: PairPreview }
-  | { ok: false; failure: PairFailure };
-
-export type PairConfirmResult =
-  | { ok: true; machine: MachineView }
-  | { ok: false; failure: PairFailure };
+export type CeremonyOutcome =
+  | {
+      ok: true;
+      op: 'init';
+      fleetId: string;
+      peerId: string;
+      published: boolean;
+    }
+  | {
+      ok: true;
+      op: 'join';
+      fleetId: string;
+      members: number;
+      published: boolean;
+    }
+  | { ok: true; op: 'revoke'; published: boolean; acknowledgedBy: number }
+  | { ok: false; code: string; message: string };

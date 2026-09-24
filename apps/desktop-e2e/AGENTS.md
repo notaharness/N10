@@ -31,8 +31,11 @@ build target pins production). Full notes: `docs/testing.md`.
 - `@visual` runs in the pinned Playwright container at **zero** pixel
   tolerance. `node run-visual.mjs --update-snapshots`, then review the diff.
 - Each target keeps its own results directory — `test-output/playwright` for
-  `e2e`, `test-output/visual` for `e2e:visual` (`N10_E2E_OUTPUT_BASE`).
+  `e2e`, `test-output/visual` for `e2e:visual`, `test-output/beam` for
+  `e2e:beam` (`N10_E2E_OUTPUT_BASE`).
   Playwright empties the directory it is given at the start of every run.
+- `@beam` needs a beamtest build: `nx e2e:beam`, or `BEAM_TEST_BINARY`
+  (absolute path) for a local one.
 - `@integration` reads the fixture PRs through the real provider and needs
   `GH_TOKEN` handed in explicitly; the isolated HOME hides `gh` credentials.
 - The fake agent's `--print-size` reports the PTY grid with its pid, which

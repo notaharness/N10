@@ -32,6 +32,7 @@ import {
 import { readWorktreeHead } from '../discovery/worktree-origin.js';
 import type { LaunchSpec } from '../agents/registry.js';
 import type { SessionRequest } from './session-request.js';
+import { localSessionEnv } from './local-session-env.js';
 
 export interface OpenSessionParams {
   session: SessionRequest;
@@ -194,8 +195,8 @@ async function resolveOpenTarget(
  * from) must carry this machine's `process.env` only for a *local*
  * launch, where it is genuinely the environment the spawned process
  * inherits. A remote launch has no business shipping this machine's
- * PATH, HOME or anything else it happens to have set — `docs/beam.md`'s
- * "the accepting machine expands `~/`" principle for cwd applies here
+ * PATH, HOME or anything else it happens to have set — beam's "the
+ * accepting machine expands `~/`" principle for cwd applies here
  * too: environment describing this machine must not travel, and the
  * remote server's own environment (which it retains from how it was
  * started) supplies the rest. `additions` — the launch's own
@@ -209,14 +210,18 @@ function sessionSpec(
   fresh: boolean,
   machineId: string
 ): SessionSpec {
-  const additions = {
+  const local =
+    machineId === LOCAL_MACHINE
+      ? localSessionEnv(launch.env?.['PATH'] ?? process.env['PATH'])
+      : null;
+  const additions: Record<string, string | undefined> = {
+    ...local?.vars,
     ...launch.env,
     ...(fresh ? { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' } : {}),
   };
-  const env: Record<string, string | undefined> =
-    machineId === LOCAL_MACHINE
-      ? { ...process.env, ...additions }
-      : { ...additions };
+  const env: Record<string, string | undefined> = local
+    ? { ...process.env, ...additions, PATH: local.path }
+    : { ...additions };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return {
@@ -250,6 +255,7 @@ function launchPlan(
       ...(fresh
         ? {
             [ORCHESTRA_TAG.orchestrator]: null,
+            [ORCHESTRA_TAG.orchestratorConfig]: null,
             [ORCHESTRA_TAG.lastReport]: null,
           }
         : {}),

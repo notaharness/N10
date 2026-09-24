@@ -8,7 +8,6 @@ import { measured } from '../perf.js';
 import { keys } from './query-keys.js';
 import { errorMessage } from '../utils.js';
 import type {
-  AcceptingStatus,
   MachineView,
   RepoInfo,
   SidebarItem,
@@ -318,7 +317,7 @@ export function useForeignSessions() {
 const MACHINES_POLL_MS = 5 * 60_000;
 
 /**
- * Every machine: the local one first, then paired peers. Not repo-
+ * Every machine: this one first, then fleet members. Not repo-
  * scoped — survives a repo switch (CROSS_REPO_KEYS). Pushed on every
  * change (`onMachinesChanged` in use-host-events.ts writes straight
  * into this cache), so the poll here is only the fallback for the
@@ -337,32 +336,14 @@ export function useMachines() {
   return useQuery(machinesQuery());
 }
 
-/** This machine's accept-connections state — bound address, the
- *  pairing URL and its expiry, who is connected.
- *
- *  Fetched whenever the panel that reads it is mounted. `AcceptingStatus`
- *  rides no push, so nothing else would: gated on the panel's own
- *  expansion, there was nothing to fetch it at all and the switch fell
- *  back to `accepting: false`, rendering "off" under copy saying this
- *  machine cannot be dialled from elsewhere — for a machine that is in
- *  fact accepting.
- *
- *  The 1s poll is the countdown's and the connection count's, and both
- *  are on screen exactly while this machine is accepting, so the data
- *  decides the cadence. Nothing outside the settings panel observes
- *  this key, so nothing polls when the panel is closed. */
-export function acceptingStatusQuery() {
-  return {
-    queryKey: keys.acceptingStatus,
-    queryFn: () => window.n10.getAcceptingStatus(),
-    refetchInterval: (query: { state: { data?: AcceptingStatus } }) =>
-      query.state.data?.accepting ? 1_000 : (false as const),
-    enabled: true,
-  };
-}
-
-export function useAcceptingStatus() {
-  return useQuery(acceptingStatusQuery());
+/** The beam daemon as the host sees it. Pushed on every change
+ *  (`onBeamStatusChanged`), so this fetches only the first answer. */
+export function useBeamStatus() {
+  return useQuery({
+    queryKey: keys.beamStatus,
+    queryFn: () => window.n10.getBeamStatus(),
+    staleTime: Infinity,
+  });
 }
 
 /** Debounced per-session agent activity (spinner/blink source). The

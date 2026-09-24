@@ -286,12 +286,11 @@ function connectedMachine(peerId: string, label: string): MachineView {
     label,
     isLocal: false,
     state: 'connected',
-    transport: 'WebSocket',
-    endpoints: ['http://peer'],
+    path: 'direct',
     lastSeenAt: 1000,
-    queueDepth: 0,
-    pairedAt: 1000,
+    grant: 'all',
     revokedAt: null,
+    queued: 0,
     inboundWaiting: [],
     inboundRefused: [],
   };
@@ -467,7 +466,7 @@ describe('launchAgent', () => {
   //
   // getSessionLaunchContext only ever reads local state, so the dialog
   // offers "Start new session" with the local default for a branch whose
-  // agent already runs on a paired machine, and this — unlike checkoutPlan
+  // agent already runs on a fleet member, and this — unlike checkoutPlan
   // — never asked findRemoteBranchOwner at all. Same guard, reused.
   it('refuses a local launch, naming the machine, when the branch already runs there', async () => {
     state.knownMachines.add('bbbbbbbbbbbbbbbb');
@@ -988,7 +987,7 @@ describe('checkoutPlan', () => {
   // ── Cross-machine duplicate agent (Phase 8's closed hole) ─────────
   //
   // checkoutPlan used to resolve a branch's session by *local* state
-  // only, so a branch whose agent runs on another paired machine found
+  // only, so a branch whose agent runs on another fleet member found
   // nothing here and spawned a second, local agent for it — the exact
   // duplicate-agent shape a whole review round closed on the launch
   // path (open-session.ts's findSession), just left open on this one.
@@ -1019,11 +1018,11 @@ describe('checkoutPlan', () => {
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
   });
 
-  it('ignores a machine that is paired but not connected — nothing to ask', async () => {
+  it('ignores a fleet member that is not connected — nothing to ask', async () => {
     state.machines = [
       {
         ...connectedMachine('bbbbbbbbbbbbbbbb', 'workbox'),
-        state: 'unreachable',
+        state: 'offline',
       },
     ];
     state.remoteSessions.set('bbbbbbbbbbbbbbbb', [
@@ -1033,7 +1032,7 @@ describe('checkoutPlan', () => {
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
   });
 
-  it('proceeds locally when no paired machine is running that branch', async () => {
+  it('proceeds locally when no fleet member is running that branch', async () => {
     state.knownMachines.add('bbbbbbbbbbbbbbbb');
     state.machines = [connectedMachine('bbbbbbbbbbbbbbbb', 'workbox')];
     state.remoteSessions.set('bbbbbbbbbbbbbbbb', []);

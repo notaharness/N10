@@ -39,7 +39,7 @@ beforeEach(() => {
   state.resolver = null;
 });
 
-describe("remote-machines (the main-process face of the beam node's execOn/pty capability)", () => {
+describe('remote-machines (the main-process face of remote exec and pty)', () => {
   it('machineFor throws when no port is installed, rather than returning a machine that silently fails', () => {
     expect(() => machineFor('dddddddddddddddd')).toThrow(/not available/);
   });

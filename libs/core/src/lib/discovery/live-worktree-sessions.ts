@@ -42,7 +42,7 @@ export interface LiveWorktreeSession {
   /** Orchestra's tags, when the session carries them. The harness
    *  running in the pane. */
   agent?: string;
-  /** The player's reporting target, `codex:<id>` or `tmux:<session>`. */
+  /** The player's reporting target (`ORCHESTRA_TAG.orchestrator`). */
   orchestrator?: string;
   /** `<KIND> <ISO-8601 UTC>` of the last report the player delivered. */
   lastReport?: string;

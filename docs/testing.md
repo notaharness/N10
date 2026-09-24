@@ -27,6 +27,30 @@ Every test uses a private tmux socket inside its fixture HOME and kills only
 that fixture's sessions at teardown. It drops `N10_VITE_URL` to ensure tests
 use the built app.
 
+`src/setup/fake-beam.ts` answers beam's control socket in the fixture HOME with
+a scripted daemon: enrolment, peers and their events, alias, grant and
+ceremonies a test finishes with `finishCeremony`. It never dials or runs a
+passkey step. A test without it gets the real `beam daemon` from
+`@notaharness/beam`, started by the app in the fixture HOME, unenrolled, and
+stopped when the app quits.
+
+`@beam` tests (`src/beam-fleet.test.ts`) run the app against real beam
+daemons: `beam testkit` serves beam's dev DERP and fake directory worker on
+loopback, a daemon in the fixture HOME is the one the app finds, a second
+daemon with its own HOME is another machine, and beam's test authenticator
+answers every ceremony (`src/setup/beam-testkit.ts`). These need a `beamtest`
+build, so a plain run leaves them out. `run-beam-e2e.mjs` downloads the
+`beamtest-<os>-<arch>` asset of the beam release matching the installed
+`@notaharness/beam`, checks it against the checksums pinned in the script
+(replace them when bumping beam) and caches it under
+`node_modules/.cache/beamtest`; `BEAM_TEST_BINARY`, an absolute path, names a
+local build instead:
+
+```sh
+npx nx e2e:beam desktop-e2e
+BEAM_TEST_BINARY=$HOME/beam/beamtest npx nx e2e:beam desktop-e2e
+```
+
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
 a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for
 a real diff. Seeded worktree branches must be slash-free because the fixture and

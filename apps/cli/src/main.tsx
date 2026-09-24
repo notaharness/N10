@@ -23,6 +23,7 @@ import {
   ToastProvider,
 } from '@n10/app-core';
 import { killAll, applySessionBackend, probeTmuxAvailability } from '@n10/core';
+import { handleUtilCommand } from '@n10/review-comments';
 import {
   repoTitle,
   setWindowTitle,
@@ -110,7 +111,6 @@ const args = process.argv.slice(2);
 
 // ── Subcommand routing (no React/Ink needed) ─────────────────────
 if (args[0] === 'util') {
-  const { handleUtilCommand } = await import('./commands/util.js');
   await handleUtilCommand(args.slice(1));
   process.exit(0);
 }

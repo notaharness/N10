@@ -40,14 +40,15 @@ export type { BabysitStatus, PullRequestLookup, SidebarItem } from '@n10/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
-// Machines: other n10 hosts paired over beam, and this one's own
-// identity and accept-connections state.
+// Machines: this one and the other members of its beam fleet.
 export type * from './contract-machines.js';
 import type {
-  AcceptingStatus,
+  BeamStatus,
+  CeremonyOutcome,
+  CeremonyProgress,
+  CeremonyRequest,
+  MachineGrant,
   MachineView,
-  PairConfirmResult,
-  PairPreviewResult,
 } from './contract-machines.js';
 // Terminal tabs — sessions bound to a directory rather than a worktree.
 export type * from './contract-terminals.js';
@@ -440,30 +441,23 @@ export interface N10HostApi {
    *  refetches. */
   onDiscoveryChanged(cb: () => void): () => void;
 
-  // ── Machines (beam peers) ───────────────────────────────────
-  /** Every machine: the local one first, then paired peers. Repo
-   *  independent — like `listTerminals`, this answers the same
-   *  whatever repository (if any) is open. */
+  // ── Machines (beam fleet) ────────────────────────────────────
+  /** Every machine: this one first, then fleet members. Empty until
+   *  this machine is enrolled. Repo independent — like `listTerminals`,
+   *  this answers the same whatever repository (if any) is open. */
   listMachines(): Promise<MachineView[]>;
-  getAcceptingStatus(): Promise<AcceptingStatus>;
-  /** Turn accepting on or off. Off does not drop existing connections. */
-  setAccepting(enabled: boolean): Promise<AcceptingStatus>;
-  /** A fresh pairing token/URL — the running one's TTL expired. */
-  regeneratePairingUrl(): Promise<AcceptingStatus>;
-  /** Step 1 of pairing: fetch the descriptor a URL names, without
-   *  spending its token or storing anything. */
-  previewPairing(url: string): Promise<PairPreviewResult>;
-  /** Step 2: spend the token and store the peer. `force` replaces an
-   *  existing peer's key on a `key-mismatch` failure. */
-  confirmPairing(url: string, force?: boolean): Promise<PairConfirmResult>;
-  /** Local-only: the name this machine goes by here. Works for the
-   *  local row (renames this machine's own identity) or a peer. */
-  renameMachine(peerId: string, label: string): Promise<MachineView>;
-  /** Kept, but refused from now on. The other machine's sessions keep
-   *  running. */
-  revokeMachine(peerId: string): Promise<MachineView>;
-  /** Forgets the peer entirely (not just revoked). */
-  forgetMachine(peerId: string): Promise<void>;
+  getBeamStatus(): Promise<BeamStatus>;
+  onBeamStatusChanged(cb: (status: BeamStatus) => void): () => void;
+  /** The name a peer goes by here only; `null` clears it. */
+  setMachineAlias(peerId: string, alias: string | null): Promise<void>;
+  /** What that peer may open on this machine. */
+  setMachineGrant(peerId: string, grant: MachineGrant): Promise<void>;
+  /** Runs one passkey ceremony to its end — resolved, never rejected,
+   *  with the outcome. Progress arrives on `onCeremonyProgress`. */
+  runCeremony(request: CeremonyRequest): Promise<CeremonyOutcome>;
+  /** Ends the ceremony under way; its `runCeremony` resolves cancelled. */
+  cancelCeremony(): Promise<void>;
+  onCeremonyProgress(cb: (progress: CeremonyProgress) => void): () => void;
   onMachinesChanged(cb: (machines: MachinesChangedEvent) => void): () => void;
   /** Discards a refused inbound report without delivering it — the
    *  only thing that acks it, removing it from the sender's mailbox
@@ -549,14 +543,11 @@ export const IPC = {
   startBabysit: 'n10/babysit/start',
   stopBabysit: 'n10/babysit/stop',
   listMachines: 'n10/machines/list',
-  getAcceptingStatus: 'n10/machines/accepting-status',
-  setAccepting: 'n10/machines/set-accepting',
-  regeneratePairingUrl: 'n10/machines/regenerate-pairing-url',
-  previewPairing: 'n10/machines/preview-pairing',
-  confirmPairing: 'n10/machines/confirm-pairing',
-  renameMachine: 'n10/machines/rename',
-  revokeMachine: 'n10/machines/revoke',
-  forgetMachine: 'n10/machines/forget',
+  getBeamStatus: 'n10/machines/beam-status',
+  setMachineAlias: 'n10/machines/alias',
+  setMachineGrant: 'n10/machines/grant',
+  runCeremony: 'n10/machines/ceremony/run',
+  cancelCeremony: 'n10/machines/ceremony/cancel',
   dismissInboundMail: 'n10/machines/dismiss-inbound-mail',
 } as const;
 

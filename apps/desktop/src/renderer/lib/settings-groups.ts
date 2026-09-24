@@ -46,7 +46,7 @@ export const GROUPS: SettingsGroupMeta[] = [
   {
     key: 'machines',
     label: 'Machines',
-    blurb: 'Other machines paired with this one, and accepting connections.',
+    blurb: 'Other machines this one reaches over beam.',
   },
 ];
 

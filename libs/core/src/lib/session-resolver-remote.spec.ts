@@ -12,8 +12,8 @@ const MACHINE = 'workbox';
 
 /**
  * `listOurSessionsWith` against a real tmux server through a real
- * `MachineExecutor` (an async `execFile`, exactly the shape
- * `beam-node-remote-ops.ts`'s `execOn` hands `open-session.ts`) rather
+ * `MachineExecutor` (an async `execFile`, exactly the shape the
+ * desktop's remote machine port hands `open-session.ts`) rather
  * than a mock — the seam finding 7's fix depends on, and the review's
  * named second-weakest spot: "the remote transport is only ever a
  * mock". This does not exercise a real beam connection (that stays

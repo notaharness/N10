@@ -16,6 +16,10 @@ import type {
 import { useRepo } from '../lib/repo-context.js';
 import { useMachines, useSyncState, useVersion } from '../lib/data/queries.js';
 import { useRefreshRemote } from '../lib/data/mutations.js';
+import {
+  hasPeerMachines,
+  isFleetMember,
+} from '../lib/machines/machine-model.js';
 import { itemRunning } from '../lib/sidebar/sidebar-model.js';
 import { basename, cn, relativeTime } from '../lib/utils.js';
 import { Tip } from './ui/tooltip.js';
@@ -160,11 +164,10 @@ function ProviderSegment({
 }
 
 /**
- * `3 machines`, or `3 machines · 1 unreachable` / `3 machines · 2 queued`
- * when something needs attention (unreachable takes priority — a fault
- * is more urgent than mail waiting). Hidden entirely with only the
- * local machine registered (D8): a user who never pairs anything sees
- * today's app.
+ * `3 machines`, or `3 machines · 1 offline` / `3 machines · 2 queued`
+ * when something needs attention (offline takes priority over mail
+ * waiting). Hidden entirely with only this machine (D8): a user who
+ * never joins a fleet sees today's app.
  */
 function MachinesSegment({
   machines,
@@ -173,22 +176,22 @@ function MachinesSegment({
   machines: MachineView[] | undefined;
   onOpenSettings: () => void;
 }) {
-  const others = (machines ?? []).filter((m) => !m.isLocal);
-  if (others.length === 0) return null;
+  if (!hasPeerMachines(machines ?? [])) return null;
 
-  const unreachable = others.filter((m) => m.state === 'unreachable').length;
-  const queued = others.reduce((sum, m) => sum + m.queueDepth, 0);
-  const count = others.length + 1; // + this machine
+  const members = (machines ?? []).filter(isFleetMember);
+  const offline = members.filter((m) => m.state === 'offline').length;
+  const queued = members.reduce((sum, m) => sum + m.queued, 0);
+  const count = members.length + 1; // + this machine
 
   let suffix = '';
-  if (unreachable > 0) suffix = ` · ${unreachable} unreachable`;
+  if (offline > 0) suffix = ` · ${offline} offline`;
   else if (queued > 0) suffix = ` · ${queued} queued`;
 
   return (
     <Segment
       label="Open Settings → Machines"
       onClick={onOpenSettings}
-      className={unreachable > 0 ? 'text-warning' : undefined}
+      className={offline > 0 ? 'text-warning' : undefined}
     >
       <MonitorIcon className="size-3" />
       {count} machine{count === 1 ? '' : 's'}

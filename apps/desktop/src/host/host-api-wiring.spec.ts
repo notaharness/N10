@@ -118,14 +118,11 @@ vi.mock('./services/desktop-prefs.js', () =>
 vi.mock('./services/machines.js', () =>
   recorder('machines', [
     'listMachines',
-    'getAcceptingStatus',
-    'setAccepting',
-    'regeneratePairingUrl',
-    'previewPairing',
-    'confirmPairing',
-    'renameMachine',
-    'revokeMachine',
-    'forgetMachine',
+    'getBeamStatus',
+    'setMachineAlias',
+    'setMachineGrant',
+    'runCeremony',
+    'cancelCeremony',
   ])
 );
 vi.mock('./services/inbound-mail.js', () =>
@@ -235,18 +232,15 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['stopBabysit', [7], 'babysit.stopBabysit'],
 
   ['listMachines', [], 'machines.listMachines'],
-  ['getAcceptingStatus', [], 'machines.getAcceptingStatus'],
-  ['setAccepting', [true], 'machines.setAccepting'],
-  ['regeneratePairingUrl', [], 'machines.regeneratePairingUrl'],
-  ['previewPairing', ['http://host/pair#token=x'], 'machines.previewPairing'],
+  ['getBeamStatus', [], 'machines.getBeamStatus'],
   [
-    'confirmPairing',
-    ['http://host/pair#token=x', true],
-    'machines.confirmPairing',
+    'setMachineAlias',
+    ['bbbbbbbbbbbbbbbb', 'workbox'],
+    'machines.setMachineAlias',
   ],
-  ['renameMachine', ['bbbbbbbbbbbbbbbb', 'workbox'], 'machines.renameMachine'],
-  ['revokeMachine', ['bbbbbbbbbbbbbbbb'], 'machines.revokeMachine'],
-  ['forgetMachine', ['bbbbbbbbbbbbbbbb'], 'machines.forgetMachine'],
+  ['setMachineGrant', ['bbbbbbbbbbbbbbbb', 'msg'], 'machines.setMachineGrant'],
+  ['runCeremony', [{ op: 'join', label: 'box' }], 'machines.runCeremony'],
+  ['cancelCeremony', [], 'machines.cancelCeremony'],
   ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 
@@ -281,6 +275,8 @@ describe('host API wiring', () => {
       'onRemoteUpdated',
       'onDiscoveryChanged',
       'onMachinesChanged',
+      'onBeamStatusChanged',
+      'onCeremonyProgress',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

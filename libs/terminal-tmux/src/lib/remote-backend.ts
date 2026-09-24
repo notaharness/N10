@@ -16,7 +16,7 @@ import type { RemoteSessionPoller } from './remote-poller.js';
 
 /** One remote pty stream's client contract — deliberately narrow, the
  *  same seam shape as `TmuxSessionPreparer`: the desktop supplies a
- *  concrete implementation over `beam-node-bridge.ts`; this package
+ *  concrete implementation over its beam transport; this package
  *  never imports beam or Electron. */
 export interface RemotePtyHandle {
   onData(cb: (data: string) => void): void;
@@ -27,8 +27,8 @@ export interface RemotePtyHandle {
    * The stream closed. Any reason: the remote `tmux attach-session`
    * client exited because the user detached with `C-b d`, the hosted
    * process ended, or the connection underneath went away. Nothing on
-   * this side can tell those apart — the stream carries no reason
-   * across the worker boundary — so the backend treats every close the
+   * this side can tell those apart — the handle carries no reason —
+   * so the backend treats every close the
    * same way, by re-attaching, and does not read a closed stream as
    * evidence against the connection it was riding on. What is evidence
    * is in `RemotePtyOpenParams.reconnect`.
@@ -39,7 +39,7 @@ export interface RemotePtyHandle {
 }
 
 export interface RemotePtyOpenParams {
-  /** Absent or empty means the login shell (beam's D1). This backend
+  /** Absent or empty means the login shell. This backend
    *  always passes one (attaching a tmux client), but the type stays
    *  optional so a `RemotePtyOpener` is usable for a plain remote
    *  shell too. */

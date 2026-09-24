@@ -17,7 +17,7 @@ const distDir = resolve(appDir, 'dist');
 const distPkgPath = resolve(distDir, 'package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 
-// The TUI, the desktop app and beam ship as one release under one version.
+// The TUI and the desktop app ship as one release under one version.
 assertVersionsMatch();
 
 // npm only picks up a README that sits in the pack root, and the pack

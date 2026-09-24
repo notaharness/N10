@@ -65,16 +65,16 @@ export const LAUNCH_EVENTS = {
 // ── Machines (beam peers) ─────────────────────────────────────────
 
 /**
- * The whole machines list, pushed on any change: a peer connects or
- * disconnects, a probe result lands, a queue drains, a peer is paired,
- * renamed, revoked or forgotten. The renderer writes this straight into
- * the query cache (no round trip) — see decisions.md D6/D7 for why the
- * five reachability states and queue depth have to be pushed rather
- * than polled: a probe interval measured in tens of seconds would
- * otherwise make a freshly-connected peer look unreachable for a while.
+ * The whole machines list, pushed on any change the beam daemon reports
+ * (a peer connects, disconnects, joins, is renamed, re-granted or
+ * revoked) and on any change to inbound mail. The renderer writes it
+ * straight into the query cache, as it does the daemon's status and a
+ * running ceremony's progress.
  */
 export const MACHINES_EVENTS = {
   changed: 'n10/machines/changed',
+  beamStatus: 'n10/machines/beam-status-changed',
+  ceremony: 'n10/machines/ceremony-progress',
 } as const;
 
 export type MachinesChangedEvent = MachineView[];

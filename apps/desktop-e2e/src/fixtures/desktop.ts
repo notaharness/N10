@@ -115,7 +115,6 @@ export const test = base.extend<
   liveSessions: [undefined, { option: true }],
   env: [undefined, { option: true }],
   liveTerminals: [undefined, { option: true }],
-  beamPeers: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -131,7 +130,6 @@ export const test = base.extend<
       liveSessions,
       env,
       liveTerminals,
-      beamPeers,
       fixtureHome,
     },
     // Playwright's fixture callback. Named `provide` rather than the
@@ -149,7 +147,6 @@ export const test = base.extend<
       desktopPrefs,
       drafts,
       fakeGitHub,
-      beamPeers,
     });
 
     seedTmux(repoPath, homeDir, liveSessions, liveTerminals);
