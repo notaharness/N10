@@ -52,6 +52,17 @@ test.describe('An enrolled machine', () => {
       .toBe('3f9a 0c4e 7d12 e805');
   });
 
+  test('a machine row copies the fingerprint it shows', async ({ desktop }) => {
+    const { page } = desktop;
+    await openFleet(desktop);
+    await fleetView(page)
+      .getByRole('button', { name: 'c0ff ee00 c0ff ee00' })
+      .click();
+    await expect
+      .poll(() => desktop.app.evaluate(({ clipboard }) => clipboard.readText()))
+      .toBe('c0ff ee00 c0ff ee00');
+  });
+
   test('explains how to add a desktop or a headless machine', async ({
     desktop,
     beam,

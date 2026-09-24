@@ -161,6 +161,7 @@ export function MachineRow({
       <InboundMailPanel
         waiting={inboundMailRows(machine.inboundWaiting)}
         refused={inboundMailRows(machine.inboundRefused)}
+        disabled={disabled}
       />
     </div>
   );
