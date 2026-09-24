@@ -32,17 +32,17 @@ export function OrchestraInstall() {
           <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
             Install Orchestra
           </h2>
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
+          <div className="mx-auto mt-10 flex max-w-3xl flex-col gap-8">
             {routes.map((route) => (
               <div key={route.title}>
                 <h3 className="font-semibold">{route.title}</h3>
-                <div className="n10-frame bg-fd-background mt-3 flex flex-col divide-y divide-fd-border overflow-hidden rounded-lg">
+                <div className="n10-frame bg-fd-background divide-fd-border mt-3 flex flex-col divide-y overflow-hidden rounded-lg">
                   {route.lines.map((line) => (
                     <div
                       key={line}
                       className="flex items-center gap-2 py-1.5 pr-1.5 pl-4"
                     >
-                      <code className="flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap">
+                      <code className="min-w-0 flex-1 font-mono text-[13px] break-all sm:whitespace-nowrap">
                         {line}
                       </code>
                       <CopyButton text={line} label={`Copy: ${line}`} />
