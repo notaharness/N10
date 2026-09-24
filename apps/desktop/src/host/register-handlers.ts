@@ -143,6 +143,7 @@ export function createHostApi(): N10HostApi {
     setMachineGrant: (peerId, grant) => machines.setMachineGrant(peerId, grant),
     runCeremony: (request) => machines.runCeremony(request),
     cancelCeremony: () => machines.cancelCeremony(),
+    resetFleet: () => machines.resetFleet(),
     onCeremonyProgress: () => () => undefined,
     dismissInboundMail: (id) => inboundMail.dismissInboundMail(id),
     onMachinesChanged: () => () => undefined,
@@ -278,6 +279,7 @@ export function registerHostHandlers(
     [IPC.setMachineGrant]: api.setMachineGrant as HostMethod,
     [IPC.runCeremony]: api.runCeremony as HostMethod,
     [IPC.cancelCeremony]: api.cancelCeremony as HostMethod,
+    [IPC.resetFleet]: api.resetFleet as HostMethod,
     [IPC.dismissInboundMail]: api.dismissInboundMail as HostMethod,
   };
 

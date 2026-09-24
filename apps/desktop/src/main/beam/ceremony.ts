@@ -1,4 +1,5 @@
 import type {
+  BeamFailure,
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
@@ -7,7 +8,7 @@ import { BeamOpError, ControlConnection } from './control.js';
 
 /** A failure as beam named it. A connection that closed under a
  *  request is `connection-lost`: the request may have completed. */
-function failure(err: unknown, lost: boolean): CeremonyOutcome {
+export function failure(err: unknown, lost = false): BeamFailure {
   if (err instanceof BeamOpError) {
     return { ok: false, code: err.code, detail: err.detail || null };
   }

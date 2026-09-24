@@ -7,6 +7,7 @@ import type { BeamStatus, MachineView } from '../../host/contract-machines.js';
 import { setInboundMailPort } from '../../host/services/inbound-mail.js';
 import {
   cancelCeremony,
+  resetFleet,
   runCeremony,
   listMachines,
   setBeamStatusNotifier,
@@ -244,6 +245,56 @@ describe('BeamClient', () => {
       { ok: false, code: 'directory-unavailable' }
     );
     await until(() => last(statuses)?.enrolled === true);
+  });
+
+  it('resets this machine’s fleet through beam, then re-reads status', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      daemon!.on('status', () => ({ ready: true, enrolled: false }));
+      return {};
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.enrolled === true);
+    await expect(resetFleet()).resolves.toEqual({ ok: true });
+    expect(daemon.requests('fleet.reset')[0]).toMatchObject({
+      confirm: 'reset',
+    });
+    await until(() => last(statuses)?.enrolled === false);
+  });
+
+  it('names a reset whose connection dropped as lost: it may have happened', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      for (const c of daemon!.controls) c.destroy();
+      return new Promise(() => undefined);
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(resetFleet()).resolves.toEqual({
+      ok: false,
+      code: 'connection-lost',
+      detail: null,
+    });
+  });
+
+  it('resolves a refused reset with beam’s code and detail', async () => {
+    daemon = await FakeDaemon.start(socketPath);
+    enrolledDaemon(daemon, []);
+    daemon.on('fleet.reset', () => {
+      throw new FakeOpError('storage-failure', 'disk full');
+    });
+    client = new BeamClient({ socketPath });
+    client.start();
+    await until(() => last(statuses)?.state === 'ready');
+    await expect(resetFleet()).resolves.toEqual({
+      ok: false,
+      code: 'storage-failure',
+      detail: 'disk full',
+    });
   });
 
   it('cancels only a ceremony of its own', async () => {

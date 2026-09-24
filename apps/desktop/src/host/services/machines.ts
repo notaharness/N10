@@ -3,6 +3,7 @@ import type {
   CeremonyOutcome,
   CeremonyProgress,
   CeremonyRequest,
+  FleetResetOutcome,
   MachineGrant,
   MachineView,
 } from '../contract-machines.js';
@@ -23,6 +24,7 @@ export interface MachinesPort {
     onProgress: (progress: CeremonyProgress) => void
   ): Promise<CeremonyOutcome>;
   cancelCeremony(): Promise<void>;
+  resetFleet(): Promise<FleetResetOutcome>;
 }
 
 let port: MachinesPort | null = null;
@@ -132,4 +134,8 @@ export async function runCeremony(
 
 export async function cancelCeremony(): Promise<void> {
   return requirePort().cancelCeremony();
+}
+
+export async function resetFleet(): Promise<FleetResetOutcome> {
+  return requirePort().resetFleet();
 }

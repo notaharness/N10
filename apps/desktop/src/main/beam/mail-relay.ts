@@ -115,6 +115,14 @@ export class MailRelay implements InboundMailPort {
     }
   }
 
+  /** Drops every report held for delivery or shown as refused: beam
+   *  discarded them with the enrolment they came under. */
+  forget(): void {
+    this.waiting.clear();
+    this.refused.clear();
+    this.onChange();
+  }
+
   stop(): void {
     this.generation++;
     if (this.retry) clearTimeout(this.retry);

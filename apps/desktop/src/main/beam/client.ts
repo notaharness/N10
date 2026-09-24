@@ -9,7 +9,7 @@ import {
   type MachinesPort,
 } from '../../host/services/machines.js';
 import { setRemoteMachinePort } from '../../host/services/remote-machines.js';
-import { runCeremony } from './ceremony.js';
+import { failure, runCeremony } from './ceremony.js';
 import type { ControlConnection } from './control.js';
 import { DaemonLauncher } from './launcher.js';
 import { MailRelay } from './mail-relay.js';
@@ -50,6 +50,8 @@ export class BeamClient {
   private readonly launcher: DaemonLauncher;
   /** The enrolment (`fleetId/peerId`) the relay is subscribed under. */
   private relayFor: string | null = null;
+  /** The enrolment the relay's held reports came under. */
+  private mailFor: string | null = null;
   /** Peer events heard while each list in flight is read. */
   private readonly listings = new Set<PeerView[]>();
   private ceremony: AbortController | null = null;
@@ -232,6 +234,11 @@ export class BeamClient {
     const enrolment = status.enrolled
       ? `${status.fleetId}/${status.peerId}`
       : null;
+    if (enrolment !== this.mailFor) {
+      // beam discards an enrolment's queued mail with it (a reset).
+      if (this.mailFor) this.relay.forget();
+      this.mailFor = enrolment;
+    }
     if (enrolment === this.relayFor || this.stopped) return;
     this.stopRelay();
     if (enrolment) this.startRelay(enrolment);
@@ -286,6 +293,18 @@ export class BeamClient {
       // one the daemon runs, and that may be the CLI's.
       cancelCeremony: async () => {
         this.ceremony?.abort();
+      },
+      resetFleet: async () => {
+        const conn = this.main;
+        try {
+          await this.requireMain().request('fleet.reset', { confirm: 'reset' });
+          return { ok: true };
+        } catch (err) {
+          // Lost under the request, the reset may still have happened.
+          return failure(err, conn !== null && this.main !== conn);
+        } finally {
+          if (this.main) this.refresh();
+        }
       },
     };
   }

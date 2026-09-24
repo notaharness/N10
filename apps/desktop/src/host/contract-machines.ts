@@ -91,7 +91,17 @@ export type CeremonyOutcome =
       published: boolean;
     }
   | { ok: true; op: 'revoke'; published: boolean; acknowledgedBy: number }
-  /** `code` is beam's error token (docs/06), or `connection-lost` when
-   *  the connection dropped mid-request; `detail` is beam's own words.
-   *  The renderer owns what each one tells the owner. */
-  | { ok: false; code: string; detail: string | null };
+  | BeamFailure;
+
+/** A refused operation. `code` is beam's error token (docs/06), or
+ *  `connection-lost` when the connection dropped mid-request; `detail`
+ *  is beam's own words. The renderer owns what each tells the owner. */
+export interface BeamFailure {
+  ok: false;
+  code: string;
+  detail: string | null;
+}
+
+/** `fleet.reset` (beam docs/06): this machine leaves its fleet, keeping
+ *  its identity. */
+export type FleetResetOutcome = { ok: true } | BeamFailure;

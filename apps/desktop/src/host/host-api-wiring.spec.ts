@@ -123,6 +123,7 @@ vi.mock('./services/machines.js', () =>
     'setMachineGrant',
     'runCeremony',
     'cancelCeremony',
+    'resetFleet',
   ])
 );
 vi.mock('./services/inbound-mail.js', () =>
@@ -241,6 +242,7 @@ const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['setMachineGrant', ['bbbbbbbbbbbbbbbb', 'msg'], 'machines.setMachineGrant'],
   ['runCeremony', [{ op: 'join', label: 'box' }], 'machines.runCeremony'],
   ['cancelCeremony', [], 'machines.cancelCeremony'],
+  ['resetFleet', [], 'machines.resetFleet'],
   ['dismissInboundMail', ['env-1'], 'inboundMail.dismissInboundMail'],
 ];
 

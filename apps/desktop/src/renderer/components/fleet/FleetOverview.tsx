@@ -11,6 +11,8 @@ import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { EnrolmentFlow } from './EnrolmentFlow.js';
 import { FirstRun } from './FirstRun.js';
+import { FleetHeader } from './FleetHeader.js';
+import { ResetFleetDialog } from './ResetFleetDialog.js';
 
 function Card({ children }: { children: ReactNode }) {
   return (
@@ -110,12 +112,19 @@ function FleetBody({
   machines: MachineView[] | undefined;
   loadFailure: ReactNode;
 }) {
-  const { enrolment, revocation } = useFleet();
+  const { enrolment, revocation, reset } = useFleet();
   const reconnecting = beam.state === 'restarting';
   const enrolling = enrolment.ceremony.view !== null;
   return (
     <div className="space-y-4">
       {revocation.target && <RevokeMachineDialog machine={revocation.target} />}
+      {reset.open && <ResetFleetDialog />}
+      {beam.enrolled && (
+        <FleetHeader
+          disabled={reconnecting || enrolment.ceremony.running}
+          onReset={reset.show}
+        />
+      )}
       {reconnecting && <Reconnecting />}
       {loadFailure}
       {(enrolling || !beam.enrolled) && (

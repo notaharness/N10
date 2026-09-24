@@ -13,6 +13,7 @@ import type { MachineView, MenuCommand } from '../../../host/contract.js';
 import { keys } from '../data/query-keys.js';
 import { useCeremony, type Ceremony } from './use-ceremony.js';
 import { useEnrolment, type Enrolment } from './use-enrolment.js';
+import { useFleetReset } from './use-fleet-reset.js';
 
 interface FleetContextValue {
   open: boolean;
@@ -30,6 +31,7 @@ interface FleetContextValue {
     open: (machine: MachineView) => void;
     close: () => void;
   };
+  reset: ReturnType<typeof useFleetReset>;
 }
 
 const FleetContext = createContext<FleetContextValue | null>(null);
@@ -81,6 +83,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
   const enrolment = useEnrolment();
   const [revokeTarget, setRevokeTarget] = useState<MachineView | null>(null);
   const revokeCeremony = useCeremony();
+  const reset = useFleetReset(enrolment.leave);
   useFleetPushes();
 
   // Focus goes back to whatever opened Fleet, once it is no longer inert.
@@ -117,6 +120,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
         open: setRevokeTarget,
         close: closeRevocation,
       },
+      reset,
     }),
     [
       open,
@@ -126,6 +130,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
       revokeTarget,
       revokeCeremony,
       closeRevocation,
+      reset,
     ]
   );
   return (

@@ -164,6 +164,7 @@ const api: N10HostApi = {
     ipcRenderer.invoke(IPC.setMachineGrant, peerId, grant),
   runCeremony: (request) => ipcRenderer.invoke(IPC.runCeremony, request),
   cancelCeremony: () => ipcRenderer.invoke(IPC.cancelCeremony),
+  resetFleet: () => ipcRenderer.invoke(IPC.resetFleet),
   onCeremonyProgress: (cb) => {
     const listener = (_e: unknown, payload: CeremonyProgress) => cb(payload);
     ipcRenderer.on(MACHINES_EVENTS.ceremony, listener);

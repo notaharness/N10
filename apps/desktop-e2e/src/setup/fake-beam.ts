@@ -89,6 +89,16 @@ export class FakeBeam {
     return this.requests.filter((r) => r.op === op);
   }
 
+  private readonly refusals = new Map<
+    string,
+    { code: string; detail: string }
+  >();
+
+  /** Answers every later `op` with beam's error. */
+  refuse(op: string, code: string, detail = ''): void {
+    this.refusals.set(op, { code, detail });
+  }
+
   /** The URL the latest `*.start` answered, or step 2's once sent. */
   currentUrl = '';
 
@@ -113,7 +123,7 @@ export class FakeBeam {
   failCeremony(code: string, detail = ''): void {
     const w = this.requireWaiting();
     this.waiting = null;
-    this.send(w.socket, { id: w.id, ok: false, error: code, detail });
+    this.fail(w.socket, w.id, code, detail);
   }
 
   /** Answers the `*.wait` under way as the daemon would once the owner's
@@ -206,6 +216,10 @@ export class FakeBeam {
     socket.write(`${JSON.stringify(value)}\n`);
   }
 
+  private fail(socket: Socket, id: number, code: string, detail: string): void {
+    this.send(socket, { id, ok: false, error: code, detail });
+  }
+
   private reply(socket: Socket, id: number, result: unknown): void {
     this.send(socket, { id, ok: true, result });
   }
@@ -216,6 +230,8 @@ export class FakeBeam {
 
   private handle(socket: Socket, req: Request): void {
     this.requests.push(req);
+    const refusal = this.refusals.get(req.op);
+    if (refusal) return this.fail(socket, req.id, refusal.code, refusal.detail);
     const answer = this.answer(socket, req);
     if (answer !== undefined) this.reply(socket, req.id, answer);
   }
@@ -240,6 +256,10 @@ export class FakeBeam {
               fleetId: FLEET_ID,
             }
           : { ready: true, enrolled: false };
+      case 'fleet.reset':
+        this.enrolled = false;
+        this.peers.clear();
+        return {};
       case 'events.subscribe':
         this.subscribers.add(socket);
         return {};

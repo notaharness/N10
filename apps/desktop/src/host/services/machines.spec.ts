@@ -71,6 +71,7 @@ function fakePort(): MachinesPort & { calls: [string, unknown[]][] } {
       });
     },
     cancelCeremony: record('cancelCeremony', () => Promise.resolve()),
+    resetFleet: record('resetFleet', () => Promise.resolve({ ok: true })),
   };
 }
 
