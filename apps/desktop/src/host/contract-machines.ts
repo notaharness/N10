@@ -92,4 +92,4 @@ export type CeremonyOutcome =
       published: boolean;
     }
   | { ok: true; op: 'revoke'; published: boolean; acknowledgedBy: number }
-  | { ok: false; code: string; message: string };
+  | { ok: false; code: string; message: string; detail?: string };

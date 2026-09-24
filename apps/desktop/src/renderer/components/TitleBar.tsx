@@ -3,11 +3,13 @@ import {
   FolderOpenIcon,
   MenuIcon,
   MonitorIcon,
+  NetworkIcon,
   MoonIcon,
   SearchIcon,
   SettingsIcon,
   SunIcon,
 } from 'lucide-react';
+import { useFleet } from '../lib/machines/fleet-context.js';
 import type { RepoInfo } from '../../host/contract.js';
 import { isMacPlatform, useDesktopPrefs } from '../lib/desktop-prefs.js';
 import { useRecentRepos } from '../lib/data/queries.js';
@@ -49,6 +51,7 @@ export function TitleBar({
   onOpenSettings?: () => void;
 }) {
   const { nativeFrame } = useDesktopPrefs();
+  const fleet = useFleet();
   const drag = !nativeFrame;
   return (
     <header
@@ -113,6 +116,14 @@ export function TitleBar({
       )}
 
       <div className="flex h-full flex-1 items-center justify-end gap-0.5 pr-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="app-no-drag"
+          onClick={fleet.show}
+        >
+          <NetworkIcon /> Fleet
+        </Button>
         <ThemeMenu />
         {repo && onOpenSettings && (
           <Tip label={`Settings (${MOD} ,)`}>

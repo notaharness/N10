@@ -4,6 +4,7 @@ import {
   PlusIcon,
   RefreshCwIcon,
 } from 'lucide-react';
+import { useFleet } from '../../lib/machines/fleet-context.js';
 import { useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
@@ -50,6 +51,7 @@ export function Sidebar({
   onCollapse: () => void;
 }) {
   const { repo } = useRepo();
+  const fleet = useFleet();
   const tabs = useRepoTabs();
   const refresh = useRefreshRemote(repo.cwd);
   const sections = groupSections(items);
@@ -110,6 +112,13 @@ export function Sidebar({
         </div>
       </div>
 
+      <Button
+        variant="ghost"
+        className="mx-2 mb-2 justify-start"
+        onClick={fleet.show}
+      >
+        Fleet
+      </Button>
       <ScrollArea className="min-h-0 flex-1">
         {loading && items.length === 0 && (
           <div className="space-y-2 px-3 py-2">

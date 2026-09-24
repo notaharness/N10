@@ -102,7 +102,7 @@ describe('runCeremony', () => {
       ok: false,
       code: 'prf-unsupported',
       message:
-        "This passkey provider doesn't support what beam needs; try another.",
+        'The selected passkey did not provide WebAuthn PRF. beam needs this extension to derive the encrypted fleet directory key. Browser, operating system and passkey provider must all support it.',
     });
   });
 

@@ -9,7 +9,8 @@ import { cn } from '../../lib/utils.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { AppearanceRows } from './AppearanceRows.js';
 import { FieldRow } from './FieldRow.js';
-import { MachineRows } from './MachineRows.js';
+import { useFleet } from '../../lib/machines/fleet-context.js';
+import { Button } from '../ui/button.js';
 
 /**
  * Settings page: group navigation on the left, one card per group on
@@ -18,6 +19,7 @@ import { MachineRows } from './MachineRows.js';
  */
 export function SettingsView() {
   const { repo } = useRepo();
+  const fleet = useFleet();
   const view = useSettingsView(repo.cwd);
   const [activeGroup, setActiveGroup] = useState<GroupKey>('appearance');
 
@@ -83,7 +85,15 @@ export function SettingsView() {
                 {g.key === 'appearance' ? (
                   <AppearanceRows />
                 ) : g.key === 'machines' ? (
-                  <MachineRows />
+                  <div className="space-y-2 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      Manage your machines, passkeys and fleet recovery in
+                      Fleet.
+                    </p>
+                    <Button variant="outline" onClick={fleet.show}>
+                      Open Fleet
+                    </Button>
+                  </div>
                 ) : (
                   g.fields.map((f) => (
                     <FieldRow

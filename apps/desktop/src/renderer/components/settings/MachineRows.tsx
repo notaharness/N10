@@ -23,7 +23,7 @@ function statusNotice(status: BeamStatus): string | null {
     case 'unavailable':
       return status.detail ?? 'beam is not available.';
     case 'restarting':
-      return 'beam restarting…';
+      return 'Reconnecting to beam… Machine information may be out of date.';
     default:
       return null;
   }
@@ -32,6 +32,7 @@ function statusNotice(status: BeamStatus): string | null {
 function Loading() {
   return (
     <div className="space-y-2 p-4">
+      <p role="status">Connecting to beam…</p>
       <Skeleton className="h-12 w-full" />
       <Skeleton className="h-12 w-full" />
     </div>
@@ -60,9 +61,16 @@ function FleetRows({
             ' Check that this fleet fingerprint matches the one a machine already in your fleet shows.'}
         </Notice>
       )}
-      {machines.map((m) => (
-        <MachineRow key={m.peerId} machine={m} />
-      ))}
+      {machines.filter((m) => !m.isLocal).length === 0 && (
+        <Notice>
+          No other machines yet. Add a desktop or a headless machine.
+        </Notice>
+      )}
+      <div inert={!!notice}>
+        {machines.map((m) => (
+          <MachineRow key={m.peerId} machine={m} />
+        ))}
+      </div>
     </div>
   );
 }

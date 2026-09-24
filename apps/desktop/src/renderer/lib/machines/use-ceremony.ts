@@ -23,6 +23,7 @@ export function useCeremony() {
   const runningRef = useRef(false);
 
   const start = useCallback((request: CeremonyRequest) => {
+    if (runningRef.current) return;
     setView(EMPTY_CEREMONY);
     setOutcome(null);
     setRunning(true);
@@ -53,5 +54,11 @@ export function useCeremony() {
     [cancel]
   );
 
-  return { view, running, outcome, start, cancel };
+  const clear = useCallback(() => {
+    if (runningRef.current) return;
+    setView(EMPTY_CEREMONY);
+    setOutcome(null);
+  }, []);
+
+  return { view, running, outcome, start, cancel, clear };
 }

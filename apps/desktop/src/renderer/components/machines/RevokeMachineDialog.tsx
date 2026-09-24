@@ -50,6 +50,7 @@ export function RevokeMachineDialog({
         </DialogHeader>
         {started && (
           <CeremonyPanel
+            operation="revoke"
             view={view}
             running={running}
             outcome={outcome}

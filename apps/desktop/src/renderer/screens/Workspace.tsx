@@ -1,3 +1,4 @@
+import { useFleet } from '../lib/machines/fleet-context.js';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Group,
@@ -90,6 +91,7 @@ function WorkspaceInner({
   onPickRepoFolder: () => void;
 }) {
   const { repo } = useRepo();
+  const fleet = useFleet();
   const tabs = useRepoTabs();
   const model = useSidebarModel(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
@@ -232,6 +234,7 @@ function WorkspaceInner({
   // switch).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (fleet.open) return;
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === 'k') {
@@ -241,7 +244,7 @@ function WorkspaceInner({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [fleet.open]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">

@@ -2,6 +2,7 @@ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import type { N10HostApi, RepoInfo } from '../host/contract.js';
+import { FleetRoot } from './components/machines/FleetRoot.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
 import {
@@ -30,7 +31,9 @@ export function App() {
             so switching repos must not unmount the tabs of the one being
             left — their agents keep running and stay in the strip. */}
         <TabsProvider>
-          <Gate />
+          <FleetRoot>
+            <Gate />
+          </FleetRoot>
         </TabsProvider>
         <Toaster />
       </TooltipProvider>

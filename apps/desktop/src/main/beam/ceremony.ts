@@ -5,36 +5,7 @@ import type {
 } from '../../host/contract-machines.js';
 import { BeamOpError, ControlConnection } from './control.js';
 
-/** What each failure tells the owner, in beam docs/07's and docs/08's
- *  words where they have some. */
-const FAILURES: Record<string, string> = {
-  'prf-unsupported':
-    "This passkey provider doesn't support what beam needs; try another.",
-  'directory-unavailable': 'Directory unavailable; try again.',
-  'wrong-passkey': 'That passkey is not the one this fleet was created with.',
-  'ceremony-timeout': 'The passkey step timed out.',
-  'ceremony-cancelled': 'Cancelled.',
-  'ceremony-state': 'The ceremony answer did not match; start again.',
-  busy: 'Another passkey ceremony is already under way.',
-  'already-enrolled': 'This machine is already in a fleet.',
-  'bad-assertion': 'The passkey answer did not verify.',
-  'revoked-peer': 'This machine has been revoked from the fleet.',
-};
-
-function failure(err: unknown): CeremonyOutcome {
-  if (err instanceof BeamOpError) {
-    return {
-      ok: false,
-      code: err.code,
-      message: FAILURES[err.code] ?? err.message,
-    };
-  }
-  return {
-    ok: false,
-    code: 'internal',
-    message: err instanceof Error ? err.message : String(err),
-  };
-}
+import { ceremonyFailure as failure } from './ceremony-errors.js';
 
 function startFields(request: CeremonyRequest): Record<string, unknown> {
   switch (request.op) {
