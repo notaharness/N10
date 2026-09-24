@@ -340,7 +340,10 @@
   --n10-iso-right: #d9d5c6;
   --n10-iso-line: rgb(80 72 45 / 0.4);
   --n10-iso-inset: rgb(60 55 35 / 0.2);
-  --n10-iso-screen: #23251f;
+  --n10-iso-screen: #f7f5ee;
+  --n10-iso-code: rgb(60 55 35 / 0.3);
+  --n10-iso-code-sage: var(--color-fd-primary);
+  --n10-iso-code-sand: #b3902f;
 }
 
 .dark {
@@ -350,6 +353,9 @@
   --n10-iso-line: rgb(235 228 195 / 0.22);
   --n10-iso-inset: rgb(0 0 0 / 0.4);
   --n10-iso-screen: #0b0c09;
+  --n10-iso-code: rgb(255 255 255 / 0.35);
+  --n10-iso-code-sage: var(--n10-sage);
+  --n10-iso-code-sand: var(--n10-sand);
 }
 
 .n10-iso-face {
@@ -385,31 +391,23 @@
 
 .n10-iso-screen {
   fill: var(--n10-iso-screen);
-}
-
-.n10-iso-glass {
-  fill: var(--n10-iso-screen);
-  opacity: 0.85;
-}
-
-.n10-iso-glow {
-  fill: var(--n10-sand);
-  filter: drop-shadow(0 0 4px var(--n10-sand));
+  stroke: var(--n10-iso-line);
+  stroke-width: 0.5;
 }
 
 .n10-iso-code {
   fill: none;
   stroke-width: 2;
   stroke-linecap: round;
-  stroke: rgb(255 255 255 / 0.35);
+  stroke: var(--n10-iso-code);
 }
 
 .n10-iso-code--sage {
-  stroke: var(--n10-sage);
+  stroke: var(--n10-iso-code-sage);
 }
 
 .n10-iso-code--sand {
-  stroke: var(--n10-sand);
+  stroke: var(--n10-iso-code-sand);
 }
 
 .n10-iso-led {
@@ -670,8 +668,7 @@
   }
 }
 
-.orchestra-player .n10-iso-led,
-.orchestra-player .n10-iso-glow {
+.orchestra-player .n10-iso-led {
   fill: var(--orchestra-kind);
   filter: drop-shadow(0 0 3px var(--orchestra-kind));
 }
@@ -750,14 +747,56 @@
   }
 }
 
-.orchestra-log-line {
-  animation: orchestra-line-in 400ms ease-out backwards;
+/* What was just said, over the machine it concerns. The card rises in,
+ * holds while the next events play out, and fades; a new line restarts
+ * it because the element is keyed by the event. */
+.orchestra-bubble-card {
+  box-sizing: border-box;
+  margin: 0;
+  max-height: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: 6px;
+  background: var(--color-fd-card);
+  padding: 4px 7px 5px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  line-height: 1.35;
+  color: var(--color-fd-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  animation: orchestra-bubble 8s linear forwards;
+  animation-play-state: var(--orchestra-play);
 }
 
-@keyframes orchestra-line-in {
-  from {
+.orchestra-bubble-card b {
+  color: currentColor;
+  font-weight: 700;
+}
+
+.orchestra-bubble-box {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+@keyframes orchestra-bubble {
+  0% {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
+  }
+  6% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  86% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }
 

@@ -8,7 +8,7 @@ import {
   type PlayerSpec,
   type Status,
 } from '@/components/orchestra/stage-script';
-import type { Flight } from '@/components/orchestra/use-show';
+import type { Bubble, Flight } from '@/components/orchestra/use-show';
 
 /**
  * The pieces of the stage, in the beam page's isometric language and
@@ -27,14 +27,28 @@ const COS30 = Math.cos(Math.PI / 6);
 
 const laptopScreen = project([...PODIUM, 0]);
 
-export function groundOf(spec: PlayerSpec): Vec2 {
-  const a = (spec.angle * Math.PI) / 180;
-  const sx = laptopScreen[0] + Math.cos(a) * ARC_RX;
-  const sy = laptopScreen[1] + Math.sin(a) * ARC_RY;
+/** The ground point under a screen-space position (the inverse of project at z = 0). */
+function groundAt(sx: number, sy: number): Vec2 {
   const u = sx / (COS30 * 24);
   const v = sy / 12;
   return [(u + v) / 2, (v - u) / 2];
 }
+
+export function groundOf(spec: PlayerSpec): Vec2 {
+  const a = (spec.angle * Math.PI) / 180;
+  return groundAt(
+    laptopScreen[0] + Math.cos(a) * ARC_RX,
+    laptopScreen[1] + Math.sin(a) * ARC_RY
+  );
+}
+
+/** The scene's box in screen space: the laptop near the top, the arc below. */
+export const VIEW = {
+  x: laptopScreen[0] - 360,
+  y: laptopScreen[1] - 112,
+  w: 720,
+  h: 380,
+};
 
 const SHAPES: Record<
   Machine,
@@ -61,25 +75,26 @@ export function machineTop(spec: PlayerSpec): Vec2 {
 
 export const podiumTop = project([PODIUM[0], PODIUM[1], 2.1]);
 
-const GRID_W = 22;
-const GRID_H = 16;
-const gridLines = [
-  ...Array.from({ length: GRID_W + 1 }, (_, i) =>
+/** Where the fade is centred: the middle of the scene, between the laptop and the arc. */
+const FOCUS: Vec2 = [laptopScreen[0], laptopScreen[1] + 84];
+const REACH = 30;
+const [gx, gy] = groundAt(...FOCUS).map(Math.round) as [number, number];
+const gridLines = Array.from({ length: REACH * 2 + 1 }, (_, n) => {
+  const i = n - REACH;
+  return [
     toPoints([
-      [i, 0, 0],
-      [i, GRID_H, 0],
-    ])
-  ),
-  ...Array.from({ length: GRID_H + 1 }, (_, i) =>
+      [gx + i, gy - REACH, 0],
+      [gx + i, gy + REACH, 0],
+    ]),
     toPoints([
-      [0, i, 0],
-      [GRID_W, i, 0],
-    ])
-  ),
-];
+      [gx - REACH, gy + i, 0],
+      [gx + REACH, gy + i, 0],
+    ]),
+  ];
+}).flat();
 
 export function Ground() {
-  const [cx, cy] = project([13, 7, 0]);
+  const [cx, cy] = FOCUS;
   return (
     <g>
       <defs>
@@ -89,17 +104,17 @@ export function Ground() {
           cx={cx}
           cy={cy}
           r="1"
-          gradientTransform={`translate(${cx} ${cy}) scale(380 200) translate(${-cx} ${-cy})`}
+          gradientTransform={`translate(${cx} ${cy}) scale(335 172) translate(${-cx} ${-cy})`}
         >
-          <stop offset="0.3" stopColor="white" />
+          <stop offset="0.35" stopColor="white" />
           <stop offset="1" stopColor="white" stopOpacity="0" />
         </radialGradient>
         <mask id="orchestra-mask">
           <rect
-            x={cx - 420}
-            y={cy - 240}
-            width="840"
-            height="480"
+            x={VIEW.x}
+            y={VIEW.y}
+            width={VIEW.w}
+            height={VIEW.h}
             fill="url(#orchestra-fade)"
           />
         </mask>
@@ -111,9 +126,9 @@ export function Ground() {
       </defs>
       <ellipse
         cx={cx}
-        cy={cy}
-        rx="340"
-        ry="160"
+        cy={cy + 10}
+        rx="300"
+        ry="140"
         fill="url(#orchestra-pool)"
         className="orchestra-pool"
       />
@@ -187,19 +202,22 @@ const STATUS_KIND: Record<Status, Kind> = {
  * A player: one of the beam page's machines, sitting still and working,
  * with a comic twitch now and then and a proper shake whenever an
  * instruction lands on it. Its lights take the colour of the report it
- * is about to send; a badge above says when it has one.
+ * is about to send; a badge above says when it has one, and a bubble
+ * above that shows the last thing said to it or by it.
  */
 export function Player({
   spec,
   status,
   index,
   hits,
+  bubble,
 }: {
   spec: PlayerSpec;
   status: Status;
   index: number;
   /** How many instructions have landed on it; each one shakes it. */
   hits: number;
+  bubble?: Bubble;
 }) {
   const Shape = SHAPES[spec.machine];
   const [gx, gy] = groundOf(spec);
@@ -219,6 +237,23 @@ export function Player({
       >
         <Shape cx={gx} cy={gy} />
       </g>
+      {bubble && (
+        <foreignObject
+          key={bubble.key}
+          x={Math.min(Math.max(tx - 84, VIEW.x + 6), VIEW.x + VIEW.w - 174)}
+          y={ty - 96}
+          width="168"
+          height="64"
+          className="orchestra-bubble"
+          style={{ color: bubble.color }}
+        >
+          <div className="orchestra-bubble-box">
+            <p className="orchestra-bubble-card">
+              <b>{bubble.head}</b> {bubble.text}
+            </p>
+          </div>
+        </foreignObject>
+      )}
       {status !== 'working' && (
         <g
           className="orchestra-badge"

@@ -15,9 +15,18 @@ import {
 /**
  * Runs stage-script.ts: one event at a time, each scheduled from the
  * previous one's timestamp, looping. Each event updates a player's
- * status, launches a note between stand and podium, and appends a log
- * line. Pausing simply stops scheduling the next event.
+ * status, launches a note between machine and laptop, and puts a
+ * bubble over the machine it concerns: a report as soon as it is sent,
+ * an answer or assignment once its note lands. Pausing simply stops
+ * scheduling the next event.
  */
+export interface Bubble {
+  key: number;
+  color: string;
+  head: string;
+  text: string;
+}
+
 export interface Flight {
   key: number;
   from: Vec2;
@@ -26,13 +35,8 @@ export interface Flight {
   glyph: string;
   /** The player it lands on, if it is an instruction rather than a report. */
   lands?: string;
-}
-
-export interface LogLine {
-  key: number;
-  color: string;
-  head: string;
-  text: string;
+  /** Shown over that player once the note has landed. */
+  bubble?: Bubble;
 }
 
 export interface Show {
@@ -40,7 +44,8 @@ export interface Show {
   serial: number;
   status: Record<string, Status>;
   flights: Flight[];
-  log: LogLine[];
+  /** The latest line said to or by each player. */
+  bubbles: Record<string, Bubble>;
   /** Instructions landed per player; a change shakes the machine. */
   hits: Record<string, number>;
 }
@@ -53,61 +58,65 @@ function playerOf(id: string): PlayerSpec {
   return PLAYERS.find((p) => p.id === id) as PlayerSpec;
 }
 
+function landed(show: Show, key: number): Show {
+  const flight = show.flights.find((f) => f.key === key);
+  const flights = show.flights.filter((f) => f.key !== key);
+  if (!flight?.lands) return { ...show, flights };
+  const id = flight.lands;
+  return {
+    ...show,
+    flights,
+    hits: { ...show.hits, [id]: (show.hits[id] ?? 0) + 1 },
+    bubbles: flight.bubble
+      ? { ...show.bubbles, [id]: flight.bubble }
+      : show.bubbles,
+  };
+}
+
+const STATUS_OF: Record<string, Status> = {
+  QUESTION: 'question',
+  BLOCKED: 'blocked',
+  DONE: 'done',
+  PROGRESS: 'working',
+};
+
 function reduce(show: Show, action: Action): Show {
-  if (action.type === 'landed') {
-    const landed = show.flights.find((f) => f.key === action.key);
-    const hits = landed?.lands
-      ? { ...show.hits, [landed.lands]: (show.hits[landed.lands] ?? 0) + 1 }
-      : show.hits;
-    return {
-      ...show,
-      hits,
-      flights: show.flights.filter((f) => f.key !== action.key),
-    };
-  }
+  if (action.type === 'landed') return landed(show, action.key);
   const { event } = action;
   const spec = playerOf(event.player);
   const key = show.serial;
   const next = (show.next + 1) % SCRIPT.length;
   if ('report' in event) {
     const color = KIND_COLOR[event.report];
-    const status: Status =
-      event.report === 'QUESTION'
-        ? 'question'
-        : event.report === 'BLOCKED'
-        ? 'blocked'
-        : event.report === 'DONE'
-        ? 'done'
-        : 'working';
     return {
       next,
       serial: key + 1,
       hits: show.hits,
-      status: { ...show.status, [spec.id]: status },
+      status: { ...show.status, [spec.id]: STATUS_OF[event.report] as Status },
       flights: [
         ...show.flights,
         { key, from: machineTop(spec), to: podiumTop, color, glyph: '♪' },
       ],
-      log: [
-        ...show.log,
-        {
-          key,
-          color,
-          head: `[player ${spec.session}] ${event.report}:`,
-          text: event.text,
-        },
-      ].slice(-4),
+      bubbles: {
+        ...show.bubbles,
+        [spec.id]: { key, color, head: event.report, text: event.text },
+      },
     };
   }
-  const text = 'reply' in event ? event.reply : event.assign;
-  const head =
+  const bubble: Bubble =
     'reply' in event
-      ? `orchestrator → ${spec.session}:`
-      : `orchestrator → ${spec.session}, new task:`;
+      ? {
+          key,
+          color: BEAM_COLORS.sand,
+          head: 'orchestrator',
+          text: event.reply,
+        }
+      : { key, color: BEAM_COLORS.sand, head: 'new task', text: event.assign };
   return {
     next,
     serial: key + 1,
     hits: show.hits,
+    bubbles: show.bubbles,
     status: { ...show.status, [spec.id]: 'working' },
     flights: [
       ...show.flights,
@@ -118,12 +127,9 @@ function reduce(show: Show, action: Action): Show {
         color: BEAM_COLORS.sand,
         glyph: '♫',
         lands: spec.id,
+        bubble,
       },
     ],
-    log: [
-      ...show.log,
-      { key, color: 'var(--color-fd-foreground)', head, text },
-    ].slice(-4),
   };
 }
 
@@ -132,7 +138,7 @@ const opening: Show = {
   serial: 1,
   status: Object.fromEntries(PLAYERS.map((p) => [p.id, 'working'])),
   flights: [],
-  log: [],
+  bubbles: {},
   hits: {},
 };
 

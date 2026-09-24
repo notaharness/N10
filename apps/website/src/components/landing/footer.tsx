@@ -16,6 +16,13 @@ export function Footer() {
         <div className="flex items-center gap-4">
           <Logo className="h-5 w-auto" />
           <span>Run coding agents across Git worktrees</span>
+          <span aria-hidden>·</span>
+          <Link
+            href="https://github.com/notaharness"
+            className="hover:text-fd-foreground transition-colors"
+          >
+            a notaharness project
+          </Link>
         </div>
         <nav className="flex flex-wrap gap-x-6 gap-y-2">
           {links.map(({ text, href }) => (

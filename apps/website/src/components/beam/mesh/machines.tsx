@@ -80,7 +80,7 @@ export function Rack({ cx, cy }: { cx: number; cy: number }) {
   );
 }
 
-/** A workstation tower, its side panel lit from inside. */
+/** A workstation tower: a grille on the wide face, ports and a light on the other. */
 export function Tower({ cx, cy }: { cx: number; cy: number }) {
   const body: Box = {
     x: cx - 0.75,
@@ -94,14 +94,13 @@ export function Tower({ cx, cy }: { cx: number; cy: number }) {
     <g>
       <Shadow box={body} />
       <Faces box={body} />
-      <polygon
-        points={onRight(body, 0.1, 0.12, 0.9, 0.88)}
-        className="n10-iso-glass"
-      />
-      <polygon
-        points={onRight(body, 0.2, 0.3, 0.8, 0.42)}
-        className="n10-iso-glow"
-      />
+      {[0.14, 0.22, 0.3, 0.38, 0.46].map((v) => (
+        <polygon
+          key={v}
+          points={onRight(body, 0.18, v, 0.82, v + 0.035)}
+          className="n10-iso-inset"
+        />
+      ))}
       <polygon
         points={onLeft(body, 0.2, 0.62, 0.8, 0.68)}
         className="n10-iso-inset"

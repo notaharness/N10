@@ -34,6 +34,16 @@ export function Hero() {
             GitHub
           </Link>
         </div>
+        <p className="text-fd-muted-foreground mt-6 text-sm">
+          n10, a{' '}
+          <Link
+            href="https://github.com/notaharness"
+            className="hover:text-fd-foreground underline decoration-fd-border underline-offset-4 transition-colors"
+          >
+            notaharness
+          </Link>{' '}
+          project
+        </p>
         <div className="relative mt-10 w-full sm:mt-12">
           <div
             aria-hidden

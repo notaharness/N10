@@ -1,4 +1,5 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import { GitHubIcon } from '@/components/github-icon';
 import { Logo } from '@/components/logo';
 
 /** Nav config shared by the landing page and the docs layout. */
@@ -23,6 +24,9 @@ export function baseOptions(): BaseLayoutProps {
         url: '/orchestra',
       },
       {
+        type: 'icon',
+        label: 'GitHub',
+        icon: <GitHubIcon className="size-[1.15em]" />,
         text: 'GitHub',
         url: 'https://github.com/notaharness/n10',
         external: true,
