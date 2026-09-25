@@ -1,8 +1,8 @@
 name: Release
 
-# A vX.Y.Z tag releases X.Y.Z, which must be apps/cli/package.json's
-# version: it packs and tests the package (package.yml), publishes that
-# tarball to npm through trusted publishing, and creates the GitHub release.
+# A vX.Y.Z tag releases X.Y.Z: it packs and tests the package (package.yml),
+# publishes that tarball to npm through trusted publishing, and creates the
+# GitHub release.
 # Run by hand, it rehearses the release of the selected ref's version:
 # everything but the GitHub release, and npm publish with --dry-run.
 on:
@@ -14,25 +14,20 @@ permissions: {}
 
 concurrency:
   group: release
-  cancel-in-progress: false
 
 jobs:
   version:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
-      - id: version
-        run: |
+      - run: |
           version=$(node -p 'require("./apps/cli/package.json").version')
           if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match apps/cli/package.json's $version"
             exit 1
           fi
-          echo "prerelease=$([[ $version == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   package:
     needs: version
@@ -41,17 +36,18 @@ jobs:
     uses: ./.github/workflows/package.yml
 
   # Its own job, so a GitHub release that fails after publishing can be
-  # re-run alone. Trusted publishing authenticates `npm publish` and nothing
-  # else, so `latest` is the one dist-tag a release sets.
+  # re-run alone. Why only `latest`: publish-beta's packaging notes.
   publish:
     needs: package
     runs-on: ubuntu-latest
+    # Its deployment rule admits only v* tags; npm's trusted publisher names it.
+    environment: npm
     permissions:
       id-token: write # trusted publishing and provenance
     steps:
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # npm 11.5.1 or later publishes through trusted publishing
+          node-version: 24 # its npm (11.5.1 or later) supports trusted publishing
           registry-url: https://registry.npmjs.org
       - uses: actions/download-artifact@v4
         with:
@@ -65,7 +61,7 @@ jobs:
   # (#122) join `needs` and upload their .deb and AppImage under that prefix.
   github-release:
     if: github.event_name == 'push'
-    needs: [version, publish]
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -81,4 +77,4 @@ jobs:
             --verify-tag --generate-notes --prerelease="$PRERELEASE" "${assets[@]}"
         env:
           GH_TOKEN: ${{ github.token }}
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          PRERELEASE: ${{ contains(github.ref_name, '-') }}

@@ -12,6 +12,7 @@ apps/cli/                        — The published `n10` package: the command, t
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
   scripts/prepare-publish.mjs    — Assembles dist/ into the package: the CLI bundle, the desktop build under desktop/, the manifest
+  scripts/test-installed.sh      — Installs a packed tarball globally and runs it (CI's Package workflow)
 apps/desktop/                    — Electron GUI shell over @n10/app-core, shipped inside `@notaharness/n10`
   src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
   src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), N10_QA_STEPS hook

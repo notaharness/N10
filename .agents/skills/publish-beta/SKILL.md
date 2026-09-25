@@ -7,11 +7,9 @@ disable-model-invocation: true
 # Publish a beta
 
 Publish only when the user asks. n10 is one package, `@notaharness/n10`
-(`apps/cli`), which carries the desktop app too. CI publishes it: pushing a
-`vX.Y.Z` tag runs `.github/workflows/release.yml`, which packs the package,
-installs and runs the tarball in a clean container, publishes that tarball to
-npm through trusted publishing with provenance, and creates the GitHub
-release with generated notes. No npm login or token is involved.
+(`apps/cli`), which carries the desktop app too. Pushing a `vX.Y.Z` tag runs
+`.github/workflows/release.yml`, which publishes through npm trusted
+publishing; no npm login or token is involved.
 
 1. Check the worktree and the current version in `apps/cli/package.json`
    against `npm view @notaharness/n10 versions --json`. If that version is
@@ -20,7 +18,8 @@ release with generated notes. No npm login or token is involved.
    lockfile entry, commit the bump on a branch and merge it to `master`
    through a pull request. The private workspace packages keep `0.0.1`.
 3. Optionally rehearse from `master`: `gh workflow run release.yml`. It runs
-   everything but the GitHub release, with `npm publish --dry-run`.
+   everything but the GitHub release, with `npm publish --dry-run`, which
+   still fails when the version is already published.
 4. Tag the merged commit with the version and push the tag:
 
    ```sh

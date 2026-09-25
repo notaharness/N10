@@ -194,6 +194,8 @@ GH_TOKEN=<integration-pat> gh api \
 
 - **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Runs `npx playwright install --with-deps chromium` before `nx affected` (needed for `cli-e2e`). Uploads `apps/cli-e2e/test-output/` as an artifact on failure. Integration tests skipped (no `GH_TOKEN`).
 - **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e:integration cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state.
+- **Package** (`.github/workflows/package.yml`) — packs `@notaharness/n10` and runs `apps/cli/scripts/test-installed.sh` on the tarball in a clean container. Triggers on PRs touching packaging; the Release workflow calls it before publishing.
+- **Release** (`.github/workflows/release.yml`) — publishes on a `v*` tag; see the `publish-beta` skill.
 
 ## Orchestra interoperability
 

@@ -39,24 +39,19 @@ PATH and matches the running app's version.
 ## Install test
 
 `apps/cli/scripts/test-installed.sh` installs a packed tarball into a scratch
-global prefix and runs `n10 --version`, `n10 util add-comment` (expecting its
-usage error), `n10 --tui` until it renders and quits on `q`, and `n10` under
-Xvfb until the desktop has opened the current repository and loaded its
-window. `.github/workflows/package.yml` runs it in a clean `node` container on
-pull requests that touch packaging, and as the release gate.
-
-The container pins Node 24.15: Electron 39's postinstall extracts nothing
-under Node 24.16 and later, so `n10` cannot start the desktop there. Unpin it
-when Electron is upgraded to a release whose installer works on current Node.
+global prefix and runs the CLI, the TUI and the desktop under Xvfb.
+`.github/workflows/package.yml` runs it in a clean `node` container (pinned
+Node version; see its comment) on pull requests that touch packaging, and as
+the release gate.
 
 ## Release workflow
 
 `.github/workflows/release.yml` runs on a `v*` tag, which must equal
 `apps/cli/package.json`'s version. The `publish` job publishes the tarball the
-Package workflow tested, through npm trusted publishing (OIDC, `id-token:
-write`, npm 11.5.1 or later) with provenance. The trusted publisher on
-npmjs.com names this repository and `release.yml` with no environment;
-renaming the workflow file breaks publishing until it is updated there.
+Package workflow tested, through npm trusted publishing (OIDC) with
+provenance. The trusted publisher on npmjs.com names this repository and
+`release.yml` with no environment; renaming the workflow file breaks
+publishing until it is updated there.
 
 Trusted publishing authenticates `npm publish` only, not `npm dist-tag`, so a
 release sets one tag: `latest`. Every release, prerelease or not, is what a

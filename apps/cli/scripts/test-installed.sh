@@ -6,7 +6,7 @@
 #
 #   apps/cli/scripts/test-installed.sh path/to/notaharness-n10-X.Y.Z.tgz
 #
-# Needs git, tmux, Xvfb and xwininfo, and node-pty's native build tools.
+# Needs git, tmux, Xvfb, xwininfo (x11-utils) and node-pty's native build tools.
 # Everything runs under a scratch HOME with its own tmux socket directory.
 set -euo pipefail
 
@@ -14,8 +14,13 @@ tarball=$(realpath "$1")
 scratch=$(mktemp -d)
 pids=()
 cleanup() {
+  tmux kill-session -t tui 2>/dev/null || true
   for pid in "${pids[@]}"; do kill -- "-$pid" 2>/dev/null || true; done
-  rm -rf "$scratch"
+  # Electron writes its profile while it shuts down.
+  for pid in "${pids[@]}"; do
+    for _ in $(seq 10); do kill -0 -- "-$pid" 2>/dev/null || break; sleep 1; done
+  done
+  rm -rf "$scratch" || true
 }
 trap cleanup EXIT
 
@@ -42,7 +47,7 @@ echo "== npm install -g $tarball"
 npm install -g --prefix "$scratch/prefix" "$tarball"
 export PATH="$scratch/prefix/bin:$PATH"
 
-repo="$scratch/repo"
+repo="$scratch/n10-smoke-repo"
 git init -q -b main "$repo"
 git -C "$repo" -c user.name=n10 -c user.email=n10@example.invalid \
   commit -q --allow-empty -m init
@@ -75,16 +80,21 @@ echo "== n10 (desktop under Xvfb)"
 export DISPLAY=:99
 setsid Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp &
 pids+=($!)
-wait_for 'xwininfo -root >/dev/null 2>&1' 10 || fail "Xvfb did not start"
-setsid n10 >"$scratch/desktop.log" 2>&1 &
+wait_for "kill -0 $! 2>/dev/null && xwininfo -root >/dev/null 2>&1" 10 ||
+  fail "Xvfb did not start on $DISPLAY"
+# N10_QA_STEPS runs the step in the loaded renderer, then quits the app: the
+# step waits for the opened repository's name to appear on screen.
+wait_js='new Promise((done) => { const end = Date.now() + 60000;
+  (function poll() {
+    if (document.body.innerText.includes("n10-smoke-repo")) done(true);
+    else if (Date.now() > end) done(document.body.innerText.slice(0, 500));
+    else setTimeout(poll, 250);
+  })(); })'
+N10_QA_STEPS=$(node -p 'JSON.stringify([{ js: process.argv[1], waitMs: 0 }])' "$wait_js") \
+  setsid n10 >"$scratch/desktop.log" 2>&1 &
 pids+=($!)
-# The desktop records the repository it opened at startup, and the window
-# takes the renderer's <title> once the page has loaded.
-recents="$HOME/.n10/desktop-recents.json"
-opened() { grep -qF "\"$(realpath "$repo")\"" "$recents" 2>/dev/null; }
-wait_for opened 60 ||
-  fail "the desktop did not open $repo: $(cat "$scratch/desktop.log")"
-wait_for "xwininfo -root -tree | grep -q '\"n10\"'" 60 ||
-  fail "the desktop window did not load: $(cat "$scratch/desktop.log")"
+wait_for "! kill -0 $! 2>/dev/null" 120 || fail "the desktop did not quit"
+grep -q 'qa step 1 js → true' "$scratch/desktop.log" ||
+  fail "the desktop did not show $repo: $(cat "$scratch/desktop.log")"
 
 echo "OK: the installed n10 $actual runs"

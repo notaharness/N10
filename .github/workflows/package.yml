@@ -1,15 +1,15 @@
 name: Package
 
 # Packs @notaharness/n10, then installs the tarball in a clean container and
-# runs it (apps/cli/scripts/test-installed.sh). Runs on pull requests that
-# touch packaging, and as the release workflow's gate, which publishes the
-# tarball uploaded here as the `package` artifact.
+# runs it (apps/cli/scripts/test-installed.sh). release.yml calls this as its
+# gate and publishes the `package` artifact uploaded here.
 on:
   pull_request:
     branches: [master]
     paths:
       - 'apps/cli/**'
       - 'apps/desktop/**'
+      - 'libs/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/package.yml'
@@ -33,7 +33,7 @@ jobs:
 
       - run: npx nx run cli:prepare-publish
 
-      - run: npm pack apps/cli/dist --pack-destination package
+      - run: mkdir package && npm pack apps/cli/dist --pack-destination package
 
       - uses: actions/upload-artifact@v4
         with:
