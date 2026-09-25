@@ -42,9 +42,14 @@ function requireVersion(name, version) {
   return version;
 }
 
-// npm only picks up a README that sits in the pack root, and the pack
-// root is dist/ — without it the npm page is blank.
+// npm only picks up a README and LICENSE that sit in the pack root, and
+// the pack root is dist/ — without them the npm page is blank and the
+// tarball carries no licence text for the MIT it declares.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
+copyFileSync(
+  resolve(appDir, '..', '..', 'LICENSE'),
+  resolve(distDir, 'LICENSE')
+);
 
 // @cwasm/webp is bundled but loads its wasm from its own directory at
 // runtime — it has to sit next to the chunks and ship in the tarball.
@@ -84,7 +89,7 @@ const out = {
   bin: cli.bin,
   // Explicit list: without it npm pack honors the repo's .gitignore,
   // which excludes everything we ship.
-  files: ['*.js', 'webp.wasm', 'desktop/'],
+  files: ['*.js', 'webp.wasm', 'desktop/', 'LICENSE'],
   publishConfig: cli.publishConfig,
   engines: cli.engines,
   repository: cli.repository,

@@ -3,8 +3,9 @@
 `@notaharness/n10` is assembled in `apps/cli/dist` by the `cli:prepare-publish`
 target, which depends on `cli:build` and `desktop:build`. Publish preparation
 must leave no private `@n10/*` workspace dependencies in the manifest. It
-copies `apps/cli/README.md` into `dist`, because npm reads it from the pack
-root: without it the npm page is blank.
+copies `apps/cli/README.md` and the root `LICENSE` into `dist`, because npm
+reads them from the pack root: without them the npm page is blank and the
+tarball has no licence text.
 
 ## Layout
 

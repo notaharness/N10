@@ -1,0 +1,28 @@
+name: Bug
+description: Report something that doesn't work as expected.
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: Include the steps that reproduce it.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected outcome
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Acceptance criteria
+      description: The checks that tell us it's fixed, if you know them.
+      placeholder: |
+        - [ ] ...
+  - type: input
+    attributes:
+      label: Environment
+      description: n10 version, desktop or TUI, OS, agent and version control provider.
+    validations:
+      required: true

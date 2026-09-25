@@ -114,3 +114,11 @@ Providers share an interface in `libs/vcs/`. Contributions adding support for ot
 ### Pair with Orchestra
 
 Pair n10 with my [Orchestra plugin](https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in n10.
+
+## Contributing
+
+Pick up work from the [roadmap](https://github.com/orgs/notaharness/projects/1) or an issue labelled [`good first issue`](https://github.com/notaharness/n10/labels/good%20first%20issue). [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, checks, working with an AI agent and opening a pull request. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)
