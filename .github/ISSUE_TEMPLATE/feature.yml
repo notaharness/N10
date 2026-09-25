@@ -1,0 +1,22 @@
+name: Feature
+description: Propose a change or new capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: Outcome
+      description: What should be possible once this is done, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Acceptance criteria
+      description: The checks that tell us it's done.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Notes
+      description: Context, constraints or approaches you have in mind.

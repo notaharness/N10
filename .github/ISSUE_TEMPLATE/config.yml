@@ -1,0 +1,7 @@
+contact_links:
+  - name: Roadmap
+    url: https://github.com/orgs/notaharness/projects/1
+    about: See planned work by epic, and check whether your idea is already there.
+  - name: Security vulnerability
+    url: https://github.com/notaharness/n10/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.
