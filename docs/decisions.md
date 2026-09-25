@@ -195,6 +195,23 @@ fields cleared: the PR outlives its checkout. Status indicators combine CI and
 review status; CI can worsen the result, but passing CI does not imply approval.
 The status matrix and tab invariants are covered by model tests.
 
+## Desktop window health
+
+A window that survives suspend blank is not an event: Electron reports no
+death, the host is fine, and the renderer is usually alive. So the desktop
+probes the window after a resume or a GPU process death, the next time it is
+focused and visible (`apps/desktop/src/main/window-watchdog.ts`): a script that
+never answers is a hung renderer, crashed so the crash handler reloads it; a
+page capture that never completes is a window producing no frames, repainted,
+then reloaded, then replaced by a new window and so a new compositor surface.
+Every step goes to `<userData>/logs/desktop.log` (`main/log.ts`) beside
+renderer console errors, failed loads, process deaths, hangs and power events,
+because the terminal a dev run printed to is gone by the time anyone asks. A
+failed main-frame load is retried with backoff so a reload while the Vite dev
+server is away does not strand the window. The View menu's Reload Window and
+Toggle Developer Tools are answered by the main process and so work on a window
+with nothing drawn in it.
+
 ## Plans and babysitting
 
 Plan items are value snapshots taken when queued. Later comment edits or
