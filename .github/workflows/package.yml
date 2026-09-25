@@ -1,0 +1,69 @@
+name: Package
+
+# Packs @notaharness/n10, then installs the tarball in a clean container and
+# runs it (apps/cli/scripts/test-installed.sh). Runs on pull requests that
+# touch packaging, and as the release workflow's gate, which publishes the
+# tarball uploaded here as the `package` artifact.
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'apps/cli/**'
+      - 'apps/desktop/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/package.yml'
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx nx run cli:prepare-publish
+
+      - run: npm pack apps/cli/dist --pack-destination package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: package/*.tgz
+          if-no-files-found: error
+
+  install:
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Electron 39's postinstall extracts nothing under Node 24.16 and later
+    # (its extract-zip stalls), which leaves `n10` unable to start the
+    # desktop. Stay on 24.15 until Electron is upgraded past that installer.
+    container: node:24.15-bookworm
+    steps:
+      # The test script only: nothing from the workspace is installed.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/cli/scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: package
+
+      # node-pty compiles with the image's build tools; the rest is what
+      # Electron needs to open a window on Xvfb.
+      - run: >
+          apt-get update && apt-get install -y --no-install-recommends
+          tmux xvfb x11-utils libgtk-3-0 libnss3 libasound2 libgbm1
+
+      - run: apps/cli/scripts/test-installed.sh package/*.tgz
