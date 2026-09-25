@@ -1,6 +1,6 @@
 {
   "name": "@notaharness/n10",
-  "version": "1.0.0-beta.7",
+  "version": "1.0.0-beta.1",
   "description": "Run AI coding agents across git worktrees and review their pull requests, from a desktop app or terminal UI",
   "productName": "n10",
   "keywords": [

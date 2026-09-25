@@ -108,4 +108,6 @@ Every rule below has its reasoning in `docs/decisions.md`.
 - Ships inside `@notaharness/n10`: `apps/cli`'s `prepare-publish` copies
   `dist/{main,preload,renderer}` under `desktop/`, and plain `n10` runs
   Electron on the package. Nothing here is published on its own. See the
-  `publish-beta` skill.
+  `publish-beta` skill. The private `productName` `n10-dev` keeps a dev
+  build's userData, and its single-instance lock, apart from the installed
+  app's `n10`.

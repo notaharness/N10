@@ -1,7 +1,8 @@
 {
-  "name": "n10-desktop",
+  "name": "@n10/desktop",
   "version": "0.0.1",
   "description": "n10 Desktop, the Electron shell; ships inside @notaharness/n10",
+  "productName": "n10-dev",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",

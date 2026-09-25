@@ -9,10 +9,13 @@ disable-model-invocation: true
 Publish only when the user asks. n10 is one package, `@notaharness/n10`
 (`apps/cli`), which carries the desktop app too.
 
-1. Check the worktree and the current version. Choose the next `-beta.N`.
+1. Check the worktree and the current version in `apps/cli/package.json`
+   against `npm view @notaharness/n10 versions --json`. If that version is
+   unpublished, release it as is; otherwise choose the next `-beta.N`.
 2. Verify `npm whoami` identifies an account with access to the scope.
-3. Update the version in `apps/cli/package.json` and its lockfile entry.
-   Review the diff, run the relevant checks, and commit the version bump.
+3. When the version changes, update it in `apps/cli/package.json` and its
+   lockfile entry. Review the diff, run the relevant checks, and commit the
+   version bump. The private workspace packages keep `0.0.1`.
 4. Run the Nx target, which builds the CLI and the desktop, prepares the
    publishable `dist`, publishes with `--tag beta`, then moves `latest` via
    `apps/cli/scripts/dist-tag-latest.mjs`:
