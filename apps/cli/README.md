@@ -9,7 +9,7 @@ n10 gives every branch its own worktree and its own agent session. A pull reques
 ## Install
 
 ```sh
-npm install -g @notaharness/n10@beta
+npm install -g @notaharness/n10
 ```
 
 Then, from inside any git repository:
@@ -19,7 +19,7 @@ n10                  # the desktop app
 n10 --tui            # the terminal UI, or: n10 --tui /path/to/repo
 ```
 
-Launching the desktop app from a repository opens it directly; launching from anywhere else brings up the repository picker. The first run walks you through connecting your version control provider.
+Launching the desktop app from a repository opens it; from anywhere else it reopens your last repository, or the repository picker on first run. The first run walks you through connecting your version control provider.
 
 ## Requirements
 

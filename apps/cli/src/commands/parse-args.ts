@@ -8,7 +8,7 @@ export type Command =
   | { kind: 'unknown'; arg: string };
 
 export const USAGE = `Usage:
-  n10                  open n10 Desktop on the current directory
+  n10                  open n10 Desktop
   n10 --tui [dir]      run the terminal UI
   n10 util add-comment record a review agent's draft comment
   n10 --help | --version`;

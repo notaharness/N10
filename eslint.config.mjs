@@ -314,14 +314,9 @@ export default tseslint.config(
     },
   },
   {
-    // The entry points own shutdown, and the dispatcher's commands are
-    // plain CLI with no Ink tree to unmount. Exiting the process is
-    // their job; the rule is about components reaching for it.
-    files: [
-      'apps/cli/src/main.ts',
-      'apps/cli/src/tui.tsx',
-      'apps/cli/src/commands/**/*.ts',
-    ],
+    // The entry points own shutdown. Exiting the process is their job;
+    // the rule is about components reaching for it.
+    files: ['apps/cli/src/main.ts', 'apps/cli/src/tui.tsx'],
     rules: {
       'ink/no-bare-process-exit': 'off',
     },

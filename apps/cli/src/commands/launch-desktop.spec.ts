@@ -1,4 +1,4 @@
-import { sandboxArgs } from './launch-desktop.js';
+import { exitStatus, sandboxArgs } from './launch-desktop.js';
 
 const ELECTRON = '/pkg/node_modules/electron/dist/electron';
 
@@ -39,5 +39,17 @@ describe('sandboxArgs', () => {
     };
     expect(sandboxArgs(ELECTRON, 'darwin', unused)).toEqual([]);
     expect(sandboxArgs(ELECTRON, 'win32', unused)).toEqual([]);
+  });
+});
+
+describe('exitStatus', () => {
+  it("passes Electron's exit code through", () => {
+    expect(exitStatus(0, null)).toBe(0);
+    expect(exitStatus(3, null)).toBe(3);
+  });
+
+  it('reports a signal death as 128 plus the signal, never success', () => {
+    expect(exitStatus(null, 'SIGTRAP')).toBe(133);
+    expect(exitStatus(null, 'SIGSEGV')).toBe(139);
   });
 });

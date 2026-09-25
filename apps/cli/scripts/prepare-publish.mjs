@@ -24,7 +24,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,11 +46,14 @@ function requireVersion(name, version) {
 // root is dist/ — without it the npm page is blank.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
 
-// @cwasm/webp is bundled but loads its wasm from disk at runtime — it
-// has to sit next to the chunks and ship in the tarball.
-execFileSync(process.execPath, [resolve(__dirname, 'copy-webp-wasm.mjs')], {
-  stdio: 'inherit',
-});
+// @cwasm/webp is bundled but loads its wasm from its own directory at
+// runtime — it has to sit next to the chunks and ship in the tarball.
+// Nx's esbuild asset copying can't reach into node_modules.
+const webp = createRequire(import.meta.url).resolve('@cwasm/webp/package.json');
+copyFileSync(
+  resolve(dirname(webp), 'webp.wasm'),
+  resolve(distDir, 'webp.wasm')
+);
 
 // The desktop app keeps its build layout: main/ finds preload/ and
 // renderer/ beside it.
@@ -74,15 +77,8 @@ const out = {
   license: cli.license,
   type: 'module',
   // Electron names the app, and its userData directory, after this.
-  productName: 'n10',
-  keywords: [
-    'git-worktree',
-    'code-review',
-    'electron',
-    'tui',
-    'claude-code',
-    'ai-agent',
-  ],
+  productName: cli.productName,
+  keywords: cli.keywords,
   // Electron's entry: `n10` runs Electron on this directory.
   main: 'desktop/main/main.js',
   bin: cli.bin,

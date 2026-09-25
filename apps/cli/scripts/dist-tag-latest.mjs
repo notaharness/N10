@@ -16,9 +16,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { name, version } = JSON.parse(
-  readFileSync(resolve(root, 'apps/cli/package.json'), 'utf8')
+  readFileSync(resolve(appDir, 'package.json'), 'utf8')
 );
 
 execFileSync('npm', ['dist-tag', 'add', `${name}@${version}`, 'latest'], {

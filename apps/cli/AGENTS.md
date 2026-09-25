@@ -25,8 +25,8 @@ holds the keybind-driven state transitions; screens under `src/screens/main`
   (`hooks/useRawStdinForward.ts`); the Ctrl+Space (`\x00`) escape to the
   sidebar is hardcoded there, outside `keybindings/registry.ts`.
 - Ink lint rules (`tools/eslint-plugin-ink.mjs`): `no-raw-text`,
-  `no-layout-inside-text`, `no-bare-process-exit` (off for `main.ts`,
-  `tui.tsx` and `commands/**`, which own exiting). Ink throws at runtime for these, so a
+  `no-layout-inside-text`, `no-bare-process-exit` (off for the entry points
+  `main.ts` and `tui.tsx`, which own exiting). Ink throws at runtime for these, so a
   violation type-checks and dies when the branch first renders.
 - The serve target sets `TSX_TSCONFIG_PATH` so tsx uses `jsx: react-jsx`;
   without it every file needs `import React`.
@@ -43,18 +43,18 @@ holds the keybind-driven state transitions; screens under `src/screens/main`
   project must reference its spec tsconfig as well as the app one.
 - `n10 util add-comment` (`@n10/review-comments` `util-command.ts`) is how a
   review agent records drafts; desktop sessions run it through the desktop's
-  own shim (decisions.md D16).
-- Packaging: `prepare-publish` assembles `dist/` from this build and the
-  desktop build; see the `publish-beta` skill. Draft posting is one comment
+  own shim (decisions.md D16). Draft posting is one comment
   per `postReviewComments` call so a mid-batch failure cannot reset live
   comments to draft.
+- Packaging: `prepare-publish` assembles `dist/` from this build and the
+  desktop build; see the `publish-beta` skill.
 - Comment images (`![alt](url)`) render inline through kitty graphics only
   when `TERM` is kitty/ghostty or `N10_IMAGES=kitty`; other terminals keep the
   markdown token; `N10_IMAGES=off` disables. `useCommentImages` owns the
   pipeline and `CommentImagesContext` carries per-url state and `layouts`;
   every row estimator (`estimateBodyRows`, `estimateCardRows`, `buildRowMap`,
   `planCommentFooter`) takes `imageLayouts` so scroll geometry matches painted
-  height. `@cwasm/webp` reads `webp.wasm` from disk; `scripts/copy-webp-wasm.mjs`
+  height. `@cwasm/webp` reads `webp.wasm` from disk; `scripts/prepare-publish.mjs`
   places it beside the bundle.
 - Mouse: `useScrollWheel` / `useMouseClicks` enable SGR tracking, parse every
   report in a stdin chunk, route by pointer column (sidebar cols ≤ 48), and

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, statSync, type Stats } from 'node:fs';
 import { createRequire } from 'node:module';
+import { constants } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /**
@@ -23,6 +24,16 @@ export function sandboxArgs(
   return ['--no-sandbox'];
 }
 
+/** A shell's exit status for how Electron ended: its code, or 128 plus
+ *  the signal that killed it (SIGTRAP when the sandbox aborts). */
+export function exitStatus(
+  code: number | null,
+  signal: NodeJS.Signals | null
+): number {
+  if (code !== null) return code;
+  return signal ? 128 + constants.signals[signal] : 1;
+}
+
 /**
  * Runs Electron on the app in `root`, the package directory, whose manifest
  * names `desktop/main/main.js` as the main script. Resolves with Electron's
@@ -35,8 +46,16 @@ export function launchDesktop(root: string, version: string): Promise<number> {
     );
     return Promise.resolve(1);
   }
-  // The electron package's main export is the path to its binary.
-  const electron = createRequire(import.meta.url)('electron') as string;
+  let electron: string;
+  try {
+    // The electron package's main export is the path to its binary.
+    electron = createRequire(import.meta.url)('electron') as string;
+  } catch {
+    console.error(
+      'n10: Electron is not installed. Reinstall @notaharness/n10, or run `n10 --tui`.'
+    );
+    return Promise.resolve(1);
+  }
   const args = sandboxArgs(electron);
   if (args.length > 0) {
     console.warn(
@@ -52,8 +71,11 @@ export function launchDesktop(root: string, version: string): Promise<number> {
       N10_DESKTOP_VERSION: version,
     },
   });
-  return new Promise((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', (code) => resolve(code ?? 0));
+  return new Promise((resolve) => {
+    child.on('error', (error) => {
+      console.error(`n10: could not start Electron: ${error.message}`);
+      resolve(1);
+    });
+    child.on('close', (code, signal) => resolve(exitStatus(code, signal)));
   });
 }

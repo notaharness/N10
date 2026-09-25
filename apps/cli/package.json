@@ -2,6 +2,15 @@
   "name": "@notaharness/n10",
   "version": "1.0.0-beta.7",
   "description": "Run AI coding agents across git worktrees and review their pull requests, from a desktop app or terminal UI",
+  "productName": "n10",
+  "keywords": [
+    "git-worktree",
+    "code-review",
+    "electron",
+    "tui",
+    "claude-code",
+    "ai-agent"
+  ],
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",
@@ -46,7 +55,6 @@
           "main": "apps/cli/src/main.ts",
           "tsConfig": "apps/cli/tsconfig.app.json",
           "assets": [
-            "apps/cli/src/assets",
             "apps/cli/package.json"
           ],
           "esbuildOptions": {
@@ -82,40 +90,6 @@
           }
         }
       },
-      "prune-lockfile": {
-        "dependsOn": [
-          "build"
-        ],
-        "cache": true,
-        "executor": "@nx/js:prune-lockfile",
-        "outputs": [
-          "{workspaceRoot}/apps/cli/dist/package.json",
-          "{workspaceRoot}/apps/cli/dist/package-lock.json"
-        ],
-        "options": {
-          "buildTarget": "build"
-        }
-      },
-      "copy-workspace-modules": {
-        "dependsOn": [
-          "build"
-        ],
-        "cache": true,
-        "outputs": [
-          "{workspaceRoot}/apps/cli/dist/workspace_modules"
-        ],
-        "executor": "@nx/js:copy-workspace-modules",
-        "options": {
-          "buildTarget": "build"
-        }
-      },
-      "prune": {
-        "dependsOn": [
-          "prune-lockfile",
-          "copy-workspace-modules"
-        ],
-        "executor": "nx:noop"
-      },
       "prepare-publish": {
         "dependsOn": [
           "build",
@@ -149,7 +123,7 @@
         "options": {
           "commands": [
             "npm publish --tag beta apps/cli/dist",
-            "node scripts/dist-tag-latest.mjs"
+            "node apps/cli/scripts/dist-tag-latest.mjs"
           ],
           "parallel": false
         }
