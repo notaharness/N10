@@ -3,18 +3,15 @@
 # the host's architecture only, so each package carries that
 # architecture's node-pty and beam binary.
 appId: is.n10.desktop
-productName: n10
 # Not `n10`, which is the npm package's command (`n10 --tui`, `n10 util`).
 executableName: n10-desktop
 copyright: Copyright © 2026 Hermann Björgvin
 directories:
   app: dist/installer-app
   output: dist/installers
-  buildResources: build
-# node-pty is N-API, built by the staging install, and loads in
-# Electron as it is; beam is a Go binary.
+# node-pty is N-API: the workspace's build loads in Electron as it is.
+# beam is a Go binary.
 npmRebuild: false
-asar: true
 # Run by other processes, which cannot read inside the archive: node-pty's
 # addon, and beam, which sessions reach through a symlink.
 asarUnpack:
@@ -45,5 +42,5 @@ deb:
     - libuuid1
     - libsecret-1-0
     - libasound2t64 | libasound2
-    - tmux
+    - tmux (>= 3.2)
     - git

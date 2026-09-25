@@ -71,6 +71,15 @@ const { version: APP_VERSION, isDev: IS_DEV } = appIdentity(
 );
 // A terminal on stdin: started from a shell, which gave it its PATH.
 const FROM_TERMINAL = isatty(0);
+const START_DIR = launchStartDir({
+  env: process.env,
+  argv: process.argv,
+  cwd: process.cwd(),
+  packaged: app.isPackaged,
+  fromTerminal: FROM_TERMINAL,
+});
+// Read once: sessions, and an app started from one, must not inherit it.
+delete process.env.N10_START_DIR;
 
 let prefs: DesktopPrefs = loadDesktopPrefs();
 
@@ -114,20 +123,16 @@ function showAbout(): Promise<void> {
 
 /** n10 cannot run without tmux; this says so and how to install it. */
 async function showTmuxMissing(): Promise<void> {
-  const status = getTmuxAvailability();
+  const { reason, installHint } = getTmuxAvailability() ?? {};
   await dialog.showMessageBox({
     type: 'error',
     title: 'n10 needs tmux',
     message: 'n10 needs tmux 3.2 or newer',
-    detail: [
-      `${status?.reason ?? 'tmux was not found'}.`,
-      '',
-      `Install it, then start n10 again:`,
-      `  ${
-        status?.installHint ??
-        'See https://github.com/tmux/tmux/wiki/Installing'
-      }`,
-    ].join('\n'),
+    detail: `${
+      reason ?? 'tmux was not found'
+    }.\n\nInstall it, then start n10 again:\n  ${
+      installHint ?? 'https://github.com/tmux/tmux/wiki/Installing'
+    }`,
     buttons: ['Quit'],
   });
 }
@@ -305,15 +310,7 @@ if (!app.requestSingleInstanceLock()) {
         return;
       }
       applySessionBackend();
-      const opened = openStartupRepo(
-        launchStartDir({
-          env: process.env,
-          argv: process.argv,
-          cwd: process.cwd(),
-          packaged: app.isPackaged,
-          fromTerminal: FROM_TERMINAL,
-        })
-      );
+      const opened = openStartupRepo(START_DIR);
       mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 

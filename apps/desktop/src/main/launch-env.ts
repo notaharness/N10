@@ -31,7 +31,7 @@ export function appIdentity(
   const version =
     env.N10_DESKTOP_VERSION ||
     (name === DEV_APP_NAME ? 'dev' : manifestVersion);
-  return { version, isDev: Boolean(env.N10_VITE_URL) || version === 'dev' };
+  return { version, isDev: version === 'dev' };
 }
 
 /**
@@ -82,17 +82,15 @@ export function mergePath(first: string, rest: string): string {
 /**
  * The PATH `shell` sets up as an interactive login shell, where users
  * put tmux, `claude`, `codex` and `gh`. Undefined when the shell fails
- * or takes longer than `timeoutMs`.
+ * or takes longer than five seconds.
  */
-export function loginShellPath(
-  shell: string,
-  timeoutMs = 5000
-): Promise<string | undefined> {
+export function loginShellPath(shell: string): Promise<string | undefined> {
   return new Promise((done) => {
     const child = execFile(
       shell,
       ['-ilc', `${PRINT_MARK}; env; ${PRINT_MARK}`],
-      { encoding: 'utf8', timeout: timeoutMs },
+      // SIGKILL: interactive shells ignore the default SIGTERM.
+      { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL' },
       (error, stdout) => done(error ? undefined : pathFromEnvOutput(stdout))
     );
     // An interactive shell reading its stdin would wait forever.
@@ -102,12 +100,20 @@ export function loginShellPath(
 
 /** Puts the login shell's PATH ahead of the app's own, which a desktop
  *  menu or the Dock starts as little more than `/usr/bin:/bin`. */
-export async function importLoginShellPath(
-  env: NodeJS.ProcessEnv = process.env
-): Promise<void> {
-  const shell = env.SHELL || userInfo().shell;
+export async function importLoginShellPath(): Promise<void> {
+  const shell = process.env.SHELL || passwdShell();
   if (!shell) return;
   const path = await loginShellPath(shell);
-  if (path) env.PATH = mergePath(path, env.PATH ?? '');
+  if (path) process.env.PATH = mergePath(path, process.env.PATH ?? '');
   else console.warn(`[desktop] could not read PATH from ${shell}`);
+}
+
+/** The user's shell from the password database, which a container or
+ *  directory service may not have an entry in. */
+function passwdShell(): string | null {
+  try {
+    return userInfo().shell;
+  } catch {
+    return null;
+  }
 }

@@ -27,13 +27,6 @@ describe('appIdentity', () => {
       appIdentity('n10-dev', '0.0.1', { N10_DESKTOP_VERSION: 'e2e' })
     ).toEqual({ version: 'e2e', isDev: false });
   });
-
-  it('is dev whenever the Vite dev server is in use', () => {
-    expect(
-      appIdentity('n10', '1.2.0', { N10_VITE_URL: 'http://localhost:5173' })
-        .isDev
-    ).toBe(true);
-  });
 });
 
 describe('launchStartDir', () => {
