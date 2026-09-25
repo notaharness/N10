@@ -13,7 +13,10 @@ export type Probe = 'healthy' | 'hung' | 'unpainted';
 
 export type RecoveryStep = 'none' | 'crash' | 'repaint' | 'reload' | 'give-up';
 
-const PROBE_TIMEOUT_MS = 5_000;
+/** A busy main thread (a large diff folding) answers late; a hung one never. */
+const SCRIPT_TIMEOUT_MS = 15_000;
+/** A window that paints at all captures in milliseconds. */
+const CAPTURE_TIMEOUT_MS = 5_000;
 /** The time given to the system after a resume before the first probe. */
 const RESUME_SETTLE_MS = 3_000;
 /** How long each recovery step gets to take effect before the next probe. */
@@ -65,11 +68,11 @@ async function probeWindow(win: BrowserWindow): Promise<Probe | null> {
   if (contents.isCrashed()) return 'hung';
   const answered = await withTimeout(
     contents.executeJavaScript('true', true),
-    PROBE_TIMEOUT_MS
+    SCRIPT_TIMEOUT_MS
   );
   if (answered === REJECTED) return null;
   if (answered === TIMED_OUT) return 'hung';
-  const painted = await withTimeout(contents.capturePage(), PROBE_TIMEOUT_MS);
+  const painted = await withTimeout(contents.capturePage(), CAPTURE_TIMEOUT_MS);
   if (painted === REJECTED) return null;
   return painted === TIMED_OUT ? 'unpainted' : 'healthy';
 }

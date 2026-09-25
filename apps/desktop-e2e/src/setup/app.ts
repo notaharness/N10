@@ -219,7 +219,8 @@ export async function expectAdjoining(
 }
 
 /** The window's text, as a user sees it: `innerText` leaves out the
- *  hidden panes. Empty while the renderer is dead or not answering. */
+ *  hidden panes. Empty while the renderer is dead, or has not answered
+ *  in ten seconds (a hung one never will; a CI runner's takes a while). */
 export function shown(app: ElectronApplication): Promise<string> {
   return app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];
@@ -228,7 +229,7 @@ export function shown(app: ElectronApplication): Promise<string> {
       win.webContents.executeJavaScript(
         'document.body.innerText'
       ) as Promise<string>,
-      new Promise<string>((resolve) => setTimeout(() => resolve(''), 3_000)),
+      new Promise<string>((resolve) => setTimeout(() => resolve(''), 10_000)),
     ]);
   });
 }

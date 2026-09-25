@@ -68,7 +68,7 @@ test.describe('Window diagnostics', () => {
       .poll(() => readLog(homeDir), { timeout: 30_000 })
       .toMatch(/window hung after resume: crash/);
     await expect
-      .poll(() => shown(app), { timeout: 30_000 })
+      .poll(() => shown(app), { timeout: 45_000 })
       .toContain('WORKTREES');
     const before = await agentCounter(app);
     await expect
