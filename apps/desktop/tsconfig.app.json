@@ -49,6 +49,9 @@
       "path": "../../libs/core/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/logger/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/app-core/tsconfig.lib.json"
     }
   ]
