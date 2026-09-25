@@ -78,7 +78,7 @@ function isWritable(dir: string): boolean {
  * names `desktop/main/main.js` as the main script. Resolves with Electron's
  * exit code.
  */
-export function launchDesktop(root: string, version: string): Promise<number> {
+export function launchDesktop(root: string): Promise<number> {
   if (!existsSync(join(root, 'desktop', 'main', 'main.js'))) {
     console.error(
       'n10: this build has no desktop app. From source, run `npx nx serve desktop`.'
@@ -107,7 +107,6 @@ export function launchDesktop(root: string, version: string): Promise<number> {
     env: {
       ...process.env,
       N10_START_DIR: process.cwd(),
-      N10_DESKTOP_VERSION: version,
     },
   });
   return new Promise((resolve) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beamEnv, beamPaths } from './paths.js';
+import { beamEnv, beamPaths, unpackedPath } from './paths.js';
 
 const HOME = '/home/u';
 
@@ -38,5 +38,25 @@ describe('beamEnv', () => {
     expect(
       beamEnv(beamPaths({ BEAM_SOCKET: '/s' }, HOME), { BEAM_SOCKET: '/s' })
     ).toEqual({ BEAM_CONFIG_DIR: '/home/u/.config/beam', BEAM_SOCKET: '/s' });
+  });
+});
+
+describe('unpackedPath', () => {
+  it('maps a file inside app.asar to the unpacked copy beside it', () => {
+    expect(
+      unpackedPath(
+        '/opt/n10/resources/app.asar/node_modules/@notaharness/beam-linux-x64/beam'
+      )
+    ).toBe(
+      '/opt/n10/resources/app.asar.unpacked/node_modules/@notaharness/beam-linux-x64/beam'
+    );
+  });
+
+  it('leaves paths outside an archive alone', () => {
+    const path = '/work/n10/node_modules/@notaharness/beam-linux-x64/beam';
+    expect(unpackedPath(path)).toBe(path);
+    expect(unpackedPath('/x/app.asar.unpacked/beam')).toBe(
+      '/x/app.asar.unpacked/beam'
+    );
   });
 });

@@ -59,7 +59,7 @@ export function isGitRepo(cwd: string): boolean {
  * That is the string git answers for the toplevel, which is what a
  * tmux session's `@orchestra-repo` tag, a worktree's origin and the
  * strip's repository groups are all computed from. Every path a repository is
- * opened by — the picker, the recents list, `N10_START_DIR`, a
+ * opened by — the picker, the recents list, the start dir, a
  * foreign tab — goes through here once, at this boundary, so a
  * checkout reached through a symlink (or macOS's `/var` against
  * `/private/var`) is the same repository everywhere. A path that
@@ -156,18 +156,17 @@ export function getRepo(): RepoInfo | null {
 
 /**
  * Startup repo resolution, in priority order:
- *   1. N10_START_DIR (`n10` and dev.mjs pass the invoking shell's cwd)
+ *   1. the start dir the app was launched with (`launchStartDir`)
  *   2. the most recently opened repo that still exists on disk
  * Falls back to null (repo-open screen) when neither applies.
  */
 export function openStartupRepo(
-  env: Record<string, string | undefined> = process.env,
+  startDir: string | undefined,
   recents: RecentRepo[] = loadRecents()
 ): RepoInfo | null {
-  const startDir = env.N10_START_DIR;
   if (startDir) {
     if (!isGitRepo(startDir)) {
-      console.warn(`[desktop] N10_START_DIR is not a git repo: ${startDir}`);
+      console.warn(`[desktop] start dir is not a git repo: ${startDir}`);
     } else {
       try {
         return openRepo(startDir);

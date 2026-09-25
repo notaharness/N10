@@ -37,10 +37,18 @@ export function beamEnv(
   };
 }
 
+/** `path` with an `app.asar` directory in it replaced by the
+ *  `app.asar.unpacked` directory beside it, where an installed app
+ *  keeps the files other processes run (electron-builder's asarUnpack).
+ *  Other paths are returned unchanged. */
+export function unpackedPath(path: string): string {
+  return path.replace(/([\\/])app\.asar(?=[\\/])/, '$1app.asar.unpacked');
+}
+
 /** The beam binary for this platform, from the `@notaharness/beam`
  *  package the desktop depends on. Throws where it has none. */
 export function beamBinary(): string {
   const require = createRequire(import.meta.url);
   const beam = require('@notaharness/beam') as { binaryPath(): string };
-  return beam.binaryPath();
+  return unpackedPath(beam.binaryPath());
 }
