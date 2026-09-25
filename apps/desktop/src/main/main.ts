@@ -172,10 +172,7 @@ function createMainWindow(): BrowserWindow {
   }
 
   win.once('ready-to-show', () => win.show());
-  win.webContents.on('did-finish-load', () => {
-    log('info', 'renderer loaded');
-    void runQaSteps(win);
-  });
+  win.webContents.on('did-finish-load', () => void runQaSteps(win));
 
   // Links in PR comments etc. open in the system browser, never in-app.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -194,15 +191,7 @@ function createMainWindow(): BrowserWindow {
 
   installWindowDiagnostics(win);
   installRendererRecovery(win);
-  installWindowWatchdog(win, {
-    // A new window is a new compositor surface. It is opened before
-    // the old one goes, or window-all-closed would quit the app.
-    recreate: () => {
-      log('info', 'replacing the window');
-      createMainWindow();
-      if (!win.isDestroyed()) win.destroy();
-    },
-  });
+  installWindowWatchdog(win);
   return win;
 }
 

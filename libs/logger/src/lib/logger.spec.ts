@@ -35,3 +35,23 @@ describe('safeStringify', () => {
     expect(() => safeStringify(obj)).not.toThrow();
   });
 });
+
+describe('setLogFile', () => {
+  it('writes to the given file and rotates it once past the limit', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { log, setLogFile } = await import('./logger.js');
+    const dir = mkdtempSync(join(tmpdir(), 'n10-logger-'));
+    const path = join(dir, 'app.log');
+    try {
+      setLogFile(path, 120);
+      log('info', 'test', 'first line, about sixty bytes with its timestamp');
+      log('info', 'test', 'second line, past the limit once it is appended');
+      expect(readFileSync(`${path}.1`, 'utf8')).toMatch(/first line/);
+      expect(readFileSync(path, 'utf8')).toMatch(/^[^\n]*second line[^\n]*\n$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

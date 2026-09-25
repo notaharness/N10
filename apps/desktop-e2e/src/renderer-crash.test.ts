@@ -1,10 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import {
-  createWorktree,
-  launchAgentFromRail,
-  visibleText,
-} from './setup/app.js';
+import { agentCounter, shown, startStreamingAgent } from './setup/app.js';
 
 const BRANCH = 'agent-work';
 
@@ -57,33 +53,8 @@ async function crash(app: ElectronApplication): Promise<void> {
     .toBeGreaterThan(before);
 }
 
-/** The window's text, as a user sees it: `innerText` leaves out the
- *  hidden panes. Empty while the renderer is dead. */
-function shown(app: ElectronApplication): Promise<string> {
-  return app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win || win.webContents.isCrashed()) return '';
-    return win.webContents.executeJavaScript(
-      'document.body.innerText'
-    ) as Promise<string>;
-  });
-}
-
-/** The fake agent's own line counter, as far as the window shows it. */
-async function counter(app: ElectronApplication): Promise<number> {
-  const matches = [...(await shown(app)).matchAll(/working (\d+)/g)];
-  return Number(matches.at(-1)?.[1] ?? '0');
-}
-
-async function startStreamingAgent(
-  page: Page,
-  app: ElectronApplication
-): Promise<void> {
-  await createWorktree(page, BRANCH);
-  await launchAgentFromRail(page);
-  await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
-    timeout: 30_000,
-  });
+async function armed(page: Page, app: ElectronApplication): Promise<void> {
+  await startStreamingAgent(page, BRANCH);
   await countDeaths(app);
 }
 
@@ -94,15 +65,15 @@ test.describe('Renderer crash recovery', () => {
     desktop,
   }) => {
     const { page, app } = desktop;
-    await startStreamingAgent(page, app);
+    await armed(page, app);
 
     await crash(app);
     await expect
       .poll(() => shown(app), { timeout: 30_000 })
       .toContain('WORKTREES');
-    const before = await counter(app);
+    const before = await agentCounter(app);
     await expect
-      .poll(() => counter(app), { timeout: 15_000 })
+      .poll(() => agentCounter(app), { timeout: 15_000 })
       .toBeGreaterThan(before);
   });
 
@@ -110,7 +81,7 @@ test.describe('Renderer crash recovery', () => {
     desktop,
   }) => {
     const { page, app } = desktop;
-    await startStreamingAgent(page, app);
+    await armed(page, app);
 
     // The native question is replaced by one this test answers.
     await app.evaluate(({ dialog }) => {
@@ -155,9 +126,9 @@ test.describe('Renderer crash recovery', () => {
     await expect
       .poll(() => shown(app), { timeout: 30_000 })
       .toContain('WORKTREES');
-    const after = await counter(app);
+    const after = await agentCounter(app);
     await expect
-      .poll(() => counter(app), { timeout: 15_000 })
+      .poll(() => agentCounter(app), { timeout: 15_000 })
       .toBeGreaterThan(after);
   });
 });

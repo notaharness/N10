@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

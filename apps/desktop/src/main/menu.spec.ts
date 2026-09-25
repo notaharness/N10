@@ -62,8 +62,6 @@ describe('buildMenuTemplate', () => {
   });
 
   it('offers Reload Window and dev tools in every build', () => {
-    // A blank or hung window has no title bar to click; these are the
-    // escape hatches the main process answers on its own.
     const roles = (t: ReturnType<typeof buildMenuTemplate>) =>
       (t.find((m) => m.label === '&View')?.submenu as { role?: string }[]).map(
         (i) => i.role

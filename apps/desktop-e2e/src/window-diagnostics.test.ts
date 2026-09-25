@@ -1,53 +1,23 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import {
-  createWorktree,
-  launchAgentFromRail,
-  visibleText,
-} from './setup/app.js';
+import { agentCounter, shown, startStreamingAgent } from './setup/app.js';
 
 /**
  * A blank window explains itself: what the renderer threw is in the
  * desktop log, a renderer that stops answering after a resume is
- * replaced, a window that produces no frames gets a new one, and a
- * load the dev server could not answer is retried until it can.
+ * replaced, a window that produces no frames is repainted and reloaded
+ * with each step logged, and a load the dev server could not answer is
+ * retried until it can.
  */
 
-const logPath = (homeDir: string) =>
-  join(homeDir, '.config', 'n10-dev', 'logs', 'desktop.log');
-
 const readLog = (homeDir: string) =>
-  readFile(logPath(homeDir), 'utf8').catch(() => '');
-
-/** The window's text as the main process sees it; empty while dead. */
-function shown(app: ElectronApplication): Promise<string> {
-  return app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win || win.webContents.isCrashed()) return '';
-    return Promise.race([
-      win.webContents.executeJavaScript(
-        'document.body.innerText'
-      ) as Promise<string>,
-      new Promise<string>((resolve) => setTimeout(() => resolve(''), 3_000)),
-    ]);
-  });
-}
-
-async function counter(app: ElectronApplication): Promise<number> {
-  const matches = [...(await shown(app)).matchAll(/working (\d+)/g)];
-  return Number(matches.at(-1)?.[1] ?? '0');
-}
-
-async function startStreamingAgent(page: Page): Promise<void> {
-  await createWorktree(page, 'agent-work');
-  await launchAgentFromRail(page);
-  await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
-    timeout: 30_000,
-  });
-}
+  readFile(
+    join(homeDir, '.config', 'n10-dev', 'logs', 'desktop.log'),
+    'utf8'
+  ).catch(() => '');
 
 /** Stop the renderer's main thread for good. */
 function hangRenderer(app: ElectronApplication): Promise<void> {
@@ -78,11 +48,12 @@ test.describe('Window diagnostics', () => {
     });
     await expect
       .poll(() => readLog(homeDir), { timeout: 10_000 })
-      .toMatch(/error renderer: .*n10-e2e-uncaught/);
+      .toMatch(/\[ERROR\] desktop: renderer: .*n10-e2e-uncaught/);
     expect(await readLog(homeDir)).toMatch(
-      /error renderer: .*n10-e2e-rejected/
+      /\[ERROR\] desktop: renderer: .*n10-e2e-rejected/
     );
     // Raised on purpose; the fixture must not fail the test for them.
+    await expect.poll(() => pageErrors.length).toBe(2);
     pageErrors.splice(0);
   });
 
@@ -90,7 +61,7 @@ test.describe('Window diagnostics', () => {
     desktop,
   }) => {
     const { page, app, homeDir } = desktop;
-    await startStreamingAgent(page);
+    await startStreamingAgent(page, 'agent-work');
     await hangRenderer(app);
     await resume(app);
     await expect
@@ -99,47 +70,34 @@ test.describe('Window diagnostics', () => {
     await expect
       .poll(() => shown(app), { timeout: 30_000 })
       .toContain('WORKTREES');
-    const before = await counter(app);
+    const before = await agentCounter(app);
     await expect
-      .poll(() => counter(app), { timeout: 15_000 })
+      .poll(() => agentCounter(app), { timeout: 15_000 })
       .toBeGreaterThan(before);
   });
 
-  test('a window that produces no frames is repainted, reloaded, then replaced', async ({
+  test('a window that produces no frames is repainted, reloaded, then left alone', async ({
     desktop,
   }) => {
     const { page, app, homeDir } = desktop;
-    await startStreamingAgent(page);
-    const first = await app.evaluate(({ BrowserWindow }) => {
-      const win = BrowserWindow.getAllWindows()[0];
-      // The capture never completes: what a window that gets no frames
-      // onto the screen looks like from the main process. The stub
-      // lives on this webContents, so only a new window escapes it.
-      win.webContents.capturePage = () => new Promise(() => undefined);
-      return win.id;
+    await startStreamingAgent(page, 'agent-work');
+    await app.evaluate(({ BrowserWindow }) => {
+      // A capture that never completes is what a window that gets no
+      // frames onto the screen looks like from the main process.
+      BrowserWindow.getAllWindows()[0].webContents.capturePage = () =>
+        new Promise(() => undefined);
     });
     await resume(app);
     await expect
       .poll(() => readLog(homeDir), { timeout: 60_000 })
-      .toMatch(/window unpainted after recovery step 2: recreate/);
-    await expect
-      .poll(
-        () =>
-          app.evaluate(({ BrowserWindow }) =>
-            BrowserWindow.getAllWindows().map((w) => w.id)
-          ),
-        { timeout: 15_000 }
-      )
-      .not.toContain(first);
-    await expect
-      .poll(() => shown(app), { timeout: 30_000 })
-      .toContain('WORKTREES');
+      .toMatch(/window unpainted after recovery step 2: give-up/);
     const log = await readLog(homeDir);
     expect(log).toMatch(/window unpainted after resume: repaint/);
     expect(log).toMatch(/window unpainted after recovery step 1: reload/);
+    expect(await shown(app)).toContain('WORKTREES');
   });
 
-  test('a load that fails is retried until the server answers', async ({
+  test('a load that fails is retried with backoff until the server answers', async ({
     desktop,
   }) => {
     const { app, homeDir } = desktop;
@@ -148,12 +106,12 @@ test.describe('Window diagnostics', () => {
       res.end('<h1>n10-e2e-back</h1>');
     });
     try {
+      // Listen once to be handed a free port, then give it back.
       const port = await new Promise<number>((resolve) => {
-        const probe = createServer();
-        probe.listen(0, '127.0.0.1', () => {
-          const address = probe.address();
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
           const found = typeof address === 'object' ? address?.port : 0;
-          probe.close(() => resolve(found ?? 0));
+          server.close(() => resolve(found ?? 0));
         });
       });
       const url = `http://127.0.0.1:${port}/`;
@@ -164,7 +122,11 @@ test.describe('Window diagnostics', () => {
       }, url);
       await expect
         .poll(() => readLog(homeDir), { timeout: 15_000 })
-        .toMatch(/error load of http:\/\/127\.0\.0\.1:\d+\/ failed/);
+        .toMatch(/retrying in 2000 ms/);
+      const log = await readLog(homeDir);
+      expect(log).toMatch(/retrying in 1000 ms/);
+      // Chromium's error page finishing is not the renderer loading.
+      expect(log.match(/renderer loaded/g)).toHaveLength(1);
 
       await new Promise<void>((resolve) =>
         server.listen(port, '127.0.0.1', resolve)

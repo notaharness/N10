@@ -203,10 +203,13 @@ probes the window after a resume or a GPU process death, the next time it is
 focused and visible (`apps/desktop/src/main/window-watchdog.ts`): a script that
 never answers is a hung renderer, crashed so the crash handler reloads it; a
 page capture that never completes is a window producing no frames, repainted,
-then reloaded, then replaced by a new window and so a new compositor surface.
-Every step goes to `<userData>/logs/desktop.log` (`main/log.ts`) beside
-renderer console errors, failed loads, process deaths, hangs and power events,
-because the terminal a dev run printed to is gone by the time anyone asks. A
+then reloaded; a capture can also stall on a window the compositor is not
+drawing, so probes run only while the window is focused, and a probe that
+rejects rather than times out is no evidence. Every step goes to
+`<userData>/logs/desktop.log` through `@n10/logger` (`main/log.ts` tees the
+console), beside renderer console errors, failed loads, process deaths, hangs
+and power events, because the terminal a dev run printed to is gone by the
+time anyone asks. A
 failed main-frame load is retried with backoff so a reload while the Vite dev
 server is away does not strand the window. The View menu's Reload Window and
 Toggle Developer Tools are answered by the main process and so work on a window

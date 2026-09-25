@@ -22,26 +22,52 @@ export function loadRetryDelay(failures: number): number {
 /** Chromium's ERR_ABORTED: a load replaced by another, not a failure. */
 const ERR_ABORTED = -3;
 
-export function installWindowDiagnostics(win: BrowserWindow): void {
-  const contents = win.webContents;
-  contents.on('console-message', (details) => {
+function logConsoleErrors(win: BrowserWindow): void {
+  // A renderer stuck in an error loop repeats one line per frame.
+  let last = '';
+  let repeats = 0;
+  win.webContents.on('console-message', (details) => {
     if (details.level !== 'error') return;
     const where = details.sourceId
       ? ` (${details.sourceId}:${details.lineNumber})`
       : '';
-    log('error', `renderer: ${details.message}${where}`);
+    const line = `renderer: ${details.message}${where}`;
+    if (line === last) {
+      repeats += 1;
+      return;
+    }
+    if (repeats > 0) log('error', `previous line repeated ${repeats} times`);
+    last = line;
+    repeats = 0;
+    log('error', line);
   });
+}
 
+function retryFailedLoads(win: BrowserWindow): void {
+  const contents = win.webContents;
   let failures = 0;
+  let failed = false;
   let retry: NodeJS.Timeout | null = null;
   contents.on('did-finish-load', () => {
+    // Chromium's error page finishes loading too, under the same URL.
+    if (failed) {
+      failed = false;
+      return;
+    }
     failures = 0;
+    log('info', 'renderer loaded');
   });
   contents.on(
     'did-fail-load',
     (_event, code, description, url, isMainFrame) => {
       if (!isMainFrame || code === ERR_ABORTED) return;
+      failed = true;
       failures += 1;
+      // A file that is not there will not appear.
+      if (url.startsWith('file:')) {
+        log('error', `load of ${url} failed: ${description} (${code})`);
+        return;
+      }
       const delay = loadRetryDelay(failures);
       log(
         'error',
@@ -58,4 +84,9 @@ export function installWindowDiagnostics(win: BrowserWindow): void {
   win.on('closed', () => {
     if (retry) clearTimeout(retry);
   });
+}
+
+export function installWindowDiagnostics(win: BrowserWindow): void {
+  logConsoleErrors(win);
+  retryFailedLoads(win);
 }

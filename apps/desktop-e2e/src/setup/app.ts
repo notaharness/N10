@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 /**
  * Locators for the desktop shell, in one place.
@@ -211,4 +216,37 @@ export async function expectAdjoining(
   const [a, b] = await Promise.all([left.boundingBox(), right.boundingBox()]);
   if (!a || !b) throw new Error('tab is not laid out');
   expect(b.x).toBeCloseTo(a.x + a.width, 0);
+}
+
+/** The window's text, as a user sees it: `innerText` leaves out the
+ *  hidden panes. Empty while the renderer is dead or not answering. */
+export function shown(app: ElectronApplication): Promise<string> {
+  return app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win || win.webContents.isCrashed()) return '';
+    return Promise.race([
+      win.webContents.executeJavaScript(
+        'document.body.innerText'
+      ) as Promise<string>,
+      new Promise<string>((resolve) => setTimeout(() => resolve(''), 3_000)),
+    ]);
+  });
+}
+
+/** The fake agent's own line counter, as far as the window shows it. */
+export async function agentCounter(app: ElectronApplication): Promise<number> {
+  const matches = [...(await shown(app)).matchAll(/working (\d+)/g)];
+  return Number(matches.at(-1)?.[1] ?? '0');
+}
+
+/** A worktree with a streaming fake agent in it (`fakeAgent({ stream: true })`). */
+export async function startStreamingAgent(
+  page: Page,
+  branch: string
+): Promise<void> {
+  await createWorktree(page, branch);
+  await launchAgentFromRail(page);
+  await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
+    timeout: 30_000,
+  });
 }

@@ -7,12 +7,7 @@ interface Props {
   /** Changing this resets the boundary (e.g. the active tab id). */
   resetKey?: string;
   label?: string;
-  /**
-   * Offered beside "Try again" when set: the boundary at the root of
-   * the app, where a retry re-renders everything and may well fail the
-   * same way, while a reload starts the renderer over against a host
-   * that is still fine.
-   */
+  /** Offered beside "Try again" at the root, where a retry tends to fail the same way. */
   reload?: () => void;
 }
 interface State {

@@ -1,9 +1,10 @@
 import { app, type BrowserWindow } from 'electron';
 
-// ── Headless QA hook ─────────────────────────────────────────────
-// N10_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
-// runs each step's JS in the page, waits, captures a PNG, then quits.
-// Dev/CI only — lets us screenshot the real app under xvfb.
+/**
+ * Headless QA hook. N10_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
+ * runs each step's JS in the page, waits, captures a PNG, then quits.
+ * Dev/CI only — lets us screenshot the real app under xvfb.
+ */
 
 interface QaStep {
   js?: string;

@@ -12,14 +12,13 @@ describe('recoveryStep', () => {
     expect(recoveryStep('hung', 2)).toBe('crash');
   });
 
-  it('escalates a window that produces no frames: repaint, reload, new window', () => {
+  it('escalates a window that produces no frames: repaint, then reload', () => {
     expect(recoveryStep('unpainted', 0)).toBe('repaint');
     expect(recoveryStep('unpainted', 1)).toBe('reload');
-    expect(recoveryStep('unpainted', 2)).toBe('recreate');
   });
 
   it('stops after the last step rather than looping', () => {
-    expect(recoveryStep('unpainted', 3)).toBe('give-up');
+    expect(recoveryStep('unpainted', 2)).toBe('give-up');
     expect(recoveryStep('hung', 3)).toBe('give-up');
   });
 });
