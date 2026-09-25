@@ -13,7 +13,7 @@ first. Describe the outcome you want and how we'd know it's done.
 
 ## Set up
 
-You need Node.js 20 or newer, Git and tmux 3.2 or newer. On Linux, also install
+You need Node.js 22.12 or newer, Git and tmux 3.2 or newer. On Linux, also install
 `build-essential` and `python3` so `node-pty` compiles.
 
 ```sh
