@@ -2,9 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   isAllowedNavigation,
   loadTarget,
-  RENDERER_CRASH_WINDOW_MS,
-  RENDERER_RELOAD_LIMIT,
-  reloadAfterRendererGone,
   rendererWebPreferences,
   windowChrome,
 } from './window.js';
@@ -83,33 +80,5 @@ describe('isAllowedNavigation', () => {
     expect(isAllowedNavigation('javascript:alert(1)', DEV)).toBe(false);
     expect(isAllowedNavigation('not a url', DEV)).toBe(false);
     expect(isAllowedNavigation('', undefined)).toBe(false);
-  });
-});
-
-describe('reloadAfterRendererGone', () => {
-  const full = Array.from(
-    { length: RENDERER_RELOAD_LIMIT },
-    (_, i) => 1_000 * i
-  );
-
-  it('reloads the first deaths', () => {
-    let history: number[] = [];
-    for (let i = 0; i < RENDERER_RELOAD_LIMIT; i += 1) {
-      const next = reloadAfterRendererGone(history, 1_000 * i);
-      expect(next.reload).toBe(true);
-      history = next.history;
-    }
-    expect(history).toHaveLength(RENDERER_RELOAD_LIMIT);
-  });
-
-  it('stops reloading a renderer that keeps dying within the window', () => {
-    expect(reloadAfterRendererGone(full, 5_000).reload).toBe(false);
-  });
-
-  it('forgets deaths older than the window', () => {
-    const later = 2_000 + RENDERER_CRASH_WINDOW_MS;
-    const next = reloadAfterRendererGone(full, later);
-    expect(next.reload).toBe(true);
-    expect(next.history).toEqual([later]);
   });
 });

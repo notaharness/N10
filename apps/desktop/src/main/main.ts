@@ -37,10 +37,6 @@ import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
 import { buildMenuTemplate } from './menu.js';
 import {
-  installProcessDiagnostics,
-  installRendererRecovery,
-} from './renderer-recovery.js';
-import {
   isAllowedNavigation,
   loadTarget,
   rendererWebPreferences,
@@ -189,7 +185,6 @@ function createMainWindow(): BrowserWindow {
     if (/^https?:/i.test(url)) void shell.openExternal(url);
   });
 
-  installRendererRecovery(win);
   return win;
 }
 
@@ -284,7 +279,6 @@ setShellGlue({
 });
 
 installHostEventBridge();
-installProcessDiagnostics();
 
 // Machines come from the beam daemon's control socket; remote launches
 // resolve their machine through the ports the client installs. The app

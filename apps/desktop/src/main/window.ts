@@ -88,24 +88,3 @@ export function loadTarget(
   }
   return { kind: 'file', path: indexHtmlPath };
 }
-
-/** Renderer deaths within this window count towards the reload limit. */
-export const RENDERER_CRASH_WINDOW_MS = 60_000;
-/** Reloads granted within the window before the app stops and asks. */
-export const RENDERER_RELOAD_LIMIT = 3;
-
-/**
- * Reload a window whose renderer died, unless it keeps dying: a
- * renderer that crashes as soon as it loads would reload forever.
- * `history` is the recent death times; the pruned list comes back.
- */
-export function reloadAfterRendererGone(
-  history: readonly number[],
-  now: number
-): { history: number[]; reload: boolean } {
-  const recent = [
-    ...history.filter((at) => now - at < RENDERER_CRASH_WINDOW_MS),
-    now,
-  ];
-  return { history: recent, reload: recent.length <= RENDERER_RELOAD_LIMIT };
-}

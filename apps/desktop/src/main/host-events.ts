@@ -35,14 +35,9 @@ import {
   setMachinesNotifier,
 } from '../host/services/machines.js';
 
-// A window whose renderer died has no frame to deliver to, and stays
-// that way while the app asks what to do (renderer-recovery.ts): a
-// send would log a stack, and the PTY relay sends per chunk.
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    const contents = win.webContents;
-    if (contents.isDestroyed() || contents.isCrashed()) continue;
-    contents.send(channel, payload);
+    win.webContents.send(channel, payload);
   }
 }
 
