@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Turns apps/cli/dist into the publishable `@notaharness/n10` package:
 // the `n10` executable (main.js and its chunks) with the desktop app's
-// build under desktop/. Consumed by the `install-global` and `publish`
-// targets, which depend on both builds.
+// build under desktop/. `install-global` and the Package and Release
+// workflows pack it.
 //
 // The build copies the source package.json into dist/, carrying
 // workspace `@n10/*` deps that don't exist on the npm registry, dev deps

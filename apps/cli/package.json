@@ -115,19 +115,6 @@
           "cwd": "apps/cli/dist"
         }
       },
-      "publish": {
-        "dependsOn": [
-          "prepare-publish"
-        ],
-        "executor": "nx:run-commands",
-        "options": {
-          "commands": [
-            "npm publish --tag beta apps/cli/dist",
-            "node apps/cli/scripts/dist-tag-latest.mjs"
-          ],
-          "parallel": false
-        }
-      },
       "serve": {
         "dependsOn": [
           "^build"

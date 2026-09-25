@@ -36,8 +36,32 @@ supplies globally. Desktop sessions reach it through a shim in the desktop
 bundle (decisions.md D16), so drafting works where no `n10` is on a session's
 PATH and matches the running app's version.
 
-## Tags
+## Install test
 
-Publish with `beta`, then move `latest` to the same version using
-`apps/cli/scripts/dist-tag-latest.mjs`. This keeps installs with and without `@beta`
-consistent. Verify both tags after releasing.
+`apps/cli/scripts/test-installed.sh` installs a packed tarball into a scratch
+global prefix and runs `n10 --version`, `n10 util add-comment` (expecting its
+usage error), `n10 --tui` until it renders and quits on `q`, and `n10` under
+Xvfb until the desktop has opened the current repository and loaded its
+window. `.github/workflows/package.yml` runs it in a clean `node` container on
+pull requests that touch packaging, and as the release gate.
+
+The container pins Node 24.15: Electron 39's postinstall extracts nothing
+under Node 24.16 and later, so `n10` cannot start the desktop there. Unpin it
+when Electron is upgraded to a release whose installer works on current Node.
+
+## Release workflow
+
+`.github/workflows/release.yml` runs on a `v*` tag, which must equal
+`apps/cli/package.json`'s version. The `publish` job publishes the tarball the
+Package workflow tested, through npm trusted publishing (OIDC, `id-token:
+write`, npm 11.5.1 or later) with provenance. The trusted publisher on
+npmjs.com names this repository and `release.yml` with no environment;
+renaming the workflow file breaks publishing until it is updated there.
+
+Trusted publishing authenticates `npm publish` only, not `npm dist-tag`, so a
+release sets one tag: `latest`. Every release, prerelease or not, is what a
+plain `npm install -g @notaharness/n10` installs.
+
+The `github-release` job creates the GitHub release with generated notes and
+attaches every artifact named `release-*` from the run. Jobs that build
+release assets upload under that prefix and join its `needs`.
