@@ -132,6 +132,18 @@
           "build-renderer"
         ]
       },
+      "package-linux": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "outputs": [
+          "{projectRoot}/dist/installers"
+        ],
+        "options": {
+          "command": "node apps/desktop/scripts/package-linux.mjs"
+        }
+      },
       "serve": {
         "executor": "nx:run-commands",
         "dependsOn": [
