@@ -170,9 +170,6 @@ function BlendedMark({
 }) {
   return (
     <>
-      <g fill={n} style={{ mixBlendMode: 'multiply' }}>
-        <NGlyph shape={nShape} />
-      </g>
       {/* The outer group positions the 1 on the n's right stem; the
           inner group is what the CSS animates, so its transform never
           collides with this one. */}
@@ -198,6 +195,11 @@ function BlendedMark({
             strokeWidth={STROKE}
           />
         </g>
+      </g>
+      {/* The n is drawn last, so where a browser doesn't blend, the n's
+          stem stays whole and the 1 goes behind it. */}
+      <g fill={n} style={{ mixBlendMode: 'multiply' }}>
+        <NGlyph shape={nShape} />
       </g>
     </>
   );
