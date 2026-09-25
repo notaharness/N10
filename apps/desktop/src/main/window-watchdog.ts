@@ -2,38 +2,52 @@
  * A window that comes back blank from suspend, with no event to say
  * so (see docs/decisions.md, "Desktop window health"). After a resume
  * or a GPU process death the window is probed while the user is
- * looking at it: a script that never answers is a hung renderer, a
- * page capture that never completes is a window producing no frames.
- * Every step is logged.
+ * looking at it, and the verdict logged: a script that never answers
+ * is a hung renderer, a page capture that never completes is a window
+ * producing no frames. Nothing is done about it here: a renderer that
+ * is merely busy after a resume would be killed by a cure, so the log
+ * is the deliverable, and View → Reload Window the cure.
  */
 import { app, powerMonitor, type BrowserWindow } from 'electron';
 import { log } from './log.js';
 
 export type Probe = 'healthy' | 'hung' | 'unpainted';
 
-export type RecoveryStep = 'none' | 'crash' | 'repaint' | 'reload' | 'give-up';
-
 /** A busy main thread (a large diff folding) answers late; a hung one never. */
 const SCRIPT_TIMEOUT_MS = 15_000;
 /** A window that paints at all captures in milliseconds. */
 const CAPTURE_TIMEOUT_MS = 5_000;
-/** The time given to the system after a resume before the first probe. */
+/** The time given to the system after a resume before the probe. */
 const RESUME_SETTLE_MS = 3_000;
-/** How long each recovery step gets to take effect before the next probe. */
-const RECHECK_MS = 4_000;
 
 /**
- * The recovery step for a probe result, given how many steps have been
- * taken since the window last probed healthy. A hung renderer is
- * crashed, which the crash handler answers with a reload. A window
- * that produces no frames is asked to repaint, then reloaded; after
- * that the log is the only help left.
+ * Which Ozone platform Chromium picked: the switch when given, else
+ * the hint, `auto` resolving to Wayland when a Wayland socket is there.
  */
-export function recoveryStep(probe: Probe, attempt: number): RecoveryStep {
-  if (probe === 'healthy') return 'none';
-  if (probe === 'hung') return attempt < 3 ? 'crash' : 'give-up';
-  const unpainted: RecoveryStep[] = ['repaint', 'reload'];
-  return unpainted[attempt] ?? 'give-up';
+export function ozonePlatform(
+  switchValue: string,
+  hint: string | undefined,
+  waylandDisplay: string | undefined
+): string {
+  if (switchValue) return switchValue;
+  const chosen = hint || 'auto';
+  if (chosen !== 'auto') return chosen;
+  return `${waylandDisplay ? 'wayland' : 'x11'} (auto)`;
+}
+
+/** The display stack, for the log at startup and after a resume. */
+export function environmentLine(): string {
+  const platform = ozonePlatform(
+    app.commandLine.getSwitchValue('ozone-platform'),
+    process.env.ELECTRON_OZONE_PLATFORM_HINT,
+    process.env.WAYLAND_DISPLAY
+  );
+  const features = Object.entries(app.getGPUFeatureStatus())
+    .map(([name, status]) => `${name}=${status}`)
+    .join(' ');
+  return `session ${
+    process.env.XDG_SESSION_TYPE ?? 'unknown'
+  }, ozone ${platform}, gpu ${features}`;
 }
 
 const TIMED_OUT = Symbol('timed out');
@@ -78,8 +92,7 @@ async function probeWindow(win: BrowserWindow): Promise<Probe | null> {
 }
 
 export function installWindowWatchdog(win: BrowserWindow): void {
-  let suspect = false;
-  let attempt = 0;
+  let suspect: string | null = null;
   let checking = false;
   let timer: NodeJS.Timeout | null = null;
 
@@ -89,85 +102,44 @@ export function installWindowWatchdog(win: BrowserWindow): void {
   const lookedAt = () =>
     !gone() && win.isVisible() && !win.isMinimized() && win.isFocused();
 
-  const later = (ms: number) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      void check();
-    }, ms);
-  };
-
-  const act = (step: RecoveryStep): void => {
-    switch (step) {
-      case 'crash':
-        // renderer-recovery.ts answers the death with a reload.
-        win.webContents.forcefullyCrashRenderer();
-        return;
-      case 'repaint':
-        win.webContents.invalidate();
-        return;
-      case 'reload':
-        win.webContents.reload();
-        return;
-      case 'give-up':
-      case 'none':
-        return;
-    }
-  };
-
   async function check(): Promise<void> {
-    if (checking || !lookedAt()) return;
-    // A script waits for the load to finish; a slow reload is not a hang.
-    if (win.webContents.isLoading()) {
-      later(RECHECK_MS);
-      return;
-    }
+    if (checking || !suspect || !lookedAt()) return;
     checking = true;
     try {
       const probe = await probeWindow(win);
-      if (probe === null || gone()) return;
-      if (probe === 'healthy') {
-        if (attempt > 0) log('info', 'window healthy again');
-        suspect = false;
-        attempt = 0;
-        return;
-      }
-      const step = recoveryStep(probe, attempt);
+      if (probe === null || gone() || !suspect) return;
       log(
-        'error',
-        `window ${probe} after ${
-          attempt === 0 ? 'resume' : `recovery step ${attempt}`
-        }: ${step}`
+        probe === 'healthy' ? 'info' : 'error',
+        `window ${probe} after ${suspect}`
       );
-      if (step === 'give-up') {
-        suspect = false;
-        attempt = 0;
-        return;
-      }
-      attempt += 1;
-      act(step);
-      later(RECHECK_MS);
+      suspect = null;
     } finally {
       checking = false;
     }
   }
 
-  const mark = () => {
+  const mark = (why: string) => {
     if (gone()) return;
-    suspect = true;
-    later(RESUME_SETTLE_MS);
+    suspect = why;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      void check();
+    }, RESUME_SETTLE_MS);
   };
 
-  const onChildGone = (_event: Electron.Event, details: Electron.Details) => {
-    if (details.type === 'GPU') mark();
+  const onResume = () => {
+    log('info', environmentLine());
+    mark('resume');
   };
-  powerMonitor.on('resume', mark);
+  const onChildGone = (_event: Electron.Event, details: Electron.Details) => {
+    if (details.type === 'GPU') mark('GPU process death');
+  };
+  powerMonitor.on('resume', onResume);
   app.on('child-process-gone', onChildGone);
-  win.on('focus', () => {
-    if (suspect) void check();
-  });
+  win.on('focus', () => void check());
   win.on('closed', () => {
-    powerMonitor.off('resume', mark);
+    powerMonitor.off('resume', onResume);
     app.off('child-process-gone', onChildGone);
     if (timer) clearTimeout(timer);
   });

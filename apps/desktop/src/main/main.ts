@@ -43,7 +43,7 @@ import {
 } from './renderer-recovery.js';
 import { log, openDesktopLog } from './log.js';
 import { installWindowDiagnostics } from './window-diagnostics.js';
-import { installWindowWatchdog } from './window-watchdog.js';
+import { environmentLine, installWindowWatchdog } from './window-watchdog.js';
 import { runQaSteps } from './qa-steps.js';
 import {
   isAllowedNavigation,
@@ -189,7 +189,7 @@ function createMainWindow(): BrowserWindow {
     if (/^https?:/i.test(url)) void shell.openExternal(url);
   });
 
-  installWindowDiagnostics(win);
+  installWindowDiagnostics(win, Boolean(DEV_SERVER_URL));
   installRendererRecovery(win);
   installWindowWatchdog(win);
   return win;
@@ -267,6 +267,7 @@ if (!app.requestSingleInstanceLock()) {
       const opened = openStartupRepo();
       mark(MAIN_MARKS.repo);
       log('info', `startup repo: ${opened ? opened.cwd : 'none'}`);
+      log('info', environmentLine());
 
       void createMainWindow();
       mark(MAIN_MARKS.window);

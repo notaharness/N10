@@ -199,21 +199,22 @@ The status matrix and tab invariants are covered by model tests.
 
 A window that survives suspend blank is not an event: Electron reports no
 death, the host is fine, and the renderer is usually alive. So the desktop
-probes the window after a resume or a GPU process death, the next time it is
-focused and visible (`apps/desktop/src/main/window-watchdog.ts`): a script that
-never answers is a hung renderer, crashed so the crash handler reloads it; a
-page capture that never completes is a window producing no frames, repainted,
-then reloaded; a capture can also stall on a window the compositor is not
-drawing, so probes run only while the window is focused, and a probe that
-rejects rather than times out is no evidence. Every step goes to
+probes the window after a resume or a GPU process death, once it is focused
+and visible (`apps/desktop/src/main/window-watchdog.ts`): a script that never
+answers is a hung renderer, a page capture that never completes is a window
+producing no frames, and the verdict is logged. It is not acted on: a renderer
+that is merely busy after a resume would be killed by a cure, and hang
+detection after resume is fixed upstream in the Electron the app is moving
+to. The log is the deliverable, beside the display stack (session type, Ozone
+platform, GPU feature status) at startup and on resume. Everything goes to
 `<userData>/logs/desktop.log` through `@n10/logger` (`main/log.ts` tees the
-console), beside renderer console errors, failed loads, process deaths, hangs
-and power events, because the terminal a dev run printed to is gone by the
-time anyone asks. A
-failed main-frame load is retried with backoff so a reload while the Vite dev
-server is away does not strand the window. The View menu's Reload Window and
-Toggle Developer Tools are answered by the main process and so work on a window
-with nothing drawn in it.
+console): renderer console errors, every Vite client message under the dev
+server, failed loads, process deaths, hangs and power events, because the
+terminal a dev run printed to is gone by the time anyone asks. A failed
+main-frame load is retried with backoff so a reload while the Vite dev server
+is away does not strand the window. The View menu's Reload Window and Toggle
+Developer Tools are answered by the main process and so work on a window with
+nothing drawn in it.
 
 ## Plans and babysitting
 

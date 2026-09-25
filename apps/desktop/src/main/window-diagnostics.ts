@@ -22,24 +22,62 @@ export function loadRetryDelay(failures: number): number {
 /** Chromium's ERR_ABORTED: a load replaced by another, not a failure. */
 const ERR_ABORTED = -3;
 
-function logConsoleErrors(win: BrowserWindow): void {
+export interface ConsoleLine {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  sourceId?: string;
+  lineNumber?: number;
+}
+
+/**
+ * The log line for a renderer console message, or null for one that is
+ * not kept: errors always are; under the dev server, so is everything
+ * the Vite client says, because a hot update or a reconnect that went
+ * wrong is how a dev window ends up empty.
+ */
+export function rendererLogLine(
+  entry: ConsoleLine,
+  devServer: boolean
+): { level: ConsoleLine['level']; line: string } | null {
+  const vite =
+    devServer &&
+    (entry.message.startsWith('[vite]') ||
+      (entry.sourceId?.includes('/@vite/client') ?? false));
+  if (entry.level !== 'error' && !vite) return null;
+  const where = entry.sourceId
+    ? ` (${entry.sourceId}:${entry.lineNumber ?? 0})`
+    : '';
+  return { level: entry.level, line: `renderer: ${entry.message}${where}` };
+}
+
+function logConsole(win: BrowserWindow, devServer: boolean): void {
   // A renderer stuck in an error loop repeats one line per frame.
   let last = '';
   let repeats = 0;
   win.webContents.on('console-message', (details) => {
-    if (details.level !== 'error') return;
-    const where = details.sourceId
-      ? ` (${details.sourceId}:${details.lineNumber})`
-      : '';
-    const line = `renderer: ${details.message}${where}`;
-    if (line === last) {
+    const entry = rendererLogLine(
+      {
+        level:
+          details.level === 'warning'
+            ? 'warn'
+            : details.level === 'error'
+            ? 'error'
+            : 'info',
+        message: details.message,
+        sourceId: details.sourceId,
+        lineNumber: details.lineNumber,
+      },
+      devServer
+    );
+    if (!entry) return;
+    if (entry.line === last) {
       repeats += 1;
       return;
     }
     if (repeats > 0) log('error', `previous line repeated ${repeats} times`);
-    last = line;
+    last = entry.line;
     repeats = 0;
-    log('error', line);
+    log(entry.level, entry.line);
   });
 }
 
@@ -86,7 +124,10 @@ function retryFailedLoads(win: BrowserWindow): void {
   });
 }
 
-export function installWindowDiagnostics(win: BrowserWindow): void {
-  logConsoleErrors(win);
+export function installWindowDiagnostics(
+  win: BrowserWindow,
+  devServer: boolean
+): void {
+  logConsole(win, devServer);
   retryFailedLoads(win);
 }

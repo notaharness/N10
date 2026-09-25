@@ -3,14 +3,13 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { agentCounter, shown, startStreamingAgent } from './setup/app.js';
+import { shown, startStreamingAgent } from './setup/app.js';
 
 /**
  * A blank window explains itself: what the renderer threw is in the
- * desktop log, a renderer that stops answering after a resume is
- * replaced, a window that produces no frames is repainted and reloaded
- * with each step logged, and a load the dev server could not answer is
- * retried until it can.
+ * desktop log, a resume is followed by a probe whose verdict (healthy,
+ * hung, producing no frames) is logged, and a load the dev server could
+ * not answer is retried until it can.
  */
 
 const readLog = (homeDir: string) =>
@@ -57,7 +56,20 @@ test.describe('Window diagnostics', () => {
     pageErrors.splice(0);
   });
 
-  test('a renderer hung across a resume is replaced and its terminal resumes', async ({
+  test('a resume logs the display stack and a healthy verdict', async ({
+    desktop,
+  }) => {
+    const { app, homeDir } = desktop;
+    await resume(app);
+    await expect
+      .poll(() => readLog(homeDir), { timeout: 30_000 })
+      .toMatch(/window healthy after resume/);
+    expect(await readLog(homeDir)).toMatch(
+      /session \S+, ozone \S+.*, gpu \S+=\S+/
+    );
+  });
+
+  test('a renderer hung across a resume is logged and left alone', async ({
     desktop,
   }) => {
     const { page, app, homeDir } = desktop;
@@ -65,22 +77,18 @@ test.describe('Window diagnostics', () => {
     await hangRenderer(app);
     await resume(app);
     await expect
-      .poll(() => readLog(homeDir), { timeout: 30_000 })
-      .toMatch(/window hung after resume: crash/);
-    await expect
-      .poll(() => shown(app), { timeout: 45_000 })
-      .toContain('WORKTREES');
-    const before = await agentCounter(app);
-    await expect
-      .poll(() => agentCounter(app), { timeout: 15_000 })
-      .toBeGreaterThan(before);
+      .poll(() => readLog(homeDir), { timeout: 45_000 })
+      .toMatch(/\[ERROR\] desktop: window hung after resume/);
+    expect(await readLog(homeDir)).not.toMatch(/renderer gone/);
+    expect(
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.isCrashed()
+      )
+    ).toBe(false);
   });
 
-  test('a window that produces no frames is repainted, reloaded, then left alone', async ({
-    desktop,
-  }) => {
-    const { page, app, homeDir } = desktop;
-    await startStreamingAgent(page, 'agent-work');
+  test('a window that produces no frames is logged', async ({ desktop }) => {
+    const { app, homeDir } = desktop;
     await app.evaluate(({ BrowserWindow }) => {
       // A capture that never completes is what a window that gets no
       // frames onto the screen looks like from the main process.
@@ -89,12 +97,8 @@ test.describe('Window diagnostics', () => {
     });
     await resume(app);
     await expect
-      .poll(() => readLog(homeDir), { timeout: 60_000 })
-      .toMatch(/window unpainted after recovery step 2: give-up/);
-    const log = await readLog(homeDir);
-    expect(log).toMatch(/window unpainted after resume: repaint/);
-    expect(log).toMatch(/window unpainted after recovery step 1: reload/);
-    expect(await shown(app)).toContain('WORKTREES');
+      .poll(() => readLog(homeDir), { timeout: 30_000 })
+      .toMatch(/\[ERROR\] desktop: window unpainted after resume/);
   });
 
   test('a load that fails is retried with backoff until the server answers', async ({
