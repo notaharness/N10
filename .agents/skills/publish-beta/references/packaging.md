@@ -28,7 +28,8 @@ beam's versions from `apps/desktop/package.json` and node-pty's from
 `apps/cli/package.json`. node-pty is N-API based, so one build loads in Node
 and Electron. Linux installs compile it and need the native build tools
 documented in the README; verify supported platforms when upgrading
-dependencies. TUI-only users download Electron too; that is accepted.
+dependencies. TUI-only users install Electron's package but never fetch its
+binary, which downloads when `n10` first opens the desktop.
 
 ## Review-agent command
 

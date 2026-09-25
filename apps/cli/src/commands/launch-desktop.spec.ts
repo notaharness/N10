@@ -1,4 +1,4 @@
-import { exitStatus, sandboxArgs } from './launch-desktop.js';
+import { electronFailure, exitStatus, sandboxArgs } from './launch-desktop.js';
 
 const ELECTRON = '/pkg/node_modules/electron/dist/electron';
 
@@ -51,5 +51,29 @@ describe('exitStatus', () => {
   it('reports a signal death as 128 plus the signal, never success', () => {
     expect(exitStatus(null, 'SIGTRAP')).toBe(133);
     expect(exitStatus(null, 'SIGSEGV')).toBe(139);
+  });
+});
+
+describe('electronFailure', () => {
+  const resolve = () => '/usr/lib/node_modules/electron/index.js';
+  const missing = Object.assign(new Error('missing'), {
+    code: 'MODULE_NOT_FOUND',
+  });
+  const failed = new Error('Electron failed to install correctly.');
+
+  it('asks for a reinstall when the package is missing', () => {
+    expect(electronFailure(missing, resolve)).toMatch(/not installed/);
+  });
+
+  it('names the one-time sudo download for a root-owned install', () => {
+    expect(electronFailure(failed, resolve, () => false)).toContain(
+      '`sudo node /usr/lib/node_modules/electron/install.js`'
+    );
+  });
+
+  it('suggests retrying a download that failed otherwise', () => {
+    expect(electronFailure(failed, resolve, () => true)).toMatch(
+      /Check your connection/
+    );
   });
 });

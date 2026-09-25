@@ -23,13 +23,13 @@ Launching the desktop app from a repository opens it; from anywhere else it reop
 
 ## Requirements
 
-- **Node.js 20+** and **git**.
+- **Node.js 22.12+** and **git**.
 - **A build toolchain on Linux.** `node-pty` ships prebuilt binaries for macOS and Windows, but not Linux, so npm compiles it during install. On Debian/Ubuntu: `sudo apt install build-essential python3`. macOS needs the Xcode command line tools (`xcode-select --install`).
 - **An agent CLI** on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`.
 - **`tmux` 3.2 or newer.** Agents and terminals run in tmux and survive quitting n10.
 - **`gh` or `az` (optional)** for pull-request features, on GitHub and Azure DevOps respectively.
 
-Installing downloads Electron's binary (~100–200 MB), also when you only use the terminal UI.
+The first launch of the desktop app downloads Electron's binary (~100–200 MB); the terminal UI does not need it. The desktop app needs a 64-bit system, and macOS 13 or later on a Mac.
 
 ### Windows
 

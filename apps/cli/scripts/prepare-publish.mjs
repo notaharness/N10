@@ -10,7 +10,7 @@
 //   - node-pty, native, so external to both bundles. N-API based, so
 //     one build loads in Node and Electron alike. Linux installs compile
 //     it (see the README).
-//   - electron, the binary `n10` launches the desktop app with.
+//   - electron, whose binary `n10` launches the desktop app with.
 //   - @notaharness/beam, whose platform package holds the `beam` binary
 //     the desktop runs as its daemon.
 // Everything else is bundled.
