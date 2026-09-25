@@ -41,6 +41,10 @@ import {
   installProcessDiagnostics,
   installRendererRecovery,
 } from './renderer-recovery.js';
+import { log, openDesktopLog } from './log.js';
+import { installWindowDiagnostics } from './window-diagnostics.js';
+import { installWindowWatchdog } from './window-watchdog.js';
+import { runQaSteps } from './qa-steps.js';
 import {
   isAllowedNavigation,
   loadTarget,
@@ -53,7 +57,6 @@ mark(MAIN_MARKS.module);
 const DIST = join(import.meta.dirname, '..');
 const DEV_SERVER_URL = process.env.N10_VITE_URL;
 const APP_VERSION = process.env.N10_DESKTOP_VERSION ?? 'dev';
-const IS_DEV = Boolean(DEV_SERVER_URL) || APP_VERSION === 'dev';
 
 let prefs: DesktopPrefs = loadDesktopPrefs();
 
@@ -69,7 +72,6 @@ function installAppMenu(): void {
   const template = buildMenuTemplate(
     {
       platform: process.platform,
-      isDev: IS_DEV,
       theme: prefs.theme,
       appVersion: APP_VERSION,
     },
@@ -171,7 +173,7 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show());
   win.webContents.on('did-finish-load', () => {
-    console.log('[desktop] renderer loaded');
+    log('info', 'renderer loaded');
     void runQaSteps(win);
   });
 
@@ -190,63 +192,18 @@ function createMainWindow(): BrowserWindow {
     if (/^https?:/i.test(url)) void shell.openExternal(url);
   });
 
+  installWindowDiagnostics(win);
   installRendererRecovery(win);
+  installWindowWatchdog(win, {
+    // A new window is a new compositor surface. It is opened before
+    // the old one goes, or window-all-closed would quit the app.
+    recreate: () => {
+      log('info', 'replacing the window');
+      createMainWindow();
+      if (!win.isDestroyed()) win.destroy();
+    },
+  });
   return win;
-}
-
-// ── Headless QA hook ─────────────────────────────────────────────
-// N10_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
-// runs each step's JS in the page, waits, captures a PNG, then quits.
-// Dev/CI only — lets us screenshot the real app under xvfb.
-
-interface QaStep {
-  js?: string;
-  waitMs?: number;
-  shot?: string;
-}
-
-async function runQaSteps(win: BrowserWindow): Promise<void> {
-  const raw = process.env.N10_QA_STEPS;
-  if (!raw) return;
-  let steps: QaStep[] = [];
-  try {
-    steps = JSON.parse(raw) as QaStep[];
-  } catch (err) {
-    console.error('[desktop] bad N10_QA_STEPS:', err);
-    app.quit();
-    return;
-  }
-  const { writeFile } = await import('node:fs/promises');
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  // Hidden/occluded windows may never paint, which makes capturePage
-  // hang — force the window visible and un-throttled for the run.
-  win.show();
-  win.focus();
-  win.webContents.setBackgroundThrottling(false);
-  console.log(`[desktop] qa: ${steps.length} steps`);
-  await sleep(1500);
-  let i = 0;
-  for (const step of steps) {
-    i += 1;
-    try {
-      if (step.js) {
-        const r: unknown = await win.webContents.executeJavaScript(
-          step.js,
-          true
-        );
-        console.log(`[desktop] qa step ${i} js →`, r);
-      }
-      await sleep(step.waitMs ?? 600);
-      if (step.shot) {
-        const img = await win.webContents.capturePage();
-        await writeFile(step.shot, img.toPNG());
-        console.log(`[desktop] qa step ${i} shot → ${step.shot}`);
-      }
-    } catch (err) {
-      console.error(`[desktop] qa step ${i} failed:`, err);
-    }
-  }
-  app.quit();
 }
 
 // ── Host contract (main-process side) ────────────────────────────
@@ -294,6 +251,10 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   // Only the instance that holds the lock rewrites what its sessions run.
   installSessionBin(app.getPath('userData'));
+  log(
+    'info',
+    `log at ${openDesktopLog(join(app.getPath('userData'), 'logs'))}`
+  );
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows()[0];
     if (win) {
@@ -316,7 +277,7 @@ if (!app.requestSingleInstanceLock()) {
       applySessionBackend();
       const opened = openStartupRepo();
       mark(MAIN_MARKS.repo);
-      console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
+      log('info', `startup repo: ${opened ? opened.cwd : 'none'}`);
 
       void createMainWindow();
       mark(MAIN_MARKS.window);
@@ -330,7 +291,7 @@ if (!app.requestSingleInstanceLock()) {
       });
     })
     .catch((err: unknown) => {
-      console.error('[desktop] startup failed', err);
+      log('error', `startup failed: ${String(err)}`);
       dialog.showErrorBox(
         'n10 could not start',
         err instanceof Error ? err.message : String(err)

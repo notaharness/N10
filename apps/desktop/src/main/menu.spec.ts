@@ -4,7 +4,6 @@ import { buildMenuTemplate } from './menu.js';
 
 const env = (platform: NodeJS.Platform) => ({
   platform,
-  isDev: false,
   theme: 'system' as const,
   appVersion: '1.0.0',
 });
@@ -62,17 +61,16 @@ describe('buildMenuTemplate', () => {
     expect(items.find((i) => i.label === 'Light')?.checked).toBe(false);
   });
 
-  it('only exposes dev tools in dev builds', () => {
+  it('offers Reload Window and dev tools in every build', () => {
+    // A blank or hung window has no title bar to click; these are the
+    // escape hatches the main process answers on its own.
     const roles = (t: ReturnType<typeof buildMenuTemplate>) =>
       (t.find((m) => m.label === '&View')?.submenu as { role?: string }[]).map(
         (i) => i.role
       );
-    expect(roles(buildMenuTemplate(env('linux'), vi.fn()))).not.toContain(
-      'toggleDevTools'
-    );
-    expect(
-      roles(buildMenuTemplate({ ...env('linux'), isDev: true }, vi.fn()))
-    ).toContain('toggleDevTools');
+    const view = roles(buildMenuTemplate(env('linux'), vi.fn()));
+    expect(view).toContain('forceReload');
+    expect(view).toContain('toggleDevTools');
   });
 });
 

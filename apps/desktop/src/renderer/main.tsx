@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { BOOT_MARKS, markOnce } from './lib/perf.js';
 import { initTheme } from './lib/theme.js';
 import './styles.css';
@@ -24,6 +25,11 @@ if (!root) throw new Error('#root not found');
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary
+      label="n10 hit an error it could not draw past."
+      reload={() => window.location.reload()}
+    >
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 );

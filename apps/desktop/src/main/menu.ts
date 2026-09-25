@@ -12,7 +12,6 @@ import type { MenuCommand, ThemePreference } from '../host/contract.js';
  */
 export interface MenuEnv {
   platform: NodeJS.Platform;
-  isDev: boolean;
   theme: ThemePreference;
   appVersion: string;
 }
@@ -150,13 +149,12 @@ export function buildMenuTemplate(
       { role: 'zoomOut' },
       { type: 'separator' },
       { role: 'togglefullscreen' },
-      ...(env.isDev
-        ? [
-            { type: 'separator' } satisfies MenuItemConstructorOptions,
-            { role: 'reload' } satisfies MenuItemConstructorOptions,
-            { role: 'toggleDevTools' } satisfies MenuItemConstructorOptions,
-          ]
-        : []),
+      { type: 'separator' },
+      // Handled by the main process, so both work on a window that is
+      // blank or hung. Reload Window is a fresh renderer against the
+      // same host: agent sessions and tabs survive it.
+      { role: 'forceReload', label: 'Reload Window' },
+      { role: 'toggleDevTools' },
     ],
   };
 
