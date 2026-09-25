@@ -1,7 +1,7 @@
 {
   "name": "n10-desktop",
-  "version": "1.0.0-beta.7",
-  "description": "n10 Desktop — GUI shell over the same app core as the n10 TUI",
+  "version": "0.0.1",
+  "description": "n10 Desktop, the Electron shell; ships inside @notaharness/n10",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",
@@ -139,38 +139,6 @@
         "options": {
           "command": "node apps/desktop/scripts/dev.mjs",
           "cwd": "{workspaceRoot}"
-        }
-      },
-      "prepare-install": {
-        "dependsOn": [
-          "build"
-        ],
-        "executor": "nx:run-commands",
-        "options": {
-          "command": "node apps/desktop/scripts/prepare-install.mjs"
-        }
-      },
-      "install-global": {
-        "dependsOn": [
-          "prepare-install"
-        ],
-        "executor": "nx:run-commands",
-        "options": {
-          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -f ./apps/desktop/dist/*n10-desktop-*.tgz"
-        }
-      },
-      "publish": {
-        "dependsOn": [
-          "prepare-install"
-        ],
-        "executor": "nx:run-commands",
-        "options": {
-          "commands": [
-            "chmod +x apps/desktop/dist/launcher.mjs",
-            "npm publish --tag beta apps/desktop/dist",
-            "node scripts/dist-tag-latest.mjs @notaharness/n10-desktop"
-          ],
-          "parallel": false
         }
       }
     }

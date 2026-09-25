@@ -87,7 +87,7 @@ import type {
 } from './contract-events.js';
 
 export interface N10VersionInfo {
-  /** n10-desktop package version */
+  /** `@notaharness/n10` package version */
   app: string;
   electron: string;
   node: string;

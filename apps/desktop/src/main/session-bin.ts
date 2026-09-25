@@ -2,7 +2,8 @@
  * The directory every local session the desktop launches gets first on
  * its PATH (core's `setLocalSessionEnv`): `beam`, the binary the app
  * runs as its daemon, and `n10`, whose `util` subcommand review agents
- * call (`n10 util add-comment`) whether or not the n10 CLI is installed.
+ * call (`n10 util add-comment`) with this app's own code, whether or not
+ * an `n10` is on the session's PATH.
  */
 import {
   chmodSync,
@@ -33,7 +34,7 @@ function shellQuote(value: string): string {
 
 /** `n10 util` runs the bundled shim under the app's executable as Node.
  *  Anything else goes to the first `n10` on PATH outside a session bin —
- *  an installed CLI, exec'd directly. */
+ *  a global install, exec'd directly. */
 function n10Script(src: SessionBinSources): string {
   const shim = [src.runtime, src.shim].map(shellQuote).join(' ');
   return `#!/bin/sh
@@ -48,7 +49,7 @@ for dir in $PATH; do
     exec "$dir/n10" "$@"
   fi
 done
-echo 'This n10 comes with n10 Desktop and runs only \`n10 util\`. Install @notaharness/n10 for the rest.' >&2
+echo 'In n10 Desktop sessions this n10 runs only \`n10 util\`, and no other n10 is on PATH. Install @notaharness/n10 globally for the rest.' >&2
 exit 1
 `;
 }

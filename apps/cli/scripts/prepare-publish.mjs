@@ -1,59 +1,111 @@
 #!/usr/bin/env node
-// Rewrites apps/cli/dist/package.json into a minimal, publish-safe package.
-// The build copies the source package.json into dist/ (via the build's
-// `assets` config) for local use (e.g. `npm install -g ./apps/cli/dist`),
-// but that file carries workspace `@n10/*` deps that don't exist on the
-// npm registry, plus dev deps and nx config bloat. This strips all of it.
+// Turns apps/cli/dist into the publishable `@notaharness/n10` package:
+// the `n10` executable (main.js and its chunks) with the desktop app's
+// build under desktop/. Consumed by the `install-global` and `publish`
+// targets, which depend on both builds.
+//
+// The build copies the source package.json into dist/, carrying
+// workspace `@n10/*` deps that don't exist on the npm registry, dev deps
+// and nx config. This writes a manifest with the runtime deps only:
+//   - node-pty, native, so external to both bundles. N-API based, so
+//     one build loads in Node and Electron alike. Linux installs compile
+//     it (see the README).
+//   - electron, the binary `n10` launches the desktop app with.
+//   - @notaharness/beam, whose platform package holds the `beam` binary
+//     the desktop runs as its daemon.
+// Everything else is bundled.
 
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertVersionsMatch } from '../../../scripts/shared-version.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(__dirname, '..');
 const distDir = resolve(appDir, 'dist');
-const distPkgPath = resolve(distDir, 'package.json');
-const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
+const desktopDir = resolve(appDir, '..', 'desktop');
 
-// The TUI and the desktop app ship as one release under one version.
-assertVersionsMatch();
+const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const cli = readJson(resolve(appDir, 'package.json'));
+const desktop = readJson(resolve(desktopDir, 'package.json'));
+
+function requireVersion(name, version) {
+  if (!version) throw new Error(`${name} version not found`);
+  return version;
+}
 
 // npm only picks up a README that sits in the pack root, and the pack
-// root is dist/ — without this the npm page is blank.
+// root is dist/ — without it the npm page is blank.
 copyFileSync(resolve(appDir, 'README.md'), resolve(distDir, 'README.md'));
 
 // @cwasm/webp is bundled but loads its wasm from disk at runtime — it
-// has to sit next to main.js and ship in the tarball.
+// has to sit next to the chunks and ship in the tarball.
 execFileSync(process.execPath, [resolve(__dirname, 'copy-webp-wasm.mjs')], {
   stdio: 'inherit',
 });
 
-// node-pty is the only runtime dep kept external by esbuild (native module).
-// Everything else — ink, react, @n10/*, @inkjs/ui, @mishieck/ink-titled-box
-// — is bundled into dist/main.js.
-const nodePtyVersion = src.dependencies?.['node-pty'];
-if (!nodePtyVersion) {
-  throw new Error('node-pty missing from source dependencies');
+// The desktop app keeps its build layout: main/ finds preload/ and
+// renderer/ beside it.
+rmSync(resolve(distDir, 'desktop'), { recursive: true, force: true });
+for (const part of ['main', 'preload', 'renderer']) {
+  const from = resolve(desktopDir, 'dist', part);
+  if (!existsSync(from)) {
+    throw new Error(`${from} is missing; build the desktop first`);
+  }
+  cpSync(from, resolve(distDir, 'desktop', part), {
+    recursive: true,
+    filter: (path) => !path.endsWith('.map'),
+  });
 }
 
 const out = {
-  name: src.name,
-  version: src.version,
-  description: src.description,
-  author: src.author,
-  license: src.license,
-  type: src.type,
-  bin: src.bin,
-  files: ['main.js', 'webp.wasm', 'README.md'],
-  publishConfig: src.publishConfig,
-  engines: src.engines,
-  repository: src.repository,
-  dependencies: { 'node-pty': nodePtyVersion },
+  name: cli.name,
+  version: cli.version,
+  description: cli.description,
+  author: cli.author,
+  license: cli.license,
+  type: 'module',
+  // Electron names the app, and its userData directory, after this.
+  productName: 'n10',
+  keywords: [
+    'git-worktree',
+    'code-review',
+    'electron',
+    'tui',
+    'claude-code',
+    'ai-agent',
+  ],
+  // Electron's entry: `n10` runs Electron on this directory.
+  main: 'desktop/main/main.js',
+  bin: cli.bin,
+  // Explicit list: without it npm pack honors the repo's .gitignore,
+  // which excludes everything we ship.
+  files: ['*.js', 'webp.wasm', 'desktop/'],
+  publishConfig: cli.publishConfig,
+  engines: cli.engines,
+  repository: cli.repository,
+  dependencies: {
+    electron: requireVersion('electron', desktop.devDependencies?.electron),
+    'node-pty': requireVersion('node-pty', cli.dependencies?.['node-pty']),
+    '@notaharness/beam': requireVersion(
+      '@notaharness/beam',
+      desktop.dependencies?.['@notaharness/beam']
+    ),
+  },
 };
 
-writeFileSync(distPkgPath, JSON.stringify(out, null, 2) + '\n');
-console.log(
-  `Prepared ${distPkgPath} for publish (name=${out.name}@${out.version})`
+writeFileSync(
+  resolve(distDir, 'package.json'),
+  JSON.stringify(out, null, 2) + '\n'
 );
+// The bin entry has to be executable in the packed tarball.
+chmodSync(resolve(distDir, 'main.js'), 0o755);
+console.log(`Prepared ${distDir} (${out.name}@${out.version})`);

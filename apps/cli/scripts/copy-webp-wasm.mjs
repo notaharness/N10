@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // @cwasm/webp reads webp.wasm from its own directory at runtime, and it
-// is bundled into dist/main.js — so the wasm has to sit next to the
+// is bundled into the CLI's chunks — so the wasm has to sit next to the
 // bundle. Nx's esbuild asset copying can't reach into node_modules, so
-// this does it. Run by `install-global` and `prepare-publish`.
+// this does it. Run by `prepare-publish`.
 import { copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -23,7 +23,6 @@ import {
   ToastProvider,
 } from '@n10/app-core';
 import { killAll, applySessionBackend, probeTmuxAvailability } from '@n10/core';
-import { handleUtilCommand } from '@n10/review-comments';
 import {
   repoTitle,
   setWindowTitle,
@@ -107,67 +106,62 @@ function App() {
 
 // ── Entry point ────────────────────────────────────────────────────
 
-const args = process.argv.slice(2);
+/** `n10 --tui [dir]`: `args` follow `--tui`. */
+export async function runTui(args: string[]): Promise<void> {
+  const targetDir = args.find((a) => !a.startsWith('--'));
+  if (targetDir) {
+    process.chdir(targetDir);
+  }
 
-// ── Subcommand routing (no React/Ink needed) ─────────────────────
-if (args[0] === 'util') {
-  await handleUtilCommand(args.slice(1));
-  process.exit(0);
+  // Name the tab after the repo, so a terminal full of n10s is legible.
+  // Skip the git lookup entirely when there's no TTY to title (CI, pipes).
+  if (process.stdout.isTTY) {
+    setWindowTitle(repoTitle());
+  }
+
+  process.on('exit', () => {
+    killAll();
+    restoreWindowTitle();
+  });
+  process.on('SIGINT', () => {
+    killAll();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    killAll();
+    process.exit(0);
+  });
+
+  // Resolve the requirement before rendering so missing tmux is actionable.
+  await probeTmuxAvailability();
+  try {
+    applySessionBackend();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  render(
+    <ConfigProvider providers={providers}>
+      <KeybindProvider>
+        <LayoutProvider>
+          <NavProvider>
+            <AsyncOpsProvider>
+              <PlanProvider>
+                <ModalProvider>
+                  <ToastProvider>
+                    <SessionProvider>
+                      <SidebarProvider>
+                        <App />
+                      </SidebarProvider>
+                    </SessionProvider>
+                  </ToastProvider>
+                </ModalProvider>
+              </PlanProvider>
+            </AsyncOpsProvider>
+          </NavProvider>
+        </LayoutProvider>
+      </KeybindProvider>
+    </ConfigProvider>
+  );
 }
-
-const targetDir = args.find((a) => !a.startsWith('--'));
-if (targetDir) {
-  process.chdir(targetDir);
-}
-
-// Name the tab after the repo, so a terminal full of n10s is legible.
-// Skip the git lookup entirely when there's no TTY to title (CI, pipes).
-if (process.stdout.isTTY) {
-  setWindowTitle(repoTitle());
-}
-
-process.on('exit', () => {
-  killAll();
-  restoreWindowTitle();
-});
-process.on('SIGINT', () => {
-  killAll();
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  killAll();
-  process.exit(0);
-});
-
-// Resolve the requirement before rendering so missing tmux is actionable.
-await probeTmuxAvailability();
-try {
-  applySessionBackend();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-}
-
-render(
-  <ConfigProvider providers={providers}>
-    <KeybindProvider>
-      <LayoutProvider>
-        <NavProvider>
-          <AsyncOpsProvider>
-            <PlanProvider>
-              <ModalProvider>
-                <ToastProvider>
-                  <SessionProvider>
-                    <SidebarProvider>
-                      <App />
-                    </SidebarProvider>
-                  </SessionProvider>
-                </ToastProvider>
-              </ModalProvider>
-            </PlanProvider>
-          </AsyncOpsProvider>
-        </NavProvider>
-      </LayoutProvider>
-    </KeybindProvider>
-  </ConfigProvider>
-);

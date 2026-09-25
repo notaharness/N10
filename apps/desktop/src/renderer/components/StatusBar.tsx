@@ -79,7 +79,7 @@ export function StatusBar({
           {running} running
         </Segment>
       )}
-      <Segment label="n10-desktop build">
+      <Segment label="n10 build">
         <span className="text-muted-foreground">
           v{version.data?.app ?? '…'}
         </span>
