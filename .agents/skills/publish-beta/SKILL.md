@@ -15,7 +15,7 @@ Publish only when the user asks. n10 is one package, `@notaharness/n10`
    Review the diff, run the relevant checks, and commit the version bump.
 4. Run the Nx target, which builds the CLI and the desktop, prepares the
    publishable `dist`, publishes with `--tag beta`, then moves `latest` via
-   `scripts/dist-tag-latest.mjs`:
+   `apps/cli/scripts/dist-tag-latest.mjs`:
 
    ```sh
    npx nx run cli:publish

@@ -39,5 +39,5 @@ PATH and matches the running app's version.
 ## Tags
 
 Publish with `beta`, then move `latest` to the same version using
-`scripts/dist-tag-latest.mjs`. This keeps installs with and without `@beta`
+`apps/cli/scripts/dist-tag-latest.mjs`. This keeps installs with and without `@beta`
 consistent. Verify both tags after releasing.

@@ -5,13 +5,13 @@ apps/cli/                        — The published `n10` package: the command, t
   src/main.ts                    — `n10` entry: routes to the desktop, `--tui` or `util`, loading only that path
   src/commands/                  — Argument parsing and the Electron launch behind plain `n10`
   src/tui.tsx                    — TUI entry (`runTui`), root component
-  scripts/prepare-publish.mjs    — Assembles dist/ into the package: the CLI bundle, the desktop build under desktop/, the manifest
   src/input-handlers.ts          — Settings/controls input handlers (keybind-driven state transitions)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
   src/models/                    — Pure view-models behind those components (sidebar-layout, comment-card-model, pr-badge-model)
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
+  scripts/prepare-publish.mjs    — Assembles dist/ into the package: the CLI bundle, the desktop build under desktop/, the manifest
 apps/desktop/                    — Electron GUI shell over @n10/app-core, shipped inside `@notaharness/n10`
   src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
   src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), N10_QA_STEPS hook
