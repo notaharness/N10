@@ -12,8 +12,9 @@ Machines connect over encrypted tunnels built with
 [tailcat](https://github.com/tailscale/tailcat), no Tailscale account needed.
 One passkey signs every machine into the fleet, and machines find each other
 through an encrypted directory at [beam.n10.is](https://beam.n10.is). Shells,
-commands and messages go straight between your machines, never through
-beam.n10.is.
+commands and messages travel through the tunnels, never through beam.n10.is.
+When two machines can't connect directly, the tunnel goes through an
+encrypted relay.
 
 Beam is in beta. The source, the full command reference and the trust model
 are at [github.com/notaharness/beam](https://github.com/notaharness/beam).

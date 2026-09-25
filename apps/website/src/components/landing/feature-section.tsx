@@ -28,17 +28,13 @@ export function FeatureSection({
   description,
   alt,
   href,
-  index,
-}: Feature & { index: number }) {
-  const reverse = index % 2 === 1;
+  reverse = false,
+}: Feature & { reverse?: boolean }) {
   return (
     <div className="grid items-center gap-10 md:grid-cols-12 md:gap-14">
       <div className={cn('min-w-0 md:col-span-5', reverse && 'md:order-2')}>
-        <p className="font-mono text-xs tracking-wide">
-          <span className="text-fd-primary">
-            {String(index + 1).padStart(2, '0')}
-          </span>
-          <span className="text-fd-muted-foreground"> / {label}</span>
+        <p className="text-fd-primary font-mono text-xs tracking-wide">
+          {label}
         </p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
           {title}

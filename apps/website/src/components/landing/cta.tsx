@@ -20,10 +20,10 @@ export function Cta() {
               Read the docs
             </Link>
             <Link
-              href="/orchestra"
+              href="https://github.com/notaharness/n10"
               className={buttonVariants({ variant: 'outline' })}
             >
-              Use Orchestra
+              GitHub
             </Link>
           </div>
         </div>

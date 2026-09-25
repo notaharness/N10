@@ -15,7 +15,7 @@ export function Footer() {
       <div className="text-fd-muted-foreground mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-4 px-4 py-10 text-sm">
         <div className="flex items-center gap-4">
           <Logo className="h-5 w-auto" />
-          <span>Run coding agents across Git worktrees</span>
+          <span>Keep up with your agents&apos; pull requests</span>
           <span aria-hidden>·</span>
           <Link
             href="https://github.com/notaharness"
