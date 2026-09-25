@@ -1,0 +1,72 @@
+---
+title: Getting started
+description: From installing n10 to an agent working on a branch in its own worktree.
+---
+
+This walks through n10 Desktop with a GitHub repository. It assumes you have
+[installed n10](/docs/installation) and its prerequisites, including a
+signed-in `gh` and `claude`.
+
+## 1. Open your repository
+
+Run `n10` from inside the repository you want to work on:
+
+```sh
+cd ~/code/my-project
+n10
+```
+
+n10 Desktop opens that repository. Run it anywhere else and it opens the
+repository you used last, or asks you to pick one with
+**Open repository…**.
+
+n10 reads your Git remote and fills in the project settings: the owner and
+repository, and your GitHub username from `gh`. The sidebar lists your
+worktrees and open pull requests.
+
+For Azure DevOps, open **Settings** with `⌘,` (`Ctrl+,` on Linux and Windows),
+go to **Provider** and enter your personal access token.
+
+## 2. Create a worktree
+
+Press `⌘N` (`Ctrl+N` on Linux and Windows). Type a name for the new
+branch, such as `fix-login-timeout`, and choose
+**Create branch fix-login-timeout and open a worktree**.
+
+n10 creates the branch from the commit your main checkout is on, and checks
+it out in a worktree under `.claude/worktrees/` in the repository. Your main
+checkout is untouched. The **Worktree Path** setting moves worktrees
+elsewhere.
+
+## 3. Launch an agent
+
+When the worktree is ready, the launch dialog opens. The **Agent** selector
+starts on your default agent, Claude unless you've changed it. Leave
+**New session** selected and choose **Start new session**.
+
+The agent starts in the worktree, in a terminal pane in n10. Tell it what to
+do, as you would in any terminal.
+
+Agents and terminals run in tmux, so quitting n10 leaves them running, and
+n10 reconnects to them when you open it again. An agent that has exited
+keeps its last output, and you can resume its conversation or start a new
+one. Closing a terminal tab or stopping an agent ends its session.
+
+To launch an agent on a worktree later, right-click it in the sidebar and
+choose **Launch agent…**.
+
+## 4. Follow the pull request
+
+When the agent opens a pull request, its CI checks, reviews and conflicts
+show on the worktree's row. See
+[what the sidebar shows](/docs/guides/worktrees#what-the-sidebar-shows).
+
+## Next
+
+- [Review an agent's draft comments](/docs/guides/agent-reviews) on
+  someone else's pull request.
+- [Babysit a pull request](/docs/guides/babysit) so its agent hears about
+  failing checks and new comments.
+- [Configure n10](/docs/configuration): choose your agent, sync interval
+  and merged-branch cleanup.
+- Prefer the terminal? See [the terminal UI](/docs/terminal-ui).

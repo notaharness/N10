@@ -1,12 +1,19 @@
 ---
-title: Review an agent's draft comments
-description: Agents draft review comments; you work through them and post the ones you keep.
+title: Review with an agent
+description: An agent drafts review comments on a pull request; you decide which to post.
 ---
 
-Ask an agent to review a pull request. It adds draft comments to the
-relevant lines in the diff, and you work through them in severity order.
-Edit, discard, skip, or post each comment; published comments are
-attributed to you.
+An agent can review a pull request for you. It leaves draft comments on the
+lines it has something to say about, and nothing is posted until you post
+it.
 
-This feature requires the `n10` CLI, including when you use the desktop
-app.
+1. Double-click the pull request in the sidebar to open the launch dialog.
+2. Choose **Review**. Add instructions if you want the agent to focus on
+   something, then choose **Start review**.
+3. As the agent works, its drafts appear in the pull request's review rail
+   and in the diff, sorted by severity.
+4. Step through them. Edit, discard, skip or post each one, or post them all
+   at once. Posted comments are yours: they appear under your name.
+
+The agent saves its drafts through the `n10` command, so `n10` must be on
+its `PATH`. Installing n10 with npm puts it there.

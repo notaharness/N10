@@ -1,10 +1,12 @@
 import { CopyButton } from '@/components/copy-button';
 
 const commands = [
-  { label: 'Desktop app', command: 'npm install -g @notaharness/n10-desktop' },
-  { label: 'Terminal UI and CLI', command: 'npm install -g @notaharness/n10' },
   {
-    label: 'Beam (remote agents)',
+    label: 'n10 Desktop and terminal UI',
+    command: 'npm install -g @notaharness/n10',
+  },
+  {
+    label: 'Beam, for machines without n10',
     command: 'npm install -g @notaharness/beam',
   },
 ];
@@ -45,9 +47,7 @@ export function InstallStrip() {
         ))}
       </div>
       <ul className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <li className="text-fd-muted-foreground mr-1 text-sm">
-          Supported agents
-        </li>
+        <li className="text-fd-muted-foreground mr-1 text-sm">Works with</li>
         {worksWith.map((name) => (
           <li
             key={name}

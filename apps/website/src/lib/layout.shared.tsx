@@ -24,6 +24,10 @@ export function baseOptions(): BaseLayoutProps {
         url: '/orchestra',
       },
       {
+        text: 'Roadmap',
+        url: '/docs/roadmap',
+      },
+      {
         type: 'icon',
         label: 'GitHub',
         icon: <GitHubIcon className="size-[1.15em]" />,

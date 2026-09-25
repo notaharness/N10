@@ -1,0 +1,39 @@
+---
+title: Roadmap
+description: Where n10 is going, and the epics in progress.
+---
+
+n10 aims to be the all-in-one worktree manager. You run coding agents in Git
+worktrees and review their pull requests in one place, without a trip to
+GitHub.com or Azure DevOps. It should work well out of the box, with sane
+defaults, and later open up to plugins so others can extend it.
+
+The work is tracked on the
+[n10 roadmap board](https://github.com/orgs/notaharness/projects/1). Each
+epic below is an issue on that board, with its sub-issues listing the
+concrete work.
+
+## Current epics
+
+- **[Launch](https://github.com/notaharness/n10/issues/133)**: the first
+  public release of n10, Beam and Orchestra, with docs for newcomers.
+- **[Worktree lifecycle](https://github.com/notaharness/n10/issues/145)**:
+  n10's tabs always match the worktrees on disk, whatever creates, moves or
+  removes them.
+- **[n10 Desktop UX/UI](https://github.com/notaharness/n10/issues/151)**:
+  everyday actions in n10 Desktop are obvious without docs.
+- **[beam.n10.is pairing UX/UI](https://github.com/notaharness/beam/issues/33)**:
+  beam.n10.is explains what Beam is, says up front whether your browser can
+  pair, and shows the pairing as it happens.
+- **[Vendor-neutral pull request view and diff viewer](https://github.com/notaharness/n10/issues/158)**:
+  one pull request view and diff viewer that work the same for GitHub and
+  Azure DevOps.
+- **[Cross-vendor pull request stacks](https://github.com/notaharness/n10/issues/162)**
+  (idea): pull requests that target other pull requests' branches show as a
+  stack, on any vendor.
+- **[Plugin architecture](https://github.com/notaharness/n10/issues/163)**
+  (idea): n10 Desktop takes plugins, with features such as the Beam fleet as
+  the first ones.
+
+To help with one, open its issue and pick a sub-issue; see
+[Contributing](/docs/contributing).

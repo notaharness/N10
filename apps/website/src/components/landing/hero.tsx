@@ -22,7 +22,7 @@ export function Hero() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/docs/installation"
+            href="/docs/getting-started"
             className={buttonVariants({ size: 'lg' })}
           >
             Read the docs

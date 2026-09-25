@@ -56,10 +56,9 @@ const features: Feature[] = [
     alt: 'The terminal UI showing pull request status, inline review threads, and a plan ready to send to an agent',
     description: (
       <>
-        Run <code>n10</code> from your repository root to open the terminal UI.
-        It shares projects, configuration and worktrees with the desktop app.
-        Most development now focuses on the desktop app, and some features, such
-        as whole-file diffs, are only there.
+        Run <code>n10 --tui</code> from your repository to open the terminal UI.
+        It shares projects, configuration and worktrees with n10 Desktop. Some
+        features, such as whole-file diffs, are desktop-only.
       </>
     ),
   },
