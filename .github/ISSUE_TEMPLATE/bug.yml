@@ -17,11 +17,9 @@ body:
   - type: textarea
     attributes:
       label: Acceptance criteria
-      description: The checks that tell us it's fixed.
+      description: The checks that tell us it's fixed, if you know them.
       placeholder: |
         - [ ] ...
-    validations:
-      required: true
   - type: input
     attributes:
       label: Environment

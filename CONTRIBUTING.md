@@ -35,6 +35,8 @@ npx nx e2e cli-e2e                    # offline TUI tests
 npx nx e2e desktop-e2e                # offline Electron tests
 ```
 
+`AGENTS.md` lists the rest, including visual and live integration tests.
+
 CI runs lint, tests, typecheck, builds and end-to-end tests on every pull
 request. A pre-commit hook runs lint on staged files. See
 [`docs/testing.md`](docs/testing.md) for test fixtures and visual QA.
@@ -45,14 +47,17 @@ request. A pre-commit hook runs lint on staged files. See
 commands, boundaries between packages and working conventions. Some folders
 add their own `AGENTS.md` with local rules.
 
-- Codex, Copilot, OpenCode and most other agents read `AGENTS.md` on their own.
+- Codex reads `AGENTS.md` on its own.
 - Claude Code reads `CLAUDE.md`, which imports `AGENTS.md`.
-- For any other agent, tell it to read `AGENTS.md` and each `AGENTS.md` between
-  the root and the files it changes.
+- Tell any other agent to read `AGENTS.md`.
 
-Give the agent the issue, including its acceptance criteria, as the task. You
-are responsible for the pull request, so review the agent's changes before you
-open it.
+Not every agent loads the nested files, so ask it to read each `AGENTS.md`
+between the root and the files it changes.
+
+[`docs/agent-context.md`](docs/agent-context.md) has the details.
+
+Give the agent the issue, including its acceptance criteria, as the task.
+Review its changes before you open a pull request.
 
 ## Open a pull request
 
@@ -61,8 +66,7 @@ open it.
 - Branch from `master`. Use [Conventional Commits](https://www.conventionalcommits.org/)
   with a project scope, such as `fix(desktop):` or `feat(core):`.
 - Add or update tests for the behavior you change.
-- Describe what the code does now and where each change lives. Mention manual
-  checks that CI can't cover, such as how you tried a UI change.
+- Fill in the pull request template.
 - Keep it small. Split unrelated changes into separate pull requests.
 
 By contributing, you agree that your contributions are licensed under the
