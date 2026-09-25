@@ -156,7 +156,7 @@ export function getRepo(): RepoInfo | null {
 
 /**
  * Startup repo resolution, in priority order:
- *   1. N10_START_DIR (launcher/dev pass the invoking shell's cwd)
+ *   1. N10_START_DIR (`n10` and dev.mjs pass the invoking shell's cwd)
  *   2. the most recently opened repo that still exists on disk
  * Falls back to null (repo-open screen) when neither applies.
  */

@@ -108,7 +108,7 @@ See `libs/terminal-tmux/AGENTS.md`.
   `fix(desktop):`, `feat(core):`, `test(desktop-e2e):`.
 - Use `gh` for GitHub and the `review-pr` skill for reviews. Post a review
   only when requested; a local review does not require publishing comments.
-- Use `publish-beta` when asked to release. Both npm packages share one version.
+- Use `publish-beta` when asked to release.
 
 ## Reference
 

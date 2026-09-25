@@ -1,5 +1,5 @@
 /**
- * Dev orchestrator for n10-desktop:
+ * Dev orchestrator for the desktop app:
  *   1. builds main + preload bundles with esbuild (watched)
  *   2. starts the Vite dev server for the renderer (HMR)
  *   3. launches Electron pointed at the dev server

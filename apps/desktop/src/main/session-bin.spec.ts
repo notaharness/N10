@@ -87,7 +87,7 @@ describe('n10 outside `util`', () => {
     expect(run.stdout.trim()).toBe('cli --version');
   });
 
-  it('says what it is for when no n10 CLI is installed', () => {
+  it('says what it is for when no other n10 is on PATH', () => {
     const bin = join(dir, 'bin');
     writeSessionBin(bin, { runtime: process.execPath, shim: echoShim() });
     const run = spawnSync(join(bin, 'n10'), [], {

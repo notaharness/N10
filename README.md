@@ -24,20 +24,19 @@ You'll need:
 - An agent CLI on your `PATH`: `claude`, `codex`, `gemini`, `copilot`, or `opencode`.
 - For GitHub, the `gh` CLI, signed in to your account.
 - For Azure DevOps, a personal access token with repository and pull request access.
-- On Linux, `build-essential` and `python3` to compile `node-pty` when installing the desktop app.
+- On Linux, `build-essential` and `python3` to compile `node-pty` during installation.
 
 n10 runs agents and terminal tabs in tmux. Quitting n10 detaches from them; reopening n10 reconnects to surviving sessions. Exited agents keep their final output so you can resume the recorded agent or explicitly start a new conversation. Closing a terminal tab or stopping an agent ends its tmux session.
 
 ### Installation
 
-Install the desktop app and CLI:
+One package holds the desktop app and the terminal UI:
 
 ```sh
-npm install -g @notaharness/n10-desktop  # Desktop app
-npm install -g @notaharness/n10          # Terminal UI and CLI utilities
+npm install -g @notaharness/n10
 ```
 
-Run `n10-desktop` or `n10` from your project directory. On the first run, n10 walks you through connecting your version control provider.
+Run `n10` from your project directory to open the desktop app, or `n10 --tui` for the terminal UI. On the first run, n10 walks you through connecting your version control provider.
 
 ## Features
 
@@ -54,8 +53,6 @@ n10 also detects merged branches and conflicts with the base branch. You can ena
 ### Review an agent's draft comments
 
 Ask an agent to review a pull request. It adds draft comments to the relevant lines in the diff, and you work through them in severity order. Edit, discard, skip, or post each comment; published comments are attributed to you.
-
-This feature requires the `n10` CLI, including when you use the desktop app.
 
 ![Working through an agent's draft review comments, posting one and skipping to the next](docs/media/review.gif)
 
@@ -87,7 +84,7 @@ The most important feature of any software.
 
 ## The terminal UI
 
-Run `n10` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
+Run `n10 --tui` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
 
 You can check pull request status, read diffs and review threads, and send plans to agents from the terminal. Most development now focuses on the desktop app; some features, such as whole-file diffs, are only available there.
 

@@ -16,7 +16,7 @@ interface ModalProps {
 // A reusable modal overlay. Covers the entire terminal viewport and
 // flex-centers its child in the middle of the screen. Designed to be
 // rendered as a sibling of the main layout, NOT nested inside it —
-// typically at the root of the App component (see main.tsx).
+// typically at the root of the App component (see tui.tsx).
 //
 // ── Why this exists ────────────────────────────────────────────────
 // Ink's `position="absolute"` with just the four top/right/bottom/left

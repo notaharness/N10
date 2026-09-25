@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-- `apps/cli/` -- Ink v6 TUI app (React 19, ESM-only), entry at `src/main.tsx`
+- `apps/cli/` -- Ink v6 TUI app (React 19, ESM-only), entry at `src/main.ts`, TUI at `src/tui.tsx`
   - `src/components/` -- Shared components (SidebarLayout, TerminalView, TabBar, etc.)
   - `src/screens/sessions/` -- Sessions tab (SessionsTab, Sidebar, BranchPicker, sessions-input)
   - `src/screens/reviews/` -- Reviews tab (ReviewsTab, ReviewsSidebar, ReviewPane, reviews-input)
@@ -18,7 +18,7 @@
 
 - **State split into contexts**: AppStateContext, SessionContext, ReviewContext, ConfigContext (previously a single god object)
 - **Input handlers split by feature**: `screens/sessions/sessions-input.ts` and `screens/reviews/reviews-input.ts` with shared helpers in `input-handlers.ts`
-- **main.tsx slimmed down**: ~136 lines, delegates to SessionsTab and ReviewsTab screen components
+- **tui.tsx slimmed down**: ~136 lines, delegates to SessionsTab and ReviewsTab screen components
 - **pty-registry.ts**: module-level mutable Map singleton, no React integration
 - **No error boundaries** -- unhandled error crashes entire TUI
 - **Test files** for cli app: `pr-utils.spec.ts`, `session-sort.spec.ts`

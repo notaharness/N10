@@ -43,7 +43,7 @@ test('reports the tmux requirement before rendering when tmux is missing', () =>
     const binary = fileURLToPath(
       new URL('../../cli/dist/main.js', import.meta.url)
     );
-    const result = spawnSync(process.execPath, [binary, homeDir], {
+    const result = spawnSync(process.execPath, [binary, '--tui', homeDir], {
       env,
       encoding: 'utf8',
       timeout: 10000,

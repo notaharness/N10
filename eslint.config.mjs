@@ -314,10 +314,9 @@ export default tseslint.config(
     },
   },
   {
-    // The entry point owns shutdown, and `n10 util` subcommands are
-    // plain CLI with no Ink tree to unmount. Exiting the process is
-    // their job; the rule is about components reaching for it.
-    files: ['apps/cli/src/main.tsx', 'apps/cli/src/commands/**/*.ts'],
+    // The entry points own shutdown. Exiting the process is their job;
+    // the rule is about components reaching for it.
+    files: ['apps/cli/src/main.ts', 'apps/cli/src/tui.tsx'],
     rules: {
       'ink/no-bare-process-exit': 'off',
     },
@@ -366,17 +365,6 @@ export default tseslint.config(
       'vitest/expect-expect': 'warn',
       'vitest/no-conditional-expect': 'warn',
       'vitest/no-standalone-expect': 'warn',
-    },
-  },
-  {
-    // Build/release scripts are workspace tooling, not application
-    // code: they run from the repo root with plain node and are meant
-    // to reach shared helpers there (e.g. scripts/shared-version.mjs).
-    // The module-boundary rule guards the app/lib dependency graph,
-    // which these files are not part of.
-    files: ['apps/*/scripts/**/*.mjs', 'scripts/**/*.mjs'],
-    rules: {
-      '@nx/enforce-module-boundaries': 'off',
     },
   },
   {

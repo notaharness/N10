@@ -1,7 +1,16 @@
 {
   "name": "@notaharness/n10",
-  "version": "1.0.0-beta.7",
-  "description": "A TUI workflow manager for git worktrees",
+  "version": "1.0.0-beta.1",
+  "description": "Run AI coding agents across git worktrees and review their pull requests, from a desktop app or terminal UI",
+  "productName": "n10",
+  "keywords": [
+    "git-worktree",
+    "code-review",
+    "electron",
+    "tui",
+    "claude-code",
+    "ai-agent"
+  ],
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",
@@ -43,10 +52,9 @@
           "external": [
             "node-pty"
           ],
-          "main": "apps/cli/src/main.tsx",
+          "main": "apps/cli/src/main.ts",
           "tsConfig": "apps/cli/tsconfig.app.json",
           "assets": [
-            "apps/cli/src/assets",
             "apps/cli/package.json"
           ],
           "esbuildOptions": {
@@ -59,7 +67,8 @@
             "sourcemap": true,
             "outExtension": {
               ".js": ".js"
-            }
+            },
+            "splitting": true
           }
         },
         "configurations": {
@@ -75,64 +84,46 @@
               "sourcemap": false,
               "outExtension": {
                 ".js": ".js"
-              }
+              },
+              "splitting": true
             }
           }
         }
       },
-      "prune-lockfile": {
+      "prepare-publish": {
         "dependsOn": [
-          "build"
-        ],
-        "cache": true,
-        "executor": "@nx/js:prune-lockfile",
-        "outputs": [
-          "{workspaceRoot}/apps/cli/dist/package.json",
-          "{workspaceRoot}/apps/cli/dist/package-lock.json"
-        ],
-        "options": {
-          "buildTarget": "build"
-        }
-      },
-      "copy-workspace-modules": {
-        "dependsOn": [
-          "build"
-        ],
-        "cache": true,
-        "outputs": [
-          "{workspaceRoot}/apps/cli/dist/workspace_modules"
-        ],
-        "executor": "@nx/js:copy-workspace-modules",
-        "options": {
-          "buildTarget": "build"
-        }
-      },
-      "prune": {
-        "dependsOn": [
-          "prune-lockfile",
-          "copy-workspace-modules"
-        ],
-        "executor": "nx:noop"
-      },
-      "install-global": {
-        "dependsOn": [
-          "build"
+          "build",
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "node apps/cli/scripts/copy-webp-wasm.mjs && chmod +x apps/cli/dist/main.js && npm install -g ./apps/cli/dist"
+          "command": "node apps/cli/scripts/prepare-publish.mjs"
+        }
+      },
+      "install-global": {
+        "dependsOn": [
+          "prepare-publish"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "npm install -g \"$(npm pack --silent)\"",
+          "cwd": "apps/cli/dist"
         }
       },
       "publish": {
         "dependsOn": [
-          "build"
+          "prepare-publish"
         ],
         "executor": "nx:run-commands",
         "options": {
           "commands": [
-            "node apps/cli/scripts/prepare-publish.mjs",
             "npm publish --tag beta apps/cli/dist",
-            "node scripts/dist-tag-latest.mjs @notaharness/n10"
+            "node apps/cli/scripts/dist-tag-latest.mjs"
           ],
           "parallel": false
         }
@@ -143,7 +134,7 @@
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "TSX_TSCONFIG_PATH=apps/cli/tsconfig.app.json npx tsx apps/cli/src/main.tsx"
+          "command": "TSX_TSCONFIG_PATH=apps/cli/tsconfig.app.json npx tsx apps/cli/src/main.ts --tui"
         }
       }
     }

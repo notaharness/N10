@@ -58,7 +58,7 @@ async function spawnN10(req: SpawnRequest): Promise<void> {
   clearBuffer();
 
   console.log(
-    `[pty] spawn: node ${cliBinary} ${req.repoPath} (HOME=${req.homeDir})`
+    `[pty] spawn: node ${cliBinary} --tui ${req.repoPath} (HOME=${req.homeDir})`
   );
   // Ink disables its interactive TTY renderer when CI-env-vars are set, so
   // n10 produces no output under Playwright's webServer (which inherits
@@ -91,7 +91,7 @@ async function spawnN10(req: SpawnRequest): Promise<void> {
   delete childEnv.TMUX;
   delete childEnv.TMUX_PANE;
 
-  const pty = spawnPty('node', [cliBinary, req.repoPath], {
+  const pty = spawnPty('node', [cliBinary, '--tui', req.repoPath], {
     name: 'xterm-256color',
     cols: req.cols ?? 100,
     rows: req.rows ?? 30,

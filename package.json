@@ -52,7 +52,6 @@
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",
-    "n10-desktop": "^0.3.0",
     "node-pty": "^1.1.0"
   }
 }
