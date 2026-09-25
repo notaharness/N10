@@ -1,10 +1,8 @@
 # n10
 
-A terminal UI for running AI coding agents across git worktrees, with pull-request review built in.
+Run AI coding agents across git worktrees, with pull-request review built in, from a desktop app or a terminal UI.
 
-n10 gives every branch its own worktree and its own agent session, and puts them behind one sidebar: branch, pull request state, CI, review status. Open a pull request and you get the diff with its comment threads next to the agent working on it. Sessions run under tmux, so quitting n10 detaches from them rather than killing them, and the next launch reattaches.
-
-This is the terminal UI. The desktop app ships separately as [`@notaharness/n10-desktop`](https://www.npmjs.com/package/@notaharness/n10-desktop) and shares the same core.
+n10 gives every branch its own worktree and its own agent session. A pull request opens as a review workspace: the diff with inline comment threads beside the agent working on it. Agents can write draft review comments that you walk through and post. Sessions run under tmux, so closing n10 detaches from them rather than killing them, and the next launch reattaches.
 
 > Beta. Expect rough edges, and pin a version if you depend on it.
 
@@ -17,10 +15,11 @@ npm install -g @notaharness/n10@beta
 Then, from inside any git repository:
 
 ```sh
-n10          # or: n10 /path/to/repo
+n10                  # the desktop app
+n10 --tui            # the terminal UI, or: n10 --tui /path/to/repo
 ```
 
-The first run walks you through connecting your version control provider.
+Launching the desktop app from a repository opens it directly; launching from anywhere else brings up the repository picker. The first run walks you through connecting your version control provider.
 
 ## Requirements
 
@@ -30,11 +29,19 @@ The first run walks you through connecting your version control provider.
 - **`tmux` 3.2 or newer.** Agents and terminals run in tmux and survive quitting n10.
 - **`gh` or `az` (optional)** for pull-request features, on GitHub and Azure DevOps respectively.
 
+Installing downloads Electron's binary (~100–200 MB), also when you only use the terminal UI.
+
+### Windows
+
+Run it under WSL 2, which gives you the unix environment the agent and tmux backends expect. WSLg renders the desktop app as a normal Windows window. Keep your repositories on the Linux filesystem (`~/code/...`) rather than `/mnt/c/...`; git across the filesystem boundary is much slower.
+
 ## What it does
 
-- **Worktree per branch.** Check out a branch as a worktree, launch an agent in it, and remove branch, worktree and session together when you're done.
-- **Pull request review.** Whole-file diffs with comment threads inline, replied to and resolved without leaving the terminal. Images in comments render inline on kitty and Ghostty.
-- **Agent-written reviews.** An agent reviewing a pull request records its draft comments with `n10 util add-comment`, and you walk through them to edit, discard or post.
+- **Worktree per branch.** Check out a branch as a worktree, launch an agent in it, and remove branch, worktree and session together when you're done. Merged branches can be cleaned up automatically.
+- **Pull request review.** Diffs with comment threads inline, replied to and resolved without leaving n10. The desktop app adds whole-file diffs with folding, split and unified views, and word-level highlighting; the terminal UI renders comment images inline on kitty and Ghostty.
+- **Agent-written reviews.** An agent reviewing a pull request records its draft comments with `n10 util add-comment`, and you step through them by severity to edit, discard or post.
+
+Settings live in the app (`⌘,` / `Ctrl+,` on the desktop, `s` in the terminal UI) and are stored in `~/.n10/`.
 
 ## Links
 

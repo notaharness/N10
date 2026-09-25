@@ -28,8 +28,7 @@ Every rule below has its reasoning in `docs/decisions.md`.
   descriptor reason as the tmux worker. Keep `@notaharness/beam` external
   in both `build-main` and `scripts/dev.mjs`. Ownership rules: D15.
 - `main/n10-shim.ts` is an entry point in both `build-main` and
-  `scripts/dev.mjs`. The desktop package declares no `n10` bin, and the shim
-  gets no `beam` subcommand (D16).
+  `scripts/dev.mjs`. The shim gets no `beam` subcommand (D16).
 - The host holds one repo (`requireRepo`, memoized root, the
   `@orchestra-repo` every tmux session it creates is tagged with). The tab
   strip spans repos: activating a foreign tab opens its repo
@@ -106,6 +105,7 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are pinned to one exact version. Upgrade all together and check
   `npm ls @wterm/dom @wterm/react @wterm/core` shows one copy each. Import the
   stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.
-- Published as `@notaharness/n10-desktop`; `prepare-install.mjs` writes
-  `dist/package.json`. Linux installs compile `node-pty`. See the
+- Ships inside `@notaharness/n10`: `apps/cli`'s `prepare-publish` copies
+  `dist/{main,preload,renderer}` under `desktop/`, and plain `n10` runs
+  Electron on the package. Nothing here is published on its own. See the
   `publish-beta` skill.
