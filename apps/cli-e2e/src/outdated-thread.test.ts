@@ -2,10 +2,10 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/n10.js';
+import type { N10Term } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
 
 // Verifies the diff viewer renders outdated review threads inline at
@@ -64,45 +64,13 @@ test.describe('@integration Outdated Thread Fixture', () => {
     cols: 120,
   });
 
-  // Same race-tolerant selection helper as comments-fixture.
-  async function pressUntilSelected(
-    n10: { term: { press: (k: string) => Promise<void> } },
-    selectedLocator: Locator,
-    maxPresses: number
-  ): Promise<boolean> {
-    for (let i = 0; i <= maxPresses; i++) {
-      try {
-        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
-        return true;
-      } catch {
-        if (i === maxPresses) return false;
-        await n10.term.press('j');
-      }
-    }
-    return false;
-  }
-
-  async function openOutdatedThreadDiff(n10: {
-    term: {
-      page: Page;
-      press: (k: string) => Promise<void>;
-      getByText: Page['getByText'];
-    };
-  }) {
+  async function openOutdatedThreadDiff(n10: { term: N10Term }) {
     await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
       n10.term.getByText(/Outdated thread fixture/).first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr = sidebarLocator(n10.term.page, 'Outdated thread fixture');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr.selected().first(),
-      20
-    );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #322');
-    }
+    await selectSidebarRow(n10.term, 'Outdated thread fixture');
 
     await n10.term.press('d');
 

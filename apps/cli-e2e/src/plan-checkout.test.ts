@@ -2,10 +2,11 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/n10.js';
+import type { N10Term } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow } from './setup/sidebar.js';
+import { pressUntilSelected } from './setup/selection.js';
 import { TEST_REPO } from './setup/constants.js';
 
 // Exercises the "add comments to a plan" (add-to-cart) feature against
@@ -47,42 +48,13 @@ test.describe('@integration Plan Checkout', () => {
     cols: 120,
   });
 
-  async function pressUntilSelected(
-    n10: { term: { press: (k: string) => Promise<void> } },
-    selectedLocator: Locator,
-    maxPresses: number
-  ): Promise<boolean> {
-    for (let i = 0; i <= maxPresses; i++) {
-      try {
-        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
-        return true;
-      } catch {
-        if (i === maxPresses) return false;
-        await n10.term.press('j');
-      }
-    }
-    return false;
-  }
-
-  async function openPr38DiffAndSelectThread(n10: {
-    term: {
-      page: Page;
-      press: (k: string) => Promise<void>;
-      getByText: Page['getByText'];
-    };
-  }) {
+  async function openPr38DiffAndSelectThread(n10: { term: N10Term }) {
     await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
       n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr38.selected().first(),
-      20
-    );
-    if (!landed) throw new Error('Could not select PR #38');
+    await selectSidebarRow(n10.term, 'Add undo feature');
 
     await n10.term.press('d');
     await n10.term.page
@@ -93,12 +65,12 @@ test.describe('@integration Plan Checkout', () => {
     const undoSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*undo\.c/ })
       .first();
-    const gotUndo = await pressUntilSelected(
-      { term: n10.term },
-      undoSelected,
-      10
-    );
-    if (!gotUndo) throw new Error('Could not select src/undo.c');
+    await pressUntilSelected(n10.term, undoSelected, 10, {
+      what: 'src/undo.c in the diff file list',
+      currentlySelected: n10.term.page.locator('.term-row', {
+        hasText: '›',
+      }),
+    });
 
     await n10.term.press('Enter');
     await expect(n10.term.getByText(/Magic number/).first()).toBeVisible({

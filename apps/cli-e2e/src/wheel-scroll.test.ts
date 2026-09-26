@@ -5,30 +5,10 @@ import { join } from 'node:path';
 import { test, expect } from './fixtures/n10.js';
 import type { N10Term } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow } from './setup/sidebar.js';
+import { pressUntilSelected } from './setup/selection.js';
 import { pressUntil } from './setup/sessions.js';
 import { TEST_REPO, wtermHost } from './setup/constants.js';
-
-// Per-press `waitFor` so each keystroke's re-render settles before the
-// next press — `page.keyboard.press` returns before n10 has emitted
-// the resulting PTY output. See comments-fixture.test.ts for the same
-// pattern's rationale.
-async function pressUntilSelected(
-  term: N10Term,
-  selectedLocator: ReturnType<N10Term['page']['locator']>,
-  maxPresses: number
-): Promise<boolean> {
-  for (let i = 0; i <= maxPresses; i++) {
-    try {
-      await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
-      return true;
-    } catch {
-      if (i === maxPresses) return false;
-      await term.press('j');
-    }
-  }
-  return false;
-}
 
 // Mouse-wheel scrolling in the diff viewer. The browser terminal has
 // no mouse reporting, so raw SGR wheel sequences are injected into
@@ -88,8 +68,7 @@ test.describe('@integration Wheel scrolling', () => {
     await expect(
       n10.term.getByText('Add color support for tile values').first()
     ).toBeVisible({ timeout: 30_000 });
-    const pr37 = sidebarLocator(n10.term.page, 'Add color support');
-    expect(await pressUntilSelected(n10.term, pr37.selected(), 20)).toBe(true);
+    await selectSidebarRow(n10.term, 'Add color support');
     // Input can arrive before Ink's new selection handler is committed.
     // Opening the diff is idempotent; retry until its file list confirms it.
     await pressUntil(
@@ -120,10 +99,10 @@ test.describe('@integration Wheel scrolling', () => {
     const renderSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*render\.c/ })
       .first();
-    const gotRender = await pressUntilSelected(n10.term, renderSelected, 10);
-    if (!gotRender) {
-      throw new Error('Could not select render.c in the file list');
-    }
+    await pressUntilSelected(n10.term, renderSelected, 10, {
+      what: 'render.c in the diff file list',
+      currentlySelected: n10.term.page.locator('.term-row', { hasText: '›' }),
+    });
   }
 
   test('wheel events scroll the diff viewer', async ({ n10, baseURL }) => {

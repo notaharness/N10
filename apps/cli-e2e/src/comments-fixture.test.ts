@@ -2,10 +2,11 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/n10.js';
+import type { N10Term } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
-import { sidebarLocator } from './setup/sidebar.js';
+import { selectSidebarRow } from './setup/sidebar.js';
+import { pressUntilSelected } from './setup/selection.js';
 import { TEST_REPO } from './setup/constants.js';
 
 // Exercises the remote-comment sync feature end-to-end against the
@@ -122,51 +123,13 @@ test.describe('@integration Comments Fixture', () => {
   // Helper: select PR #38 in the sidebar, open the file list, navigate
   // the selection onto `src/undo.c` (which has 2 remote inline comments
   // — Makefile and other files have none), then open its diff.
-  //
-  // Key robustness detail: `page.keyboard.press` returns as soon as the
-  // key event is dispatched; it does NOT wait for n10 to process the
-  // keystroke, emit new PTY output, and for wterm to re-render. A tight
-  // `for` loop that reads `.count()` after every `press('j')` therefore
-  // races the render pipeline — the naive loop would press 'j' dozens
-  // of times before seeing the selection update, overshooting the
-  // target. We use a per-press `waitFor` with a short timeout to let
-  // each render settle before deciding whether to press again.
-  async function pressUntilSelected(
-    n10: { term: { press: (k: string) => Promise<void> } },
-    selectedLocator: Locator,
-    maxPresses: number
-  ): Promise<boolean> {
-    for (let i = 0; i <= maxPresses; i++) {
-      try {
-        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
-        return true;
-      } catch {
-        if (i === maxPresses) return false;
-        await n10.term.press('j');
-      }
-    }
-    return false;
-  }
-
-  async function openPr38DiffFileWithComments(n10: {
-    term: {
-      page: Page;
-      press: (k: string) => Promise<void>;
-      getByText: Page['getByText'];
-    };
-  }) {
+  async function openPr38DiffFileWithComments(n10: { term: N10Term }) {
     await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
       n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr38.selected().first(),
-      20
-    );
-    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
+    await selectSidebarRow(n10.term, 'Add undo feature');
 
     await n10.term.press('d');
 
@@ -186,14 +149,12 @@ test.describe('@integration Comments Fixture', () => {
     const undoSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*undo\.c/ })
       .first();
-    const gotUndo = await pressUntilSelected(
-      { term: n10.term },
-      undoSelected,
-      10
-    );
-    if (!gotUndo) {
-      throw new Error('Could not select src/undo.c in the file list');
-    }
+    await pressUntilSelected(n10.term, undoSelected, 10, {
+      what: 'src/undo.c in the diff file list',
+      currentlySelected: n10.term.page.locator('.term-row', {
+        hasText: '›',
+      }),
+    });
 
     await n10.term.press('Enter');
     await expect(n10.term.getByText('(no diff for this file)')).not.toBeVisible(
@@ -343,13 +304,7 @@ test.describe('@integration Comments Fixture', () => {
       n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
-    const landed = await pressUntilSelected(
-      { term: n10.term },
-      pr38.selected().first(),
-      20
-    );
-    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
+    await selectSidebarRow(n10.term, 'Add undo feature');
 
     // Open the general-comments pane (vim preset binds this to plain C).
     await n10.term.press('C');
