@@ -866,8 +866,9 @@
 }
 
 .n10-term {
+  --n10-term-px: 11;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(var(--n10-term-px) * 1px);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -875,7 +876,7 @@
 
 @media (min-width: 40rem) {
   .n10-term {
-    font-size: 12.5px;
+    --n10-term-px: 12.5;
   }
 }
 
@@ -956,8 +957,28 @@
   animation: n10-t-blink 1s steps(1) infinite;
 }
 
+/* iOS Safari zooms the page into any focused input under 16px. The
+ * shell's input is set at 16px and scaled down to the terminal's size,
+ * widened by the same factor so it still fills the rest of the line. */
+.n10-t-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
 .n10-t-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% * 16 / var(--n10-term-px));
+  padding: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  background: transparent;
   caret-color: currentColor;
+  outline: none;
+  transform: scale(calc(var(--n10-term-px) / 16));
+  transform-origin: 0 0;
 }
 
 /* The spinner cycles Claude Code's glyphs out and back. */

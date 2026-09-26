@@ -4,9 +4,12 @@ import { itemOf } from '@/components/demo/items';
 
 /**
  * The open tabs, as an ARIA tablist: one tab stop, arrow keys, Home
- * and End move and select, Delete (or Backspace) closes. The × on each tab is for the
- * mouse and is hidden from assistive tech, which has Delete instead.
+ * and End move and select, Delete (or Backspace) closes. The × on each
+ * tab is for the mouse and is hidden from assistive tech, which has
+ * Delete instead. Closing needs the sidebar on screen to reopen a tab,
+ * so both only work from md up.
  */
+const SIDEBAR_SHOWN = '(min-width: 48rem)';
 export const tabId = (id: string) => `demo-tab-${id}`;
 export const PANEL_ID = 'demo-panel';
 
@@ -43,10 +46,12 @@ export function DemoTabs({
       Home: () => focusTab(open[0]),
       End: () => focusTab(open[open.length - 1]),
     };
-    keys.Delete = keys.Backspace = () => {
-      onClose(id);
-      focusTab(open[at + 1] ?? open[at - 1]);
-    };
+    const closable = window.matchMedia(SIDEBAR_SHOWN).matches;
+    if (closable)
+      keys.Delete = keys.Backspace = () => {
+        onClose(id);
+        focusTab(open[at + 1] ?? open[at - 1]);
+      };
     const action = keys[event.key];
     if (!action) return;
     event.preventDefault();
@@ -82,7 +87,7 @@ export function DemoTabs({
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(id)}
               onKeyDown={(event) => onKeyDown(event, id)}
-              className="focus-visible:ring-fd-ring flex h-full items-center gap-1.5 py-0 pr-1 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-inset sm:pr-7"
+              className="focus-visible:ring-fd-ring flex h-full items-center gap-1.5 py-0 pr-1 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-inset md:pr-7"
             >
               <TabIcon id={id} />
               <span className="max-w-40 truncate">{title}</span>
@@ -92,7 +97,7 @@ export function DemoTabs({
               tabIndex={-1}
               aria-hidden
               onClick={() => onClose(id)}
-              className="hover:bg-fd-accent absolute right-1.5 hidden size-5 items-center justify-center rounded sm:flex"
+              className="hover:bg-fd-accent absolute right-1.5 hidden size-5 items-center justify-center rounded md:flex"
             >
               <X className="size-3" />
             </button>

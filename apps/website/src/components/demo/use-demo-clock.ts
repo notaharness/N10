@@ -6,7 +6,12 @@ import {
   type RefObject,
 } from 'react';
 import { ITEMS } from '@/components/demo/items';
-import { capOf, type Answer, type Beat } from '@/components/demo/model';
+import {
+  awaitsAnswer,
+  capOf,
+  type Answer,
+  type Beat,
+} from '@/components/demo/model';
 
 /**
  * One clock per scripted session, all advanced by a single interval
@@ -105,13 +110,18 @@ export function useDemoClock(ref: RefObject<HTMLElement | null>) {
   const inView = useInView(ref);
   const playing = choice ?? !reduced;
   const still = choice === null && reduced;
-  const done = finished(clock);
+  const settled = finished(clock);
+  /** Settled with no prompt left open: only then is there nothing to
+   *  lose by replaying. */
+  const done =
+    settled &&
+    !SCRIPTS.some(([id, beats]) => awaitsAnswer(beats, clock.answers[id]));
 
   useEffect(() => {
-    if (!playing || !inView || done) return;
+    if (!playing || !inView || settled) return;
     const timer = setInterval(() => dispatch({ type: 'tick' }), TICK_MS);
     return () => clearInterval(timer);
-  }, [playing, inView, done]);
+  }, [playing, inView, settled]);
 
   /** A session's clock; a still demo shows every session at its cap. */
   const timeOf = (id: string, beats: readonly Beat[]) =>

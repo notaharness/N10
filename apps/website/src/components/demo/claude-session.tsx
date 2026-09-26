@@ -61,6 +61,11 @@ function Permission({
   onAnswer: (option: number) => void;
 }) {
   const [focus, setFocus] = useState(0);
+  /** The prompt unmounts once answered; keep focus where output appears. */
+  const answer = (option: number, from: HTMLElement) => {
+    from.closest<HTMLElement>('[role=region]')?.focus();
+    onAnswer(option);
+  };
   const move = (to: number, event: KeyboardEvent<HTMLDivElement>) => {
     const next = (to + gate.options.length) % gate.options.length;
     setFocus(next);
@@ -70,10 +75,11 @@ function Permission({
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const digit = Number(event.key);
-    if (digit >= 1 && digit <= gate.options.length) onAnswer(digit - 1);
+    const from = event.currentTarget;
+    if (digit >= 1 && digit <= gate.options.length) answer(digit - 1, from);
     else if (event.key === 'ArrowDown') move(focus + 1, event);
     else if (event.key === 'ArrowUp') move(focus - 1, event);
-    else if (event.key === 'Escape') onAnswer(gate.reject);
+    else if (event.key === 'Escape') answer(gate.reject, from);
   };
   return (
     <div className="n10-t-rule">
@@ -93,7 +99,7 @@ function Permission({
             key={option}
             type="button"
             tabIndex={i === focus ? 0 : -1}
-            onClick={() => onAnswer(i)}
+            onClick={(event) => answer(i, event.currentTarget)}
             onFocus={() => setFocus(i)}
             onMouseEnter={() => setFocus(i)}
             className={`block w-full text-left outline-none ${

@@ -93,6 +93,11 @@ function playable(beats: readonly Beat[], answer: Answer): readonly Beat[] {
   return beats.slice(0, g + 1);
 }
 
+/** Whether the session has a permission prompt still to answer. */
+export function awaitsAnswer(beats: readonly Beat[], answer: Answer): boolean {
+  return gateIndex(beats) >= 0 && answer === undefined;
+}
+
 /** How far the session's clock may run: to its gate, or to its end. */
 export function capOf(beats: readonly Beat[], answer: Answer): number {
   const open = playable(beats, answer);

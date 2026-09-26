@@ -20,7 +20,6 @@ export interface PullRequest {
   id: number;
   title: string;
   author: string;
-  comments: number;
 }
 
 export interface DemoItem {
@@ -59,7 +58,6 @@ export const ITEMS: readonly DemoItem[] = [
       id: 128,
       title: 'Add a command palette',
       author: 'hermannb',
-      comments: 2,
     },
     session: COMMAND_PALETTE,
   },
@@ -72,7 +70,6 @@ export const ITEMS: readonly DemoItem[] = [
       id: 124,
       title: 'Retry transient network failures',
       author: 'hermannb',
-      comments: 1,
     },
     session: BABYSIT,
     babysitting: true,
@@ -86,7 +83,6 @@ export const ITEMS: readonly DemoItem[] = [
       id: 131,
       title: 'Fix flaky session restore on resume',
       author: 'sofia-codes',
-      comments: 0,
     },
     session: REVIEW,
   },

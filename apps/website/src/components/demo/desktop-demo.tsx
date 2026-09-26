@@ -164,7 +164,12 @@ function Screen({
         }
       }}
     >
-      <ZshSession history={zsh.history} onRun={zsh.run} inputId={ZSH_INPUT} />
+      <ZshSession
+        history={zsh.history}
+        branch={item.branch}
+        onRun={zsh.run}
+        inputId={ZSH_INPUT}
+      />
     </TerminalScreen>
   );
 }

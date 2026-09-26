@@ -5,9 +5,7 @@ import type { Line } from '@/components/demo/term';
  * robbyrussell prompt. It answers a handful of commands from a table;
  * anything else is "command not found". Nothing is executed.
  */
-export const ZSH_DIR = 'perf-flamegraph';
-export const ZSH_BRANCH = 'perf-flamegraph';
-export const ZSH_PATH = '~/code/atlas/.claude/worktrees/perf-flamegraph';
+const WORKTREE = '/home/you/code/atlas/.claude/worktrees/perf-flamegraph';
 
 export interface ZshEntry {
   cmd: string;
@@ -41,7 +39,7 @@ const COMMANDS: Record<string, readonly Line[]> = {
   ls: [
     'README.md  atlas.cpuprofile  package.json  scripts  src  tsconfig.json',
   ],
-  pwd: [ZSH_PATH.replace('~', '/home/you')],
+  pwd: [WORKTREE],
   whoami: ['you'],
   'git status': GIT_STATUS,
   'git log': GIT_LOG,
