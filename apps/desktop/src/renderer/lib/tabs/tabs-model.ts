@@ -441,6 +441,10 @@ function autoOpenRunning(
   openTabs: readonly Tab[]
 ): TabsState {
   const opened = new Set(state.autoOpened);
+  // Decided once for the whole sync: the launch restore opens every
+  // surviving agent onto an empty strip, and only the first of them
+  // would otherwise see nothing active.
+  const background = state.activeId !== null;
   let next = state;
   let changed = false;
   for (const e of entries) {
@@ -450,23 +454,21 @@ function autoOpenRunning(
     opened.add(seenKey);
     changed = true;
     if (openTabs.some((t) => t.id === itemTabId(repo, e.itemKey))) continue;
-    next = openRunning(next, repo, e.itemKey);
+    const shown = openItem(next, repo, e.itemKey, false);
+    next = background ? behindActive(next, shown) : shown;
   }
   return changed ? { ...next, autoOpened: [...opened] } : next;
 }
 
-/** Open a running agent's tab: focused when nothing is active,
- *  otherwise behind the active tab and marked unseen. */
-function openRunning(
-  state: TabsState,
-  repo: string,
-  itemKey: string
-): TabsState {
-  const opened = openItem(state, repo, itemKey, false);
+/** `opened`, with focus left where `state` had it. A tab the open
+ *  added is marked unseen; one it found already on the strip — a
+ *  re-keyed tab the user opened themselves — is not news. */
+function behindActive(state: TabsState, opened: TabsState): TabsState {
   const id = opened.activeId;
-  if (state.activeId === null || id === null) return opened;
-  const unseen = state.unseen.includes(id)
-    ? state.unseen
-    : [...state.unseen, id];
-  return { ...opened, activeId: state.activeId, unseen };
+  const added = id !== null && !state.tabs.some((t) => t.id === id);
+  return {
+    ...opened,
+    activeId: state.activeId,
+    unseen: added ? [...state.unseen, id] : state.unseen,
+  };
 }

@@ -148,6 +148,32 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.unseen).toEqual([]);
   });
 
+  it('restores every surviving agent at launch without marking any', () => {
+    // The strip starts empty on each launch; the agents tmux kept are
+    // not news, and the last of them is where the user lands.
+    const a = { ...live, itemKey: 'branch:a', branch: 'a', sessionName: 'a' };
+    const b = { ...live, itemKey: 'branch:b', branch: 'b', sessionName: 'b' };
+    const s = sync(empty, [a, b]);
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:a'), id('branch:b')]);
+    expect(s.activeId).toBe(id('branch:b'));
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('does not mark a re-keyed tab the user opened as unseen', () => {
+    // Opened as `branch:x`, re-keyed to `pr:5` and so still carrying
+    // the `branch:x` id: the running `pr:5` entry finds that tab.
+    let s = open(empty, 'branch:x');
+    s = sync(s, [{ itemKey: 'pr:5', branch: 'x' }]);
+    s = open(s, 'branch:y');
+    s = sync(s, [
+      { itemKey: 'pr:5', branch: 'x', sessionName: 'x', running: true },
+      { itemKey: 'branch:y', branch: 'y' },
+    ]);
+    expect(s.tabs).toHaveLength(2);
+    expect(s.activeId).toBe(id('branch:y'));
+    expect(s.unseen).toEqual([]);
+  });
+
   it('forgets an unseen tab that is closed without being opened', () => {
     let s = sync(open(empty, 'branch:main'), [live]);
     s = reduce(s, { type: 'close', id: id('branch:feat-x') });
