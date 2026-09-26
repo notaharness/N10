@@ -124,6 +124,7 @@ export * from './lib/plan/prompt-composer.js';
 
 export {
   canonicalWorktreePath,
+  resolveRemoteWorktreePath,
   worktreeSessionKey,
   keyForWorktree,
   terminalSessionKey,

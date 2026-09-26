@@ -181,16 +181,22 @@ describe('selectionForKey', () => {
 });
 
 describe('translateSelectKey', () => {
+  const worktree = (name: string, branch: string): AgentSession => ({
+    name,
+    running: false,
+    branch,
+  });
+
   it('returns non-session keys unchanged', () => {
     const cr = makeCr();
-    expect(translateSelectKey('review:42', new Map(), cr)).toBe('review:42');
-    expect(translateSelectKey('orphan:7', new Map(), cr)).toBe('orphan:7');
+    expect(translateSelectKey('review:42', [], cr)).toBe('review:42');
+    expect(translateSelectKey('orphan:7', [], cr)).toBe('orphan:7');
   });
 
   it('returns session keys unchanged when the session has no PR', () => {
     const cr = makeCr();
-    const sessionBranchMap = new Map([['my-feature', 'feature/my-feature']]);
-    expect(translateSelectKey('session:my-feature', sessionBranchMap, cr)).toBe(
+    const sessions = [worktree('my-feature', 'feature/my-feature')];
+    expect(translateSelectKey('session:my-feature', sessions, cr)).toBe(
       'session:my-feature'
     );
   });
@@ -200,16 +206,16 @@ describe('translateSelectKey', () => {
     // as `kind: 'session'` (active-pr section), so the key is not in any
     // review category and selectByKey('session:foo') matches the session
     // row directly — no translation needed.
-    const sessionBranchMap = new Map([['feature-mine', 'feature/mine']]);
+    const sessions = [worktree('feature-mine', 'feature/mine')];
     const cr = makeCr(); // PR is NOT in any review category
-    expect(
-      translateSelectKey('session:feature-mine', sessionBranchMap, cr)
-    ).toBe('session:feature-mine');
+    expect(translateSelectKey('session:feature-mine', sessions, cr)).toBe(
+      'session:feature-mine'
+    );
   });
 
   it('translates from the branch alone, before the session has PR data', () => {
     // Right after a worktree is created for a PR branch, the session is
-    // in the branch map but its PR data has not resolved yet — the row
+    // listed with its branch but its PR data has not resolved yet — the row
     // is already folded into the review PR, so the key must follow.
     const cr = {
       needsReview: [{ id: 42, sourceBranch: 'feat/x' } as PullRequestInfo],
@@ -217,52 +223,40 @@ describe('translateSelectKey', () => {
       approvedByYou: [],
     };
     expect(
-      translateSelectKey('session:feat-x', new Map([['feat-x', 'feat/x']]), cr)
+      translateSelectKey('session:feat-x', [worktree('feat-x', 'feat/x')], cr)
     ).toBe('review:42');
   });
 
   it('translates to review:${prId} when the branch is in needsReview', () => {
     const pr = makePr(38, 'fixture/add-undo-feature');
-    const sessionBranchMap = new Map([
-      ['fixture-add-undo-feature', 'fixture/add-undo-feature'],
-    ]);
+    const sessions = [
+      worktree('fixture-add-undo-feature', 'fixture/add-undo-feature'),
+    ];
     const cr = makeCr({ needsReview: [pr] });
     expect(
-      translateSelectKey(
-        'session:fixture-add-undo-feature',
-        sessionBranchMap,
-        cr
-      )
+      translateSelectKey('session:fixture-add-undo-feature', sessions, cr)
     ).toBe('review:38');
   });
 
   it('translates to review:${prId} when the branch is in waitingForAuthor', () => {
     const pr = makePr(38, 'fixture/add-undo-feature');
-    const sessionBranchMap = new Map([
-      ['fixture-add-undo-feature', 'fixture/add-undo-feature'],
-    ]);
+    const sessions = [
+      worktree('fixture-add-undo-feature', 'fixture/add-undo-feature'),
+    ];
     const cr = makeCr({ waitingForAuthor: [pr] });
     expect(
-      translateSelectKey(
-        'session:fixture-add-undo-feature',
-        sessionBranchMap,
-        cr
-      )
+      translateSelectKey('session:fixture-add-undo-feature', sessions, cr)
     ).toBe('review:38');
   });
 
   it('translates to review:${prId} when the branch is in approvedByYou', () => {
     const pr = makePr(37, 'fixture/add-color-support');
-    const sessionBranchMap = new Map([
-      ['fixture-add-color-support', 'fixture/add-color-support'],
-    ]);
+    const sessions = [
+      worktree('fixture-add-color-support', 'fixture/add-color-support'),
+    ];
     const cr = makeCr({ approvedByYou: [pr] });
     expect(
-      translateSelectKey(
-        'session:fixture-add-color-support',
-        sessionBranchMap,
-        cr
-      )
+      translateSelectKey('session:fixture-add-color-support', sessions, cr)
     ).toBe('review:37');
   });
 });

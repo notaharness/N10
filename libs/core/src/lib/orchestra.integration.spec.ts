@@ -51,9 +51,11 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
-      // The pinned plugin predates `@orchestra-worktree-path`, which the
-      // current plugin writes at spawn; without it the player is foreign
-      // to n10. Write it the way the plugin does: the canonical checkout.
+      // The pinned plugin (tests/fixtures/orchestra.tar.gz) predates
+      // `@orchestra-worktree-path`, which notaharness/plugins#11 writes at
+      // spawn; without it the player is foreign to n10. Write it the way
+      // that change does, `pwd -P` of the checkout. Drop this once the
+      // fixture includes plugins#11.
       const [name, path] = fixture
         .tmux(
           'list-sessions',

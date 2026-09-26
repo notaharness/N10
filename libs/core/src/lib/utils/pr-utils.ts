@@ -67,24 +67,17 @@ export function categorizeReviews(
 }
 
 /**
- * Build session-name to branch and session-name to PR lookup maps: each
- * worktree row's branch is the one checked out in it now, and its PR
- * that branch's.
+ * Map each worktree session's name to the pull request of the branch
+ * checked out in it now.
  */
-export function buildSessionLookups(
+export function buildSessionPrMap(
   prMap: BranchPrMap,
   sessions: readonly AgentSession[]
-): {
-  sessionBranchMap: Map<string, string>;
-  sessionPrMap: Map<string, PullRequestInfo>;
-} {
-  const sessionBranchMap = new Map<string, string>();
+): Map<string, PullRequestInfo> {
   const sessionPrMap = new Map<string, PullRequestInfo>();
   for (const session of sessions) {
-    if (!session.branch) continue;
-    sessionBranchMap.set(session.name, session.branch);
-    const pr = prMap[session.branch];
+    const pr = session.branch ? prMap[session.branch] : undefined;
     if (pr) sessionPrMap.set(session.name, pr);
   }
-  return { sessionBranchMap, sessionPrMap };
+  return sessionPrMap;
 }

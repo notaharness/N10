@@ -97,24 +97,30 @@ Linux, so it may work, but nothing here specifically supports it.
 Names are labels; tags carry identity. n10 and the Orchestra skill's bash
 scripts create ordinary tmux sessions using the same user options:
 
-| Session user option       | Meaning                               |
-| ------------------------- | ------------------------------------- |
-| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra` |
-| `@orchestra-repo`         | Canonical main checkout path          |
-| `@orchestra-session-type` | `worktree`, `shell` or `agent`        |
-| `@orchestra-branch`       | Exact branch for a worktree session   |
-| `@orchestra-agent`        | Agent used for the most recent launch |
+| Session user option        | Meaning                                                  |
+| -------------------------- | -------------------------------------------------------- |
+| `@orchestra-spawner`       | Creator, such as `n10` or `orchestra`                    |
+| `@orchestra-repo`          | Canonical main checkout path                             |
+| `@orchestra-session-type`  | `worktree`, `shell` or `agent`                           |
+| `@orchestra-worktree-path` | A worktree session's checkout: its identity              |
+| `@orchestra-branch`        | Branch a worktree session was created for (task context) |
+| `@orchestra-agent`         | Agent used for the most recent launch                    |
 
 The shared names live in `session-identity.ts`. Creator/reporting metadata
 survives attachment and restart; a successful new process updates its agent
 metadata. Tags contain data, never arbitrary commands to execute. They live
 only as long as the tmux session, and do not provide persistence after reboot.
 
-Worktree lookup matches canonical repository plus exact branch. A terminal
-lookup uses its actual allocated tmux target. `session-resolver.ts` obtains one
-listing and applies those rules for attach, discovery, liveness and cleanup.
-A session lacking a spawner or recognized type is foreign; worktree sessions
-also require a repo tag. A familiar name alone never authorizes attachment or
+Worktree lookup matches canonical repository plus canonical checkout path —
+the physical path as resolved on the machine holding it (`pwd -P` there,
+`realpath` locally). The branch never identifies a checkout: a `git switch`,
+a rename or a restart keeps the session its worktree's, and a second worktree
+on the original branch never claims it. A terminal lookup uses its actual
+allocated tmux target. `session-resolver.ts` obtains one listing and applies
+those rules for attach, discovery, liveness and cleanup. A session lacking a
+spawner or recognized type is foreign; worktree sessions also require repo
+and worktree-path tags, with no fallback to `#{session_path}` or the branch
+(sessions are closed before an upgrade, not migrated). A familiar name alone never authorizes attachment or
 termination. Duplicate worktree identities resolve to the oldest session;
 extras are listed, never silently killed.
 
@@ -123,7 +129,7 @@ canonical main checkout's basename; `/`, `.` and `:` become `-`. A label longer
 than 200 characters keeps its first 195 plus a four-digit hash suffix. Name
 collisions add `-2`, `-3`, and so on, always from the original preferred label.
 A duplicate-name race retries allocation without adopting the other session.
-Core registry keys are JSON tuples: `["worktree", repo, exactBranch]` or
+Core registry keys are JSON tuples: `["worktree", repo, canonicalCheckout]` or
 `["terminal", actualTmuxName]`. Display labels never address registry entries.
 
 ## Discovery, restart and terminal lifecycle

@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
-import type { WorktreeInfo } from '@n10/worktree-manager';
+import type { MachineExecutor, WorktreeInfo } from '@n10/worktree-manager';
 import { getRepoRoot } from './repo-root.js';
 
 /** The machine a session lives on: a beam `peerId`, or `'local'` for
@@ -13,10 +13,13 @@ export type SessionIdentity =
   | { kind: 'terminal'; id: string; machine: string };
 
 /**
- * A worktree checkout's identity on this machine: its symlink-resolved
- * absolute path, or the resolved path as given once the directory is
- * gone. Another machine's path is kept as that machine reported it —
- * this filesystem cannot resolve it.
+ * A worktree checkout's identity: its physical absolute path as resolved
+ * on the machine that holds it — what `pwd -P` prints inside it there,
+ * and what Orchestra records. Here that is `realpath`, or the resolved
+ * path as given once the directory is gone. Another machine's path is
+ * kept as given: it must already be canonical, which
+ * {@link resolveRemoteWorktreePath} makes it when the checkout is first
+ * resolved there.
  */
 export function canonicalWorktreePath(
   path: string,
@@ -28,6 +31,22 @@ export function canonicalWorktreePath(
     return realpathSync(path);
   } catch {
     return resolve(path);
+  }
+}
+
+/** `pwd -P` in `path` on the machine `executor` runs on — the canonical
+ *  form of another machine's checkout. The path as given when it cannot
+ *  be resolved there. */
+export async function resolveRemoteWorktreePath(
+  path: string,
+  executor: MachineExecutor
+): Promise<string> {
+  try {
+    const { stdout, code } = await executor.run(['pwd', '-P'], { cwd: path });
+    const resolved = stdout.trim();
+    return code === 0 && resolved ? resolved : path;
+  } catch {
+    return path;
   }
 }
 

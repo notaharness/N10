@@ -23,7 +23,6 @@ import {
  * viewable — matching TUI behavior.
  */
 export interface KnownSession extends RelayEntry {
-  branch: string;
   /** Repository displayed by this relay. Qualified keys let other repos stay live. */
   repoCwd: string;
 }
@@ -41,16 +40,12 @@ export const known = new Map<string, KnownSession>();
  * again and the pane would drop every one of them. The scrollback
  * *is* reset: the new agent starts with an empty screen.
  */
-export function adoptSession(
-  name: string,
-  branch: string,
-  repoCwd: string
-): void {
+export function adoptSession(name: string, repoCwd: string): void {
   const prev = known.get(name);
   const entry: KnownSession =
     prev && prev.repoCwd === repoCwd
-      ? Object.assign(prev, { branch, chunks: [], bytes: 0 })
-      : { ...newRelayEntry(), branch, repoCwd };
+      ? Object.assign(prev, { chunks: [], bytes: 0 })
+      : { ...newRelayEntry(), repoCwd };
   known.set(name, entry);
   attachRelay(name, entry);
 }
@@ -60,8 +55,8 @@ export function adoptSession(
  * babysitter's, started to receive an update when no agent was
  * running. Same bookkeeping as a launch from the renderer.
  */
-export function adoptSpawnedSession(name: string, branch: string): void {
-  adoptSession(name, branch, requireRepo());
+export function adoptSpawnedSession(name: string): void {
+  adoptSession(name, requireRepo());
 }
 
 /** The session under `name`, but only when it belongs to the repo

@@ -1,7 +1,7 @@
 import { listWorktrees } from '@n10/worktree-manager';
 import {
   buildSidebarItems,
-  buildSessionLookups,
+  buildSessionPrMap,
   categorizeReviews,
   findOrphanPrs,
   pullRequestPollIntervalMs,
@@ -76,10 +76,7 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
   const categorizedReviews = provider
     ? categorizeReviews(prMap, config, provider)
     : { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
-  const { sessionBranchMap, sessionPrMap } = buildSessionLookups(
-    prMap,
-    sessions
-  );
+  const sessionPrMap = buildSessionPrMap(prMap, sessions);
   const sortedSessions = sortSessionsByPrId(sessions, sessionPrMap);
 
   // Merged/conflict decorations come from the host's remote sync loop
@@ -89,7 +86,6 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
     sortedSessions,
     orphanPrs,
     categorizedReviews,
-    sessionBranchMap,
     sessionPrMap,
     sync.merged,
     sync.conflicts,

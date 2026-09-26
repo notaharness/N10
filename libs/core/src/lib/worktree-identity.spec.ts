@@ -39,7 +39,11 @@ vi.mock('./pty-registry.js', () => ({
 import { observeTmuxSessions, resetRepoRoot } from './session-backend.js';
 import { resolveWorktreeSession } from './session-resolver.js';
 import { taggedSession } from './session-identity.js';
-import { keyForWorktree, worktreeSessionKey } from './session-key.js';
+import {
+  keyForWorktree,
+  resolveRemoteWorktreePath,
+  worktreeSessionKey,
+} from './session-key.js';
 import { worktreeSessionRow } from './worktree-rows.js';
 
 const REPO = '/repo';
@@ -216,5 +220,39 @@ describe('a scan notices a worktree that switched branch', () => {
     expect(diffScans(scan('other'), scan('other'), () => false).changed).toBe(
       false
     );
+  });
+});
+
+describe('another machine’s checkout', () => {
+  const executor = (result: { stdout: string; code: number } | Error) => ({
+    run: vi.fn(async (argv: string[], opts?: { cwd?: string }) => {
+      if (result instanceof Error) throw result;
+      expect({ argv, cwd: opts?.cwd }).toEqual({
+        argv: ['pwd', '-P'],
+        cwd: '/their/link/wt',
+      });
+      return { ...result, stderr: '' };
+    }),
+  });
+
+  it('is resolved to its physical path on that machine', async () => {
+    await expect(
+      resolveRemoteWorktreePath(
+        '/their/link/wt',
+        executor({ stdout: '/their/real/wt\n', code: 0 })
+      )
+    ).resolves.toBe('/their/real/wt');
+  });
+
+  it('keeps the path as given when that machine cannot resolve it', async () => {
+    await expect(
+      resolveRemoteWorktreePath(
+        '/their/link/wt',
+        executor({ stdout: '', code: 1 })
+      )
+    ).resolves.toBe('/their/link/wt');
+    await expect(
+      resolveRemoteWorktreePath('/their/link/wt', executor(new Error('gone')))
+    ).resolves.toBe('/their/link/wt');
   });
 });

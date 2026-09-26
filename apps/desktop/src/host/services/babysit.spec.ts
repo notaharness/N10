@@ -33,8 +33,7 @@ vi.mock('./pull-requests.js', () => ({
   },
 }));
 vi.mock('./sessions.js', () => ({
-  adoptSpawnedSession: (name: string, branch: string) =>
-    state.adopted.push(`${name}:${branch}`),
+  adoptSpawnedSession: (name: string) => state.adopted.push(name),
   defaultPaneSize: () => ({ cols: 120, rows: 40 }),
   isForeignSession: () => false,
 }));
@@ -136,7 +135,7 @@ describe('babysit service', () => {
   it('adopts a session the babysitter spawned, under the pull request branch, and says so', async () => {
     await mod.startBabysit(7);
     state.started[0].onSpawned?.('feat-7', '/wt/feat-7');
-    expect(state.adopted).toEqual(['feat-7:feat/7']);
+    expect(state.adopted).toEqual(['feat-7']);
     // A new agent is a sidebar row and a session the renderer's next
     // poll would show seconds late.
     expect(changes).toEqual([{ spawned: { prId: 7, name: 'feat-7' } }]);

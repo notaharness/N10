@@ -1,4 +1,8 @@
-import { sessionKeyForBranch, worktreeSessionKey } from '@n10/core';
+import {
+  resolveRemoteWorktreePath,
+  sessionKeyForBranch,
+  worktreeSessionKey,
+} from '@n10/core';
 import { createWorktree } from '@n10/worktree-manager';
 import type { SessionLaunchRequest } from '../contract.js';
 import { refuseIfRemoteOwns } from './plan-remote-owner.js';
@@ -42,7 +46,9 @@ export async function refuseRemoteOwned(
 
 /** The checkout a launch runs in: the one discovery reported, or this
  *  exact branch's, created when there is none — on the right machine or
- *  not at all (`machineFor` throws for one it cannot build). */
+ *  not at all (`machineFor` throws for one it cannot build). Another
+ *  machine's checkout is resolved to its physical path there, the form
+ *  its session is keyed and tagged by. */
 export async function resolveLaunchWorktree(
   req: SessionLaunchRequest,
   repoCwd: string,
@@ -55,5 +61,5 @@ export async function resolveLaunchWorktree(
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
-  return wtPath;
+  return machine ? resolveRemoteWorktreePath(wtPath, machine.executor) : wtPath;
 }

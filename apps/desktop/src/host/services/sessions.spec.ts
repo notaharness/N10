@@ -53,6 +53,8 @@ const state = vi.hoisted(() => ({
   /** Tagged sessions a remote machine's `list-sessions` would report,
    *  keyed by peerId. */
   remoteSessions: new Map<string, TaggedSession[]>(),
+  /** What `pwd -P` answers on a remote machine, by the path asked. */
+  remotePhysical: new Map<string, string>(),
   /** Checkouts `listWorktrees` would report: `repo\0branch` → path. */
   worktrees: new Map<string, string>(),
 }));
@@ -127,6 +129,8 @@ vi.mock('@n10/core', async (importOriginal) => {
         path ? actual.worktreeSessionKey(path, repo) : null
       );
     },
+    resolveRemoteWorktreePath: (path: string) =>
+      Promise.resolve(state.remotePhysical.get(path) ?? path),
     listOurSessionsWith: (_executor: unknown, machine: string) =>
       Promise.resolve(state.remoteSessions.get(machine) ?? []),
     getSessionLaunchContext: () => ({
@@ -370,6 +374,27 @@ describe('launchAgent', () => {
     expect(state.spawns[0].name).toBe(
       keyFor('feature/x', '/repo-a', 'dddddddddddddddd')
     );
+  });
+
+  it('keys a remote session by the physical path its machine resolves', async () => {
+    state.knownMachines.add('dddddddddddddddd');
+    state.remotePhysical.set(
+      checkoutPath('feature/x', '/repo-a'),
+      '/real/repo-a/.claude/worktrees/feature-x'
+    );
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      machine: 'dddddddddddddddd',
+    });
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey(
+        '/real/repo-a/.claude/worktrees/feature-x',
+        '/repo-a',
+        'dddddddddddddddd'
+      )
+    );
+    state.remotePhysical.clear();
   });
 
   it('fails loudly rather than launching locally when the named machine is not available', async () => {

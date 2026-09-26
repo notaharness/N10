@@ -175,8 +175,7 @@ async function doLaunchAgent(
       systemGuidance: req.systemGuidance,
     },
   });
-  if (entry !== before || !ownSession(name))
-    adoptSession(name, req.branch, repoCwd);
+  if (entry !== before || !ownSession(name)) adoptSession(name, repoCwd);
   return { name };
 }
 
@@ -281,7 +280,7 @@ async function doCheckoutPlan(
     name &&
     (result === 'spawned' || (getSession(name) && getSession(name) !== before))
   ) {
-    adoptSession(name, branch, repoCwd);
+    adoptSession(name, repoCwd);
   }
   return result;
 }

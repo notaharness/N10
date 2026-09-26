@@ -45,8 +45,6 @@ const env = vi.hoisted(() => ({
   fetchCount: 0,
   forgetCount: 0,
   now: 1_000_000,
-  /** Last sessionBranchMap handed to buildSidebarItems. */
-  lastBranchMap: new Map<string, string>(),
   /** Last babysat map handed to buildSidebarItems. */
   lastBabysat: null as ReadonlyMap<number, unknown> | null,
   /** cwd → babysit statuses the babysit service answers with. */
@@ -120,13 +118,11 @@ vi.mock('@n10/core', async (importOriginal) => ({
     sessions: unknown[],
     _orphans: unknown,
     _reviews: unknown,
-    sessionBranchMap: Map<string, string>,
     _sessionPrMap: unknown,
     _merged: unknown,
     _conflicts: unknown,
     babysat: ReadonlyMap<number, unknown>
   ) => {
-    env.lastBranchMap = sessionBranchMap;
     env.lastBabysat = babysat;
     return sessions;
   },
@@ -151,7 +147,6 @@ beforeEach(async () => {
   env.fetchCount = 0;
   env.forgetCount = 0;
   env.now = 1_000_000;
-  env.lastBranchMap = new Map();
   env.lastBabysat = null;
   env.babysat = new Map();
 
@@ -290,19 +285,18 @@ describe('lookupPullRequest', () => {
 
 describe('sidebar model', () => {
   it('shows a worktree its real branch name, not the sanitized session name', async () => {
-    // The lookup comes from the rows, not only from branches with a PR —
+    // The row carries its branch whether or not the branch has a PR —
     // so a PR-less `feat/foo` still displays as `feat/foo`.
     env.worktrees = [checkout('feat/foo')];
     const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
-    await model;
+    const rows = (await model) as unknown as Core.AgentSession[];
 
-    expect(
-      env.lastBranchMap.get(
-        worktreeSessionKey('/repo-a/.claude/worktrees/feat/foo', '/repo-a')
-      )
-    ).toBe('feat/foo');
+    expect(rows[0]).toMatchObject({
+      name: worktreeSessionKey('/repo-a/.claude/worktrees/feat/foo', '/repo-a'),
+      branch: 'feat/foo',
+    });
   });
 
   it('carries a mid-rebase worktree state through to its session', async () => {

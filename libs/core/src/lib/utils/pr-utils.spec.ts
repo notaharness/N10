@@ -9,7 +9,7 @@ import type {
 import {
   findOrphanPrs,
   categorizeReviews,
-  buildSessionLookups,
+  buildSessionPrMap,
 } from './pr-utils.js';
 
 // Minimal mock provider
@@ -264,8 +264,8 @@ describe('categorizeReviews', () => {
   });
 });
 
-describe('buildSessionLookups', () => {
-  it('builds name-to-branch and name-to-PR maps', () => {
+describe('buildSessionPrMap', () => {
+  it('maps each session to the PR of the branch checked out in it', () => {
     const pr1 = makePr({ id: 1, sourceBranch: 'feature/foo' });
     const prMap: BranchPrMap = {
       'feature/foo': pr1,
@@ -274,12 +274,10 @@ describe('buildSessionLookups', () => {
 
     const foo = worktreeSessionKey('/wt/foo');
     const bar = worktreeSessionKey('/wt/bar');
-    const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap, [
+    const sessionPrMap = buildSessionPrMap(prMap, [
       { name: foo, running: true, branch: 'feature/foo', path: '/wt/foo' },
       { name: bar, running: false, branch: 'feature/bar', path: '/wt/bar' },
     ]);
-    expect(sessionBranchMap.get(foo)).toBe('feature/foo');
-    expect(sessionBranchMap.get(bar)).toBe('feature/bar');
     expect(sessionPrMap.get(foo)).toBe(pr1);
     expect(sessionPrMap.has(bar)).toBe(false);
   });

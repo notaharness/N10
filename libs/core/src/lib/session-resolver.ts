@@ -103,7 +103,7 @@ function oldest(sessions: TaggedSession[]): TaggedSession | null {
   return best;
 }
 
-/** The worktree session for (repo, branch), or `null`. */
+/** The worktree session for (repo, checkout), or `null`. */
 export function resolveWorktreeSession(
   repoRoot: string,
   worktreePath: string,
