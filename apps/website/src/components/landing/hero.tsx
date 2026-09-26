@@ -14,15 +14,16 @@ export function Hero() {
             of the mark is a cell of the backdrop's grid in both poses. */}
         <Logo intro hover className="n10-logo--grid" />
         <h1 className="mt-8 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-          Run coding agents across Git worktrees
+          Keep up with your agents&apos; pull requests
         </h1>
         <p className="text-fd-muted-foreground mt-6 max-w-2xl text-lg text-pretty">
-          Give each branch its own worktree and agent session. Track pull
-          requests and review code from the desktop app or terminal UI.
+          Agents in worktrees, sessions in plain tmux, review in one place.
+          Close n10 and your agents keep running; <code>tmux attach</code> still
+          works.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/docs/installation"
+            href="/docs/getting-started"
             className={buttonVariants({ size: 'lg' })}
           >
             Read the docs

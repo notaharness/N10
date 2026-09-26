@@ -1,16 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 193 193">
   <!-- Flattened from src/components/logo.tsx (same geometry). Favicon
        rasterisers can't be trusted with mix-blend-mode, so the overlap is
-       drawn explicitly: the 1, clipped to the n, in the multiply product
-       of the two pane colours (#9caf88 × #e3c16f = #8b843b). -->
+       drawn explicitly: the n over the 10, then the 1 clipped to the n, in
+       the multiply product of the two pane colours
+       (#9caf88 × #e3c16f = #8b843b). -->
   <clipPath id="n">
     <path transform="translate(9 46.5)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" />
   </clipPath>
-  <path transform="translate(9 46.5)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" fill="#9caf88" />
   <g transform="translate(71.5 46.5)" fill="#e3c16f">
     <rect x="0" y="0" width="25" height="100" />
     <rect x="50" y="12.5" width="50" height="75" rx="25" fill="none" stroke="#e3c16f" stroke-width="25" />
   </g>
+  <path transform="translate(9 46.5)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" fill="#9caf88" />
   <g clip-path="url(#n)">
     <rect x="71.5" y="46.5" width="25" height="100" fill="#8b843b" />
   </g>

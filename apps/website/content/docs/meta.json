@@ -3,12 +3,17 @@
   "pages": [
     "index",
     "installation",
+    "getting-started",
+    "---Using n10---",
     "guides",
     "terminal-ui",
     "configuration",
     "providers",
+    "---Companions---",
     "beam",
     "orchestra",
-    "internals"
+    "---Project---",
+    "roadmap",
+    "contributing"
   ]
 }

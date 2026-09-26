@@ -1,155 +1,96 @@
 ---
-title: Fleet
-description: Connect your machines with Beam and launch agents and terminals on any of them from n10 Desktop.
+title: Run agents on your other machines
+description: Join your machines into a Beam fleet from n10 Desktop, then launch worktrees, agents and terminals on any of them.
 ---
 
-Fleet is where n10 Desktop manages your [Beam](/docs/beam) fleet: the
-machines you own, joined under one passkey. Once the fleet has a second
-machine, you can launch worktrees, agents and terminals on it, and reports
-from Orchestra players there reach your orchestrator here.
+Fleet is n10 Desktop's view of your [Beam](/docs/beam) fleet: the machines
+you own, joined under one passkey. Once the fleet has a second machine, you
+can launch worktrees, agents and terminals on it from this one.
 
-Open it with the **Fleet** button in the title bar, which is there even
-before you open a repository. The sidebar has a **Fleet** entry too. Fleet
-belongs to no repository. **Back to workspace** returns to where you were,
-and a passkey step in progress keeps running. n10 Desktop includes Beam and
-starts its daemon when needed.
+Open it with the **Fleet** button in the title bar. Your passkey provider
+must support the WebAuthn PRF extension; Fleet's **Passkey compatibility**
+note lists what vendors document.
 
 ## Create a fleet
 
-On your first machine, open Fleet and choose **Create a fleet**. Fill in
-**This machine's name** and **Fleet name**, or leave them blank for the
-defaults. The fleet name appears in your passkey manager. Choose
-**Create fleet**. Two passkey prompts follow, each with its own link and QR
-code:
+On your first machine, open Fleet and choose **Create a fleet**. Name this
+machine and the fleet, or keep the defaults, and choose **Create fleet**.
+Two passkey prompts follow:
 
-1. **Step 1 of 2 · Create your fleet passkey** saves a passkey for
-   beam.n10.is.
-2. **Step 2 of 2 · Authorize this machine** uses that same passkey to sign
-   this machine's membership and unlock the encrypted directory.
+1. **Create your fleet passkey** saves a passkey for beam.n10.is.
+2. **Authorize this machine** uses it to sign this machine into the fleet.
 
-For each step, choose **Open in browser** or **Copy link**, or scan the QR
-code with your phone. The step shows the action, machine name and machine
-fingerprint; check that the browser page shows the same before you approve.
-Each link expires after five minutes. If step 2 fails, the passkey from
-step 1 may stay in your passkey manager; n10 doesn't delete it.
-
-## Join a fleet
-
-On another machine with n10 Desktop, open Fleet, choose **Join an existing
-fleet**, name the machine and choose **Join fleet**. One passkey prompt,
-**Authorize this machine**, follows. Choose the fleet's existing passkey;
-don't create another.
-
-After joining, Fleet asks you to **Check the fleet fingerprint**. Compare it
-with Fleet on a machine already in the fleet, or with `beam status` there;
-matching names are not enough. Then choose **Fingerprints match** or **They
-don't match**. This is a comparison you make by eye: n10 records your answer
-and verifies nothing. If they don't match, this machine joined a different
-fleet. Choose **Reset fleet on this machine…** and join again with a fresh
-link.
+For each, choose **Open in browser** or **Copy link**, or scan the QR code
+with your phone. Check that the browser page shows the same machine name and
+fingerprint as n10 before you approve. Each link expires after five minutes.
 
 ## Add a machine
 
-**Add a machine** in Fleet's header explains how. It enrols nothing from
-this machine.
+- **Another machine with n10 Desktop**: open Fleet there, choose
+  **Join an existing fleet**, name the machine and choose **Join fleet**.
+  Approve **Authorize this machine** with the fleet's existing passkey; don't
+  create a new one.
+- **A headless machine**: install Beam and join from its terminal. It draws
+  a QR code to scan with your phone.
 
-- **Another desktop**: open Fleet on that machine and join, as above.
-- **Headless machine**: install Beam there and join from a terminal.
+  ```sh
+  npm install -g @notaharness/beam
+  beam join --label buildbox
+  ```
 
-```sh
-npm install -g @notaharness/beam
-beam join --label buildbox
-```
-
-In a terminal, `beam join` draws a QR code and prints the URL below it.
-Over SSH it opens no browser, so scan the code with your phone or open the
-URL on a device that has your fleet passkey. Then compare `beam status` on
-that machine with the fingerprint in Fleet's header.
-
-## The machine list
-
-This machine comes first, marked **This machine**. Every other machine shows
-its name, machine fingerprint and state:
-
-| State | Meaning |
-| --- | --- |
-| Connected · Direct | Connected over a direct path. |
-| Connected · Relay *region* | Connected through a DERP relay in that region. |
-| Offline · Last seen … | Not reachable. Not connected yet if it never has been. |
-| Revoked | You revoked it. Remote actions are disabled. |
-| Refuses this machine | That machine treats this one as revoked. |
-
-A row can also show counts such as **2 waiting**, reports from that machine
-waiting for their target session to reconnect, and **1 refused**, reports n10
-would not deliver, each with its reason. Refused reports stay until you
-dismiss them.
-Each machine's menu renames it on this machine, sets its
-[grant](/docs/beam#grants) here, and revokes it.
+After joining, compare the fleet fingerprint on the new machine with the one
+in Fleet on a machine already in the fleet (`beam status` on a headless
+one). In n10, answer **Fingerprints match** or **They don't match**. If they
+don't match, the machine joined a different fleet: choose
+**Reset fleet on this machine…** and join again.
 
 ## Launch on another machine
 
-Once the fleet has a second machine, the launch dialog and the new-terminal
-dialog show a **Machine** selector. With no fleet, or a fleet of one, it
-doesn't appear. Offline and revoked machines are listed but disabled, with
-the reason beside them. The command palette also gets an entry such as
+With a second machine in the fleet, the launch dialog and the new-terminal
+dialog get a **Machine** selector, and the command palette gets
 **Open terminal on buildbox** for each connected machine.
 
-The Git worktree, the tmux session and the agent all run on the machine you
-pick. Progress reads **Creating worktree on buildbox…**, then **Starting
-claude…**, and the terminal shows in an ordinary pane. n10 uses the
-repository's path on this machine as its path there, so that machine needs a
-clone at the same path. The session gets that machine's environment, not
-this one's, so the agent's CLI must be installed and signed in there.
+The worktree, the tmux session and the agent all run on the machine you
+pick, and the terminal shows up in n10 like any other. That machine needs:
 
-If n10 already has a session for that branch on that machine, the launch
-attaches to it rather than starting a second agent. Likewise, launching the
-branch on this machine is refused while its agent runs on another one.
+- a clone of the repository at the same path as on this machine;
+- tmux 3.2 or newer;
+- the agent's CLI, installed and signed in.
 
-If the connection drops, the pane shows that it is reconnecting and disables
-input. That is a connection state, not the agent exiting: the tmux session
-is still on the other machine.
+If the connection drops, the pane shows that it is reconnecting. The agent
+keeps running on the other machine.
 
-## Reports from remote players
+## The machine list
 
-An Orchestra player started on another machine with `--machine` sends its
-reports over Beam. n10 Desktop is the relay: it delivers each report into
-the orchestrator's tmux pane or Claude session on this machine, so don't run
-Orchestra's `relay.sh` alongside it. See
-[Orchestra](/docs/orchestra#players-on-other-machines).
+Fleet lists every machine with its fingerprint and state: connected
+directly or through a relay, offline, or revoked. Each machine's menu
+renames it on this machine, sets what it may do on this machine, and revokes it.
 
-n10 delivers a report only when the sending machine's grant on this machine
-is `all`. A machine granted `msg` can still send mail, but n10 won't type it
-into an agent. It also refuses targets other than an agent session n10
-started or a live Claude session here, including Codex threads.
+A machine's access decides what it may open here: **Shells and messages**,
+the default, **Messages only**, or **No access**.
 
-## Revoke and reset
+## Orchestra players on other machines
 
-Choose **Revoke buildbox…** (named for the machine) from its menu, check
-its fingerprint and approve one passkey prompt, **Authorize revocation**.
-Fleet reports how many peers acknowledged it; offline machines learn when
-they connect. Revoking doesn't erase files on that machine or guarantee its
-programs stop.
+An [Orchestra](/docs/orchestra) player started on another machine with
+`--machine` reports back over Beam. While n10 Desktop runs, it delivers those
+reports to the orchestrator on this machine: a Claude session, or an agent
+session n10 started, and only from machines allowed
+**Shells and messages**.
 
-**Reset fleet on this machine…** removes this machine's membership, known
-peers, revocations, pending directory writes and queued messages. It keeps
-this machine's identity and doesn't touch other machines or the passkey.
-Type `reset` to confirm, then create or join a fleet again. If you lose the
-passkey, you build the fleet again from scratch; see
-[Beam](/docs/beam#reset-and-losing-the-passkey).
+## Revoke a machine, or start over
+
+Choose **Revoke buildbox…** from a machine's menu and approve one passkey
+prompt. The fleet stops accepting that machine for good. Revoking doesn't
+erase anything on it.
+
+**Reset fleet on this machine…** takes this machine out of its fleet, so you
+can create or join one again. It doesn't affect other machines or the
+passkey. If you lose the passkey, reset every machine and build the fleet
+again.
 
 ## Limitations
 
 - Checking out an existing branch, removing a branch and rebasing are not
   yet supported on another machine.
-- The terminal UI has no Fleet features.
-- Quitting n10 Desktop stops a Beam daemon only if n10 started it, and never
-  kills sessions on any machine.
-
-## Requirements
-
-- tmux 3.2 or newer on every machine.
-- A browser or phone with a passkey provider that supports the WebAuthn PRF
-  extension. **Passkey compatibility**, on the create and join forms, lists
-  what vendors document; most combinations are unverified.
-- Beam installed on headless machines, which must run macOS or Linux. n10
-  Desktop includes its own.
+- The terminal UI has no Fleet.
+- Headless machines must run macOS or Linux.

@@ -1,34 +1,40 @@
 ---
 title: Installation
-description: Prerequisites and first-run setup.
+description: What n10 needs, and how to install it.
 ---
 
 ## Prerequisites
 
-You'll need:
-
-- Git, Node.js, npm, and tmux 3.2 or newer.
-- An agent CLI on your `PATH`: `claude`, `codex`, `gemini`, `copilot`, or `opencode`.
-- For GitHub, the `gh` CLI, signed in to your account.
-- For Azure DevOps, a personal access token with repository and pull request access.
-- On Linux, `build-essential` and `python3` to compile `node-pty` when installing the desktop app.
-
-n10 runs agents and terminal tabs in tmux. Quitting n10 detaches from them;
-reopening n10 reconnects to surviving sessions. Exited agents keep their
-final output so you can resume the recorded agent or explicitly start a new
-conversation. Closing a terminal tab or stopping an agent ends its tmux
-session.
+- Git, and Node.js 20 or newer with npm.
+- tmux 3.2 or newer. n10 runs every agent and terminal in tmux.
+- At least one agent CLI on your `PATH`, signed in: `claude`, `codex`,
+  `gemini`, `copilot` or `opencode`.
+- For GitHub, the [`gh` CLI](https://cli.github.com), signed in with
+  `gh auth login`.
+- For Azure DevOps, a personal access token with Code (Read & Write),
+  Build (Read) and Project and Team (Read).
+- On Linux, `build-essential` and `python3`. npm compiles `node-pty` during
+  the install.
 
 ## Install
 
+One package holds n10 Desktop and the terminal UI:
+
 ```sh
-npm install -g @notaharness/n10-desktop  # Desktop app
-npm install -g @notaharness/n10          # Terminal UI and CLI utilities
+npm install -g @notaharness/n10
 ```
 
-The desktop app uses the CLI for agent-drafted reviews: agents save their
-comments with `n10 util add-comment`, so `n10` must be on your `PATH`. If
-you don't use that feature, you can install the desktop app on its own.
+Then, from a repository:
 
-Run `n10-desktop` or `n10` from your project directory. On the first run,
-n10 walks you through connecting your version control provider.
+```sh
+n10          # open n10 Desktop
+n10 --tui    # run the terminal UI instead
+```
+
+`n10 --help` lists every command, and `n10 --version` prints the installed
+version.
+
+A .deb package and an AppImage for Linux are coming, tracked in
+[#122](https://github.com/notaharness/n10/issues/122).
+
+Next: [Getting started](/docs/getting-started).

@@ -4,11 +4,11 @@
   <clipPath id="n">
     <path transform="translate(37.5 75.0)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" />
   </clipPath>
-  <path transform="translate(37.5 75.0)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" fill="#9caf88" />
   <g transform="translate(100.0 75.0)" fill="#e3c16f">
     <rect x="0" y="0" width="25" height="100" />
     <rect x="50" y="12.5" width="50" height="75" rx="25" fill="none" stroke="#e3c16f" stroke-width="25" />
   </g>
+  <path transform="translate(37.5 75.0)" d="M0,100 V25 H22.5 L23.5,37 C27,30 36,25 50,25 C64,25 75,36 75,53 V100 H50 V60 C50,50 46,45 38,45 C29,45 25,51 25,60 V100 Z" fill="#9caf88" />
   <g clip-path="url(#n)">
     <rect x="100.0" y="75.0" width="25" height="100" fill="#8b843b" />
   </g>

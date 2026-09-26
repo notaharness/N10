@@ -1,14 +1,41 @@
 ---
 title: Configuration
-description: Settings, keybindings, and where n10 stores its state.
+description: Settings, keyboard shortcuts, and where n10 keeps its files.
 ---
 
-Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop.
-From there, you can choose your version control provider and AI agent, set
-sync intervals, and configure automatic rebasing and cleanup of merged
-branches. Auto-detect can fill in project settings from your Git remote.
+Open settings with `⌘,` (`Ctrl+,` on Linux and Windows) in n10 Desktop, or
+`s` in the terminal UI. Both change the same configuration.
 
-For keyboard shortcuts, open the **Controls** panel. Choose the Normie or
-Vim preset, or remap individual actions.
+| Setting | What it does |
+| --- | --- |
+| **AI Tool** | The agent n10 launches: Claude (the default), Codex, Gemini, Copilot or OpenCode. |
+| **Editor** | The editor **Open in editor** uses, globally or per project. |
+| **Worktree Path** | Where new worktrees go. `{session}` stands for a filesystem-safe form of the branch name. Takes effect after a restart. |
+| **Sync Interval** | How often n10 checks for merged pull requests and conflicts. |
+| **Auto Rebase** | Rebase worktree branches onto the base branch after each sync. |
+| **Auto Delete on Merge** | Remove a worktree once its pull request is merged. |
+| Provider fields | The owner, repository and GitHub username (GitHub), or organization, project, repository and access token (Azure DevOps). |
 
-n10 stores its configuration in `~/.n10/`.
+n10 fills in the provider fields from your Git remote when you open a
+repository, so you rarely set them by hand.
+
+## Keyboard shortcuts
+
+In n10 Desktop, **Help → Keyboard Shortcuts** lists them. The ones you'll use
+most:
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘K` / `Ctrl+K` | Search branches, pull requests and commands |
+| `⌘N` / `Ctrl+N` | New worktree |
+| `⌘⇧T` / `Ctrl+Shift+T` | New terminal |
+| `⌘O` / `Ctrl+O` | Open a repository |
+| `⌘B` / `Ctrl+B` | Toggle the sidebar |
+| `⌘R` / `Ctrl+R` | Refresh pull requests |
+
+For the terminal UI's keys, see [the terminal UI](/docs/terminal-ui).
+
+## Where n10 keeps its files
+
+Everything lives in `~/.n10/`: global settings in `config.json`, and each
+repository's settings under `projects/`.

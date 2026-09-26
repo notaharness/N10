@@ -1,4 +1,4 @@
 {
   "title": "Guides",
-  "pages": ["worktrees", "fleet", "agent-reviews", "plans", "babysit", "reviewing-code", "themes"]
+  "pages": ["worktrees", "agent-reviews", "plans", "babysit", "reviewing-code", "fleet", "themes"]
 }

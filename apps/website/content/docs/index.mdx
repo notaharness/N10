@@ -1,34 +1,36 @@
 ---
-title: Introduction
-description: What n10 is and why it exists.
+title: What is n10
+description: n10 runs coding agents in Git worktrees and reviews their pull requests.
 ---
 
-n10 runs AI coding agents across Git worktrees, tracks pull requests, and
-lets you review code from a desktop app or terminal UI.
+n10 runs coding agents in Git worktrees and lets you review their pull
+requests, from a desktop app or a terminal UI.
 
-Each branch gets its own Git worktree and agent session, so you can keep
-several features in progress without stashing changes or disturbing your
-main checkout. n10 works with Claude, Codex, Gemini, Copilot and OpenCode,
-and supports GitHub and Azure DevOps.
+Every branch gets its own worktree and its own agent session. You can have
+several features and reviews going at once without stashing changes or
+touching your main checkout. For each worktree, n10 shows the pull request,
+its CI checks, its reviews and whether it conflicts with the base branch.
 
-n10 Desktop can also run agents on your other machines. Add them to a
-fleet with [Beam](/docs/beam), then pick a machine when you launch an
-agent; its worktree, tmux session and agent run there. See the
-[Fleet guide](/docs/guides/fleet).
+When a pull request needs review, an agent can draft the comments and you
+decide which ones to post. When your own pull request gets review comments,
+you can hand them to an agent as one task. You can do all of this without
+opening GitHub.com or Azure DevOps.
 
-## Install
+n10 works with Claude, Codex, Gemini, Copilot and OpenCode, and with GitHub
+and Azure DevOps. It is in beta: I use it every day, but expect rough edges.
 
-```sh
-npm install -g @notaharness/n10-desktop  # Desktop app
-npm install -g @notaharness/n10          # Terminal UI and CLI utilities
-npm install -g @notaharness/beam         # Run agents on another machine
-```
+## Start here
 
-See [Installation](/docs/installation) for prerequisites and first-run
-setup, or [Fleet](/docs/guides/fleet) to add a second machine.
+- [Installation](/docs/installation): what you need and how to install n10.
+- [Getting started](/docs/getting-started): from installing to an agent
+  working in a worktree.
+- [Guides](/docs/guides/worktrees): each feature, one page at a time.
+
+n10 has two companions. [Beam](/docs/beam) pools your machines so n10
+Desktop can run agents on any of them, and [Orchestra](/docs/orchestra) lets
+one agent hand work to other agents.
 
 ## For agents
 
-This site publishes [`/llms.txt`](/llms.txt) (a page index) and
-[`/llms-full.txt`](/llms-full.txt) (every page's content) for agents that
-read documentation directly.
+This site publishes [`/llms.txt`](/llms.txt), an index of its pages, and
+[`/llms-full.txt`](/llms-full.txt), every page's content in one file.

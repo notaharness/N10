@@ -12,7 +12,7 @@ export function Cta() {
             n10 is still early
           </h2>
           <p className="text-fd-muted-foreground mx-auto mt-4 max-w-md text-pretty">
-            We use it every day, but it still has rough edges and breaking
+            I use it every day, but it still has rough edges and breaking
             changes.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -20,10 +20,10 @@ export function Cta() {
               Read the docs
             </Link>
             <Link
-              href="/orchestra"
+              href="https://github.com/notaharness/n10"
               className={buttonVariants({ variant: 'outline' })}
             >
-              Use Orchestra
+              GitHub
             </Link>
           </div>
         </div>

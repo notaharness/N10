@@ -1,24 +1,34 @@
 ---
 title: The terminal UI
-description: Running n10 from the terminal, sharing state with the desktop app.
+description: Run n10 in a terminal, alongside or instead of n10 Desktop.
 ---
 
-Run `n10` from your repository root to open the terminal UI. It shares the
-desktop app's core, configuration and worktrees, so you can use either
-interface with the same projects.
+Run the terminal UI from a repository:
 
-> Beta. Expect rough edges, and pin a version if you depend on it.
+```sh
+n10 --tui            # the repository in the current directory
+n10 --tui ~/code/app # or another one
+```
 
-You can check pull request status, read diffs and review threads, and send
-plans to agents from the terminal. Images in comments render inline on
-kitty and Ghostty. An agent reviewing a pull request records its draft
-comments with `n10 util add-comment`, and you walk through them to edit,
-discard or post.
+It uses the same configuration, worktrees and agent sessions as n10 Desktop,
+so you can switch between the two on the same repository. The first time
+you open a repository, it walks you through the provider settings it
+detected.
 
-Most development focuses on the desktop app; some features, such as
-whole-file diffs, are only available there. The terminal UI has no Fleet
-features: running agents on other machines is a desktop feature. See the
-[Fleet guide](/docs/guides/fleet).
+From the terminal you can create worktrees, run agents, follow pull request
+status, read diffs and review threads, and send plans to agents. Images in
+comments render inline in kitty and Ghostty.
 
-The terminal UI needs Node.js 20 or later. See
-[Installation](/docs/installation) for the other prerequisites.
+| Key | Action |
+| --- | --- |
+| `c` | Check out a branch, or type a new name to create one |
+| `Enter` | Start or focus the agent session for the selected worktree |
+| `u` | Rebase the selected worktree onto the base branch |
+| `s` | Settings |
+| `q` | Quit |
+
+These are the Normie defaults. Settings → **Controls** switches to the Vim
+preset or remaps keys.
+
+Most new work lands in n10 Desktop first. Whole-file diffs and running agents
+on other machines with [Fleet](/docs/guides/fleet) are desktop-only.

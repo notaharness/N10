@@ -1,241 +1,52 @@
 ---
 title: Orchestra
-description: Two agent skills that let one coding agent hand work to other coding agents, each in its own tmux session and Git worktree.
+description: Let one coding agent hand work to other coding agents, each in its own tmux session and Git worktree.
 ---
 
-Orchestra lets one coding agent hand work to other coding agents. It is
-two skills:
+Orchestra lets one coding agent delegate work to other coding agents. The
+**orchestrator** splits a task into branch-sized pieces and supervises them.
+Each **player** is an agent in its own tmux session and Git worktree, and
+reports its progress, questions and results back to the orchestrator.
 
-- **orchestrator** guides the supervising agent. It splits work into
-  branch-sized tasks, spawns a player for each, answers their questions
-  and checks their results.
-- **player** guides each delegate. A player is a coding agent in its own
-  tmux session and Git worktree, or, for a dir player, in an existing
-  directory with no branch or worktree. It reports back with one of four
-  report kinds.
+Orchestra is two agent skills. Claude Code and Codex can be the
+orchestrator; players can also be Gemini, Copilot or OpenCode.
 
-The skills tell the agents what to do. Bash scripts do the Git and tmux
-work. All state lives on each player's tmux session as session options:
-Orchestra keeps no state files and runs no daemon.
-
-Claude Code and Codex work as both orchestrator and player. Gemini,
-Copilot and OpenCode run as players only.
+The source and full documentation are at
+[github.com/notaharness/plugins](https://github.com/notaharness/plugins/tree/main/orchestra).
 
 ## Install
 
-### Claude Code
+Orchestra needs Linux or macOS with Bash, Git, tmux 3.x and `python3`, and
+an authenticated `claude` or `codex` CLI for each kind of player you run. A
+Claude Code orchestrator also needs Claude Code 2.1.224 or later and `socat`
+or OpenBSD `nc`; without them, run it inside tmux. The
+[README](https://github.com/notaharness/plugins/tree/main/orchestra#requirements)
+has the full list.
+
+In Claude Code:
 
 ```text
 /plugin marketplace add notaharness/plugins
 /plugin install orchestra@notaharness
 ```
 
-Then run `/orchestra:orchestrator` followed by the task.
-
-### Codex and other agents
-
-With Node.js and npm installed:
+For Codex, install both skills with Node.js and npm. Leave out
+`--agent codex` to pick other agents from a list.
 
 ```sh
-npx skills@latest add notaharness/plugins --global --skill orchestrator player
+npx skills@latest add notaharness/plugins --global --agent codex --skill orchestrator player
 ```
 
-Start a Codex session and invoke `$orchestrator`. Other agents use their
-own skill syntax. Install both skills in the same scope: the orchestrator's
-scripts use the player's reporting helpers.
+## Use it
 
-### Requirements
+Start the orchestrator with your task: `/orchestra:orchestrator` followed by
+the task in Claude Code, or `$orchestrator` in Codex. It spawns players as it
+needs them and tells you when a decision is yours to make. You can attach to
+any player's tmux session to watch it or talk to it directly.
 
-- Linux or macOS with Bash and Git. Tested on Linux.
-- tmux 3.x, tested with 3.4.
-- An authenticated `claude` or `codex` CLI for each player type you run.
-- `python3`, to pre-accept Claude Code's workspace-trust dialog in each
-  worktree.
-- OpenBSD `nc` or `socat`, to deliver reports to a Claude Code
-  orchestrator's inbox socket.
-- `beam`, only for players on other machines.
+## With n10
 
-## Scripts
-
-The orchestrator runs the scripts in `skills/orchestrator/scripts/`. The
-player runs `report.sh` from `skills/player/scripts/`.
-
-```sh
-spawn.sh --branch <name> (--prompt <text> | --prompt-file <f>)   # worktree player
-spawn.sh --dir <path> (--prompt <text> | --prompt-file <f>)      # dir player
-spawn.sh --branch <name> --resume [--prompt <text> | --prompt-file <f>]
-spawn.sh --dir <path> --resume
-sessions.sh [--all] [--quiet SECONDS] [--sample SECONDS] [--json]
-screen.sh <session> [--lines N] [--history N]
-send.sh <session> [--raw | --type] <text…>
-send.sh <session> --key <tmux key>
-adopt.sh <session> [--orchestrator <target>] [--agent AGENT] [<text…>]
-kill.sh <session>
-relay.sh [--topic T] [--allow <local target>]...
-report.sh PROGRESS|QUESTION|BLOCKED|DONE "<text…>"
-report.sh --orchestrator
-```
-
-| Script | What it does |
-| --- | --- |
-| `spawn.sh` | Creates a branch, worktree and tmux session, then starts a player. The branch starts from the freshly fetched default branch unless you pass `--from REF`. `--dir` starts a dir player instead and takes no `--branch`, `--repo` or `--from`. `--dry-run` previews without writes or fetches. Prints `started <session>`. |
-| `spawn.sh --resume` | Restarts a stopped player in its worktree or directory with a restart note. The original task is not replayed. |
-| `sessions.sh` | Lists players with session, branch, agent, reporting target, last report and a busy, idle or dead guess. `--all` covers every repository. |
-| `screen.sh` | Prints a player's pane as plain text. |
-| `send.sh` | Sends a message prefixed `[orchestrator]`, routed like a report. `--raw` pastes text as is, for menus. `--key` sends one keypress. `--type` types text, for slash commands. |
-| `adopt.sh` | Connects an idle player to the current orchestrator. Without text, the player sends a handoff summary. With text, it takes that as its next task. |
-| `kill.sh` | Kills a player's tmux session. The branch and worktree stay. |
-| `relay.sh` | Delivers reports from players on other machines. See [Players on other machines](#players-on-other-machines). |
-| `report.sh` | The player's script. Sends a report, or prints the current reporting target with `--orchestrator`. |
-
-`<session>` is a player's branch or its exact tmux session name, as
-`sessions.sh` prints it. A dir player has no branch and goes by its session
-name, `<directory>-dir`. Every orchestrator script except `relay.sh` also
-takes `--repo PATH`, to act on a repository from elsewhere, and
-`--machine NAME`.
-
-### Player agents
-
-`spawn.sh --agent` picks the player's CLI. `--model M` and
-`--effort low|medium|high|xhigh|max` apply to Claude and Codex;
-`--permission-mode MODE` applies to Claude only.
-
-| Agent | `--resume` |
-| --- | --- |
-| `claude` | Yes |
-| `codex` | Yes |
-| `opencode` | Implemented, untested |
-| `gemini` | No |
-| `copilot` | No |
-| Custom, `--cmd "COMMAND"` | No |
-
-A custom command receives the prompt in `$PROMPT`.
-
-## Reports
-
-A player calls `report.sh KIND "text"`, which sends
-`[player SESSION] KIND: text`. `SESSION` is the player's tmux session name.
-
-| Kind | Sent when | Orchestrator, per its skill |
-| --- | --- | --- |
-| `PROGRESS` | The player reaches a meaningful milestone. | Usually doesn't reply. |
-| `QUESTION` | A decision needs input. | Answers from what it knows, or asks you one concise question. |
-| `BLOCKED` | Something prevents progress. | Inspects the player's pane with `screen.sh`. |
-| `DONE` | The task is finished. | Checks commits, tests and pull request state before accepting it. |
-
-`spawn.sh` and `adopt.sh` set the player's `@orchestra-orchestrator` tag
-from `--orchestrator`, or else from the Claude session, Codex conversation
-or tmux session they run in. `report.sh` reads that tag on every call and
-delivers by target:
-
-- `claude:<session-id>`: to that Claude Code session's inbox socket
-  (Claude Code 2.1.224 or later), through `nc` or `socat`. This reaches a
-  Claude orchestrator outside tmux, such as Claude Desktop. It is never
-  pasted.
-- `codex:<thread-id>`: through `codex queue`, as the conversation's next
-  turn.
-- `tmux:<session>`: to the Claude inbox or `codex queue` when the pane runs
-  one of those, otherwise pasted into the pane and submitted with Enter.
-
-Once the transport accepts a report, `report.sh` records it in
-`@orchestra-last-report`. If delivery fails, it exits non-zero and prints
-`report.sh: delivery failed` with the target, the reason and the full
-report. It does not retry.
-
-## Session tags
-
-Everything the scripts know about a player is a tmux session user option.
-The tags end with the session. Read one with
-`tmux -u show-options -qv -t '=SESSION:' @orchestra-agent`.
-
-| Tag | Example | Meaning |
-| --- | --- | --- |
-| `@orchestra-spawner` | `orchestra` | Program that created the session. n10 writes `n10` on its own sessions. |
-| `@orchestra-repo` | `/code/shop` | Absolute, symlink-resolved path of the main checkout, or a dir player's directory. |
-| `@orchestra-session-type` | `worktree` | `worktree` or `dir` for players. `shell` and `agent` are n10 terminal tabs, never players. |
-| `@orchestra-branch` | `feature/search` | Worktree players only: the branch, unsanitized. |
-| `@orchestra-orchestrator` | `tmux:planning` | Reporting target: `claude:<id>`, `codex:<id>` or `tmux:<session>`, optionally prefixed with `beam:<peerId>/`. |
-| `@orchestra-orchestrator-config` | `/home/u/.claude` | Local `claude:` targets only: the orchestrator's Claude config directory. |
-| `@orchestra-agent` | `claude` | The CLI in the pane: `claude`, `codex`, `gemini`, `copilot`, `opencode` or `custom`. |
-| `@orchestra-launching` | `1` | Set only while the placeholder pane exists during launch. |
-| `@orchestra-claude-session` | a UUID | Dir players running Claude only: the conversation `--resume` continues. |
-| `@orchestra-last-report` | `DONE 2026-09-24T10:00:00Z inbox` | Kind, UTC timestamp and outcome of the last accepted report. |
-
-The first four tags are the session's identity; the session name is only a
-label. n10 reads the same tags and lists worktree players next to its own
-worktrees. n10 does not yet list dir players.
-
-## Players on other machines
-
-`--machine NAME` works on `spawn.sh`, `sessions.sh`, `screen.sh`,
-`send.sh`, `adopt.sh` and `kill.sh`: every orchestrator script except
-`relay.sh`. `NAME` is a [Beam](/docs/beam) peer label, alias or id. It
-defaults to `$ORCHESTRA_MACHINE`, else this machine, and `local` means this
-machine. With a machine named, the script runs the same Git and tmux
-commands there through `beam exec`. If it can't find `beam`, it fails
-instead of running them here.
-
-The other machine needs:
-
-- Beam, with this machine as a peer.
-- Orchestra installed at the same path relative to `$HOME` as here, such
-  as Claude Code's plugin cache on both. `spawn.sh` checks this before it
-  creates anything.
-
-On a remote machine, `--repo` and `--dir` must be absolute or start with
-`~/`.
-
-`sessions.sh --all` lists this machine's players and every peer's, with a
-MACHINE column. Session names are unique only per machine, so a bare name
-may need `--machine` next to it.
-
-A remote player's `@orchestra-orchestrator` tag holds `beam:<peerId>/`
-followed by the orchestrator's local target, for example
-`beam:<peerId>/tmux:planning`. `report.sh` sends the report over Beam, and
-delivery has three outcomes:
-
-| Outcome | Exit | Meaning |
-| --- | --- | --- |
-| delivered | 0 | The orchestrator's machine received and acknowledged the report. |
-| stored | 0 | Success. The report is on the player's machine, and Beam delivers it once the orchestrator's machine connects. Do not send it again. |
-| rejected | non-zero | Beam refused it: `unknown-peer`, `revoked-peer`, `payload-too-large` and similar. |
-
-On the orchestrator's machine, one program hands arriving reports to the
-orchestrator:
-
-- **n10 Desktop** is the relay while it runs, so do not run `relay.sh`
-  beside it. It delivers to a `claude:` target, or to a `tmux:` target
-  that is an agent session n10 started, and refuses the rest, including
-  `codex:` targets. See the [Fleet guide](/docs/guides/fleet).
-- **`relay.sh`** does the same job from a plain terminal. It delivers only
-  to the session it was started in and to targets named with `--allow`,
-  whatever target the incoming report names. It needs `socat` or an `nc`
-  with `-U`.
-
-```sh
-relay.sh                        # deliver to the session relay.sh runs in
-relay.sh --allow tmux:planning  # also deliver to the tmux session "planning"
-```
-
-`relay.sh` acknowledges a report only after delivering it; a report it
-can't deliver stays with Beam. `relay.sh` exits when the Beam daemon closes
-the connection, so restart it after restarting Beam.
-
-## Limitations
-
-- Remote spawns are not covered end to end by tests. The test suites fake
-  the second machine on one host.
-- A remote spawn skips the check that the agent CLI is installed, so a
-  missing CLI fails at launch.
-- A Claude dir player killed with `kill.sh` cannot be resumed. Its
-  conversation id lives in `@orchestra-claude-session`, which ends with the
-  session.
-- A report that `relay.sh` refuses is offered again, and refused again,
-  about every 30 seconds. Clear it from Beam’s refused list, or restart
-  `relay.sh` with the `--allow` it needs.
-
-## More
-
-The [README on GitHub](https://github.com/notaharness/plugins/tree/main/orchestra#readme)
-covers default models and effort, the launch sequence, handoff and delivery
-in more detail. The [Orchestra page](/orchestra) has an overview.
+n10 lists Orchestra's worktree players next to its own worktrees, so you can
+follow and review their work in n10. With [Beam](/docs/beam), a player can
+run on another of your machines, and n10 Desktop delivers its reports to the
+orchestrator on this one. See the [Fleet guide](/docs/guides/fleet).

@@ -1,8 +1,6 @@
-# N10
+# n10
 
-Run AI coding agents across Git worktrees, track pull requests, and review code from a desktop app or terminal UI.
-
-I built n10 to help with my daily work in a large monorepo. I usually have several features and reviews going at once, and wanted one place to manage their branches and agent sessions. I also wanted help reviewing pull requests while still understanding the code I was approving.
+n10 runs coding agents in Git worktrees and lets you review their pull requests, from a desktop app or a terminal UI.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
@@ -10,69 +8,69 @@ I built n10 to help with my daily work in a large monorepo. I usually have sever
   <img alt="n10 Desktop showing worktrees and pull request status beside a code diff with inline review comments" src="docs/media/hero.png">
 </picture>
 
-n10 works with Claude, Codex, Gemini, Copilot, and OpenCode. You can choose a different agent for each project. It supports GitHub and Azure DevOps, with [different levels of test coverage](#version-control-providers).
+Every branch gets its own worktree and agent session, so you can have several features and reviews going at once without stashing changes or touching your main checkout. n10 shows each worktree's pull request, CI checks, reviews and conflicts. An agent can draft review comments for you to post, and you can hand review comments on your own pull requests to an agent as one task, without opening GitHub.com or Azure DevOps.
 
-> n10 is still early in development. We use it every day, but expect rough edges and breaking changes.
+n10 works with Claude, Codex, Gemini, Copilot and OpenCode, and with GitHub and Azure DevOps. It is in beta: I use it every day, but expect rough edges.
 
-## Getting started
+Documentation: **[n10.is/docs](https://n10.is/docs)**
 
-### Prerequisites
+## Install
 
-You'll need:
+You need:
 
-- Git, Node.js, npm, and tmux 3.2 or newer.
-- An agent CLI on your `PATH`: `claude`, `codex`, `gemini`, `copilot`, or `opencode`.
-- For GitHub, the `gh` CLI, signed in to your account.
-- For Azure DevOps, a personal access token with repository and pull request access.
-- On Linux, `build-essential` and `python3` to compile `node-pty` during installation.
+- Git, Node.js 20 or newer, and tmux 3.2 or newer.
+- An agent CLI on your `PATH`, signed in: `claude`, `codex`, `gemini`, `copilot` or `opencode`.
+- For GitHub, the [`gh` CLI](https://cli.github.com), signed in. For Azure DevOps, a personal access token.
+- On Linux, `build-essential` and `python3`, to compile `node-pty` during the install.
 
-n10 runs agents and terminal tabs in tmux. Quitting n10 detaches from them; reopening n10 reconnects to surviving sessions. Exited agents keep their final output so you can resume the recorded agent or explicitly start a new conversation. Closing a terminal tab or stopping an agent ends its tmux session.
-
-### Installation
-
-One package holds the desktop app and the terminal UI:
+Then:
 
 ```sh
 npm install -g @notaharness/n10
 ```
 
-Run `n10` from your project directory to open the desktop app, or `n10 --tui` for the terminal UI. On the first run, n10 walks you through connecting your version control provider.
+A .deb package and an AppImage for Linux are coming ([#122](https://github.com/notaharness/n10/issues/122)).
 
-## Features
+## Use it
+
+From a repository:
+
+```sh
+n10          # open n10 Desktop
+n10 --tui    # or run the terminal UI
+```
+
+n10 reads your Git remote and fills in the project settings. Press `⌘N` (`Ctrl+N` on Linux and Windows), type a branch name and choose **Create branch … and open a worktree**. n10 creates the worktree and offers to launch your agent in it.
+
+Agents run in tmux, so quitting n10 leaves them running, and n10 reconnects when you open it again. The [getting started guide](https://n10.is/docs/getting-started) walks through the rest.
 
 ### Work on several branches at once
 
-Each branch gets its own Git worktree and agent session. You can keep several features in progress without stashing changes or disturbing your main checkout.
-
-The sidebar shows each worktree's pull request state, CI results, review status, and conflict count. The status indicator turns red when a build fails or a reviewer rejects the changes. It turns solid green when CI passes and all reviewers approve.
-
-n10 also detects merged branches and conflicts with the base branch. You can enable automatic cleanup of merged worktrees and use a shortcut to rebase onto the latest `main` or `master`.
+Each worktree's row shows its pull request state, CI checks, reviews and conflicts. It turns red when a check fails or a reviewer asks for changes, and solid green when checks pass and every reviewer approves.
 
 ![Creating a branch and worktree from the command palette, then launching an agent](docs/media/worktrees.gif)
 
-### Review an agent's draft comments
+### Review with an agent
 
-Ask an agent to review a pull request. It adds draft comments to the relevant lines in the diff, and you work through them in severity order. Edit, discard, skip, or post each comment; published comments are attributed to you.
+Ask an agent to review a pull request. It leaves draft comments on the diff, and you edit, discard, skip or post each one. Posted comments are yours.
 
 ![Working through an agent's draft review comments, posting one and skipping to the next](docs/media/review.gif)
 
-### Turn review comments into an agent task
+### Send review comments to an agent
 
-Select the review comments you want an agent to address and add them to a plan. You can include instructions for individual comments, then preview the full prompt before sending the plan to your agent as a single task.
+Add the review comments you want addressed to a plan, with a note on each if you like, preview the prompt, and send it to the branch's agent as one task.
 
 ![Adding review comments and instructions to a plan, previewing the prompt, and sending it to an agent](docs/media/plan.gif)
 
 ### Babysit a pull request
 
-Right-click a pull request and choose **Babysit** to keep your agent updated on CI results, unresolved review comments, and merge conflicts. n10 groups updates together and sends them to the agent's session when it's idle.
+Right-click a pull request and choose **Babysit pull request**. n10 tells its agent about failing checks, new review comments and conflicts, batched and sent when the agent is idle.
 
 ![Enabling Babysit on a pull request and sending CI failures and review comments to its agent](docs/media/babysit.gif)
 
-### Review code without leaving n10
+### Review pull requests in n10
 
-Read a pull request's description, browse its diff, and submit your review in n10. You can reply to comments, resolve or reopen threads, and switch between split and unified diff views.
-
-The desktop app also supports whole-file diffs with code folding and word-level highlighting.
+Read a pull request's description, browse its diff, reply to and resolve threads, and submit your review. n10 Desktop also shows whole files, with unchanged code folded.
 
 ![Reading a pull request, switching diff views, and replying to and resolving a review thread](docs/media/review-in-place.gif)
 
@@ -82,42 +80,23 @@ The most important feature of any software.
 
 ![The review workspace in dark and light themes](docs/media/theme.gif)
 
-## The terminal UI
+### The terminal UI
 
-Run `n10 --tui` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
-
-You can check pull request status, read diffs and review threads, and send plans to agents from the terminal. Most development now focuses on the desktop app; some features, such as whole-file diffs, are only available there.
+`n10 --tui` shares its configuration, worktrees and sessions with n10 Desktop. It covers worktrees, agents, pull request status, diffs, review threads and plans. Most new features land in n10 Desktop first.
 
 ![The terminal UI showing pull request status, inline review threads, and a plan ready to send to an agent](docs/media/tui.gif)
 
-## Configuration
+### Run agents on your other machines
 
-Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop. From there, you can choose your version control provider and AI agent, set sync intervals, and configure automatic rebasing and cleanup of merged branches. Auto-detect can fill in project settings from your Git remote.
+n10 Desktop includes [Beam](https://github.com/notaharness/beam), which pools the machines you own. Join them into a fleet from n10's **Fleet** view, then launch worktrees and agents on any of them. See [Fleet](https://n10.is/docs/guides/fleet).
 
-For keyboard shortcuts, open the **Controls** panel. Choose the Normie or Vim preset, or remap individual actions.
+### Let one agent coordinate others
 
-n10 stores its configuration in `~/.n10/`.
-
-## Version control providers
-
-| Provider     | Authentication         | Test coverage                                        |
-| ------------ | ---------------------- | ---------------------------------------------------- |
-| GitHub       | Authenticated `gh` CLI | Unit, offline end-to-end, and live integration       |
-| Azure DevOps | Personal access token  | Unit tests and recorded API responses; no live tests |
-
-GitLab, Bitbucket, and other providers are not currently supported.
-
-Azure DevOps tests use recorded responses, so CI may miss changes to the live service. Bug reports help us catch those gaps.
-
-Providers share an interface in `libs/vcs/`. Contributions adding support for other providers are welcome.
-
-### Pair with Orchestra
-
-Pair n10 with my [Orchestra plugin](https://github.com/notaharness/plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in n10.
+[Orchestra](https://github.com/notaharness/plugins/tree/main/orchestra) lets one coding agent hand work to other agents, each in its own worktree. n10 lists its players next to your own worktrees.
 
 ## Contributing
 
-Pick up work from the [roadmap](https://github.com/orgs/notaharness/projects/1) or an issue labelled [`good first issue`](https://github.com/notaharness/n10/labels/good%20first%20issue). [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, checks, working with an AI agent and opening a pull request. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+Pick up work from the [roadmap](https://github.com/orgs/notaharness/projects/1) or an issue labelled [`good first issue`](https://github.com/notaharness/n10/labels/good%20first%20issue); the [roadmap page](https://n10.is/docs/roadmap) explains the direction. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, checks, working with an AI agent and opening a pull request. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

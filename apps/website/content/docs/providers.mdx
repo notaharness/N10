@@ -1,25 +1,20 @@
 ---
 title: Version control providers
-description: GitHub and Azure DevOps support and test coverage.
+description: n10 supports GitHub and Azure DevOps.
 ---
 
-| Provider     | Authentication         | Test coverage                                        |
-| ------------ | ----------------------- | ----------------------------------------------------- |
-| GitHub       | Authenticated `gh` CLI | Unit, offline end-to-end, and live integration       |
-| Azure DevOps | Personal access token  | Unit tests and recorded API responses; no live tests |
+| Provider | Sign in with |
+| --- | --- |
+| GitHub | The `gh` CLI (`gh auth login`) |
+| Azure DevOps | A personal access token |
 
-GitLab, Bitbucket, and other providers are not currently supported.
+n10 picks the provider from your repository's Git remote.
 
-Azure DevOps tests use recorded responses, so CI may miss changes to the
-live service. Bug reports help us catch those gaps.
+For Azure DevOps, create a personal access token with Code (Read & Write),
+Build (Read) and Project and Team (Read), and enter it in Settings under **Provider**. Azure DevOps
+support is less tested than GitHub's. If something breaks, please
+[open an issue](https://github.com/notaharness/n10/issues).
 
-Providers share an interface in `libs/vcs/`. Contributions adding support
-for other providers are welcome.
-
-## Pair with Orchestra
-
-[Orchestra](/docs/orchestra) lets your agent launch and coordinate other
-agents in worktree sessions, which you can follow in n10 next to your own.
-Reports from Orchestra players on other machines reach n10 Desktop over
-[Beam](/docs/beam), and n10 Desktop hands them to the orchestrator. The
-[Orchestra page](/orchestra) has an overview.
+GitLab, Bitbucket and other providers are not supported yet. Providers share
+one interface, and adding one is a welcome
+[contribution](/docs/contributing).

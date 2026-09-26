@@ -1,229 +1,70 @@
 ---
 title: Beam
-description: Pool your machines into a fleet, then open shells, run commands and send messages between them.
+description: Pool the machines you own, then open shells, run commands and send messages between them.
 ---
 
 Beam pools the machines you own into a fleet. From any machine in the fleet
-you can open a shell on another, run a command and get its exit code, or send
-a message that is stored and delivered when the other machine comes back
-online. A fleet is one person's machines. There is no way to add a second
-person.
+you can open a shell on another, run a command there, or send a message that
+waits until the other machine is online. n10 Desktop uses it to run agents on
+your other machines.
 
-One Go binary is both the daemon and the CLI, and the daemon starts the first
-time a command needs it. Machines connect over WireGuard tunnels built with
-[tailcat](https://github.com/tailscale/tailcat), Tailscale's library, which
-handles NAT traversal and falls back to a DERP relay when a direct connection
-fails. You don't need a Tailscale account.
+Machines connect over encrypted tunnels built with
+[tailcat](https://github.com/tailscale/tailcat), no Tailscale account needed.
+One passkey signs every machine into the fleet, and machines find each other
+through an encrypted directory at [beam.n10.is](https://beam.n10.is). Shells,
+commands and messages travel through the tunnels, never through beam.n10.is.
+When two machines can't connect directly, the tunnel goes through an
+encrypted relay.
 
-A single passkey signs every machine's membership. Machines find each other
-through a directory at [beam.n10.is](https://beam.n10.is), which stores only
-entries encrypted with a key derived from that passkey. Shells, commands and
-messages go through the tunnels, never through beam.n10.is. Beam is an early
-prototype, published as a beta; the source is at
-[github.com/notaharness/beam](https://github.com/notaharness/beam).
+Beam is in beta. The source, the full command reference and the trust model
+are at [github.com/notaharness/beam](https://github.com/notaharness/beam).
 
 ## Install
 
-Install it on every machine you want in the fleet. It runs on macOS and
-Linux, arm64 and x64. Windows is not supported yet.
+n10 Desktop includes Beam, so you only install it yourself on machines
+without n10 Desktop, such as a headless build box. It runs on macOS and
+Linux, arm64 and x64.
+
+You need a passkey provider that supports the WebAuthn PRF extension, in a
+browser or on your phone.
 
 ```sh
 npm install -g @notaharness/beam
 ```
 
-You also need a passkey provider that supports the WebAuthn PRF extension,
-in a browser or on a phone. The browser, the operating system and the
-provider must all support it. If the passkey you choose doesn't, Beam stops
-with `prf-unsupported` and lists what vendors document.
+## Use it
 
-## Create a fleet
-
-On the first machine:
+Create the fleet on your first machine, then join each of the others:
 
 ```sh
-beam init --label laptop
+beam init --label laptop     # on the first machine: two passkey prompts
+beam join --label buildbox   # on every other machine: one passkey prompt
 ```
 
-`--label` names this machine and defaults to the short host name.
-`--fleet-name` names the fleet as it appears in your passkey manager.
+Each prompt opens a browser, or on a headless machine draws a QR code to scan
+with your phone. After joining, compare the fleet fingerprint that
+`beam join` prints with `beam status` on a machine already in the fleet.
+They must match.
 
-Creating a fleet takes two passkey prompts. The first saves a passkey for
-beam.n10.is. The second uses that passkey to sign this machine's membership
-and unlock the encrypted directory. For each prompt, Beam opens a browser
-when the machine has one, and in a terminal it draws a QR code with the URL
-under it. On a headless machine or over SSH, scan the code with your phone
-and approve there. The result comes back through beam.n10.is, sealed to a key
-only this machine's daemon holds. Each link expires after five minutes.
-
-The command ends with
-`created fleet 3f9a 0c4e 7d12 e805 · this machine: laptop (b7f3 9a21 0c4e 55d1)`:
-the fleet fingerprint, then this machine's fingerprint in parentheses.
-
-## Join a machine
-
-On every other machine:
+Then, from any machine:
 
 ```sh
-beam join --label buildbox
-```
-
-This takes one passkey prompt; choose the passkey you created with
-`beam init`. The output names the fleet by its fingerprint,
-`joined fleet 3f9a 0c4e 7d12 e805; …`. Compare it with `beam status` on a
-machine already in the fleet. They must match; matching names are not
-enough. If they differ, this machine joined a different fleet: run
-`beam fleet reset` on it and join again with a fresh link. `beam peers`
-shows when the machines have connected.
-
-## Shells, commands and messages
-
-A `<peer>` is a machine's label, a local alias, its full id, or an id prefix
-of at least eight hex characters.
-
-```sh
+beam peers                                   # the fleet and who is online
 beam connect buildbox                        # a shell on buildbox
 beam exec buildbox -- uname -a               # one command, with its exit code
-beam msg send buildbox --topic jobs 'ready'  # a message, stored until delivered
+beam msg send buildbox --topic jobs 'ready'  # delivered now, or when buildbox connects
+beam msg listen --topic jobs                 # on buildbox: print incoming messages
 ```
 
-`beam connect` opens a terminal on the other machine running your login
-shell, or the command after `--`. The remote process ends when the
-connection does, so run anything long-lived in tmux. Detach and run the same
-command again to reattach; the session stays on buildbox.
+A shell ends when the connection does, so run long-lived work in tmux:
+`beam connect buildbox -- tmux new-session -A -s agents`.
 
-```sh
-beam connect buildbox -- tmux new-session -A -s agents
-```
+By default every machine in the fleet can run commands as you on every
+other. Run `beam --help` for every command, including limiting and revoking
+machines.
 
-`beam exec` pipes stdin, stdout and stderr and exits with the remote
-command's status, or `128+signal` if a signal killed it. Losing the
-connection kills the command.
+## With n10 and Orchestra
 
-Processes started through `connect` or `exec` get `BEAM_CALLER_ID` and
-`BEAM_CALLER_LABEL`, which name the machine that opened them, and
-`BEAM_SOCKET`, so a script can answer with `beam msg send "$BEAM_CALLER_ID" …`.
-
-## Messages that wait for the other machine
-
-`beam msg send` takes the payload as an argument, or from stdin with `-`.
-Use `--base64` for raw bytes. It prints one of three outcomes:
-
-| Output | Exit | Meaning |
-| --- | --- | --- |
-| `delivered to buildbox` | 0 | buildbox stored it. |
-| `stored for buildbox; delivery pending (…)` | 0 | It is on this machine's disk. Beam delivers it when buildbox connects, or once buildbox's grant allows mail. Don't send it again. |
-| `rejected: <reason>` | 1 | Nothing was stored, for example because the peer is unknown or revoked, the payload is too large, or the queue is full. |
-
-"Stored" is success. Only "rejected" is a failure.
-
-On the receiving machine, `beam msg listen --topic jobs laptop` prints each
-message as one line of JSON. Peer arguments filter by sender. A message stays
-on the receiving machine's disk until a listener takes it, and `msg listen`
-acknowledges it once it has written it to stdout. A consumer that needs more
-than that keeps its own record.
-
-`beam msg queue` lists queued messages: `outbound` by default, or
-`--which inbound|refused|quarantine`. A payload can be up to 256 KiB.
-
-## Grants
-
-Each machine decides what each other machine may open on it:
-
-```sh
-beam peer grant buildbox msg
-```
-
-`all`, the default, allows shells, commands and messages. `msg` allows only
-messages, and `none` allows nothing. A grant applies on the machine that
-sets it and goes nowhere else. Under `all`, a machine can run commands as
-your user here. Use `msg` for a machine that should only report to this one.
-Changing a grant closes any open shell or command it doesn't allow. n10
-Desktop types reports into an agent only from a machine granted `all`.
-
-## Revoke a machine
-
-```sh
-beam revoke oldlaptop
-```
-
-One passkey prompt signs the revocation. Beam applies it on this machine,
-sends it to connected peers, appends it to the directory, and reports how
-many peers acknowledged it. Offline machines learn about it when they next
-connect to a machine that knows. A revocation is permanent: the machine
-can come back only under a different node key, as a different machine.
-Revoking doesn't erase files on that machine or stop programs already
-running there.
-
-## Reset, and losing the passkey
-
-`beam fleet reset` removes this machine's fleet membership, known peers,
-revocations, pending directory writes and messages queued for those peers.
-It keeps the machine's own key. It asks you to type `reset`, and afterwards
-you run `beam init` or `beam join` again. Other machines and the passkey are
-not affected.
-
-Without the passkey, existing connections keep working, but you can't add
-or revoke machines. A fleet can't move to another passkey, so you build
-the fleet again: run `beam fleet reset` and `beam init` on one machine, then
-`beam fleet reset` and `beam join` on each of the others.
-
-## Command reference
-
-```sh
-beam init   [--label NAME] [--fleet-name NAME]
-beam join   [--label NAME]
-beam revoke <peer>
-beam fleet reset
-
-beam daemon [--detach | --exit-with-parent] [--derp-map URL]
-beam status [--json]
-beam peers  [--json]
-beam peer alias <peer> <alias|->
-beam peer grant <peer> all|msg|none
-
-beam connect <peer> [--cwd PATH] [-- argv...]
-beam exec    <peer> [--cwd PATH] [--env K=V]... -- argv...
-beam msg send   <peer> [--topic T] [--base64] [--json] <payload|->
-beam msg listen [--topic T] [<peer>...]
-beam msg queue  [<peer>] [--which outbound|inbound|refused|quarantine]
-
-beam version
-```
-
-Exit codes are `0` for success, `1` for a Beam error with its token on
-stderr, and `2` for a usage error. `connect` and `exec` exit with the remote
-process's status. `beam peer alias` sets a display name on this machine
-only; `-` clears it.
-
-You rarely need `beam daemon`, since the other commands start it.
-`--derp-map` points it at your own DERP servers.
-
-## Using it with n10 and Orchestra
-
-n10 Desktop includes Beam. Its Fleet view runs the same create, join, revoke
-and reset steps, can launch a worktree, agent or terminal on another machine
-in the fleet, and relays reports from Orchestra players on other machines to
-the orchestrator on this one. See [Fleet](/docs/guides/fleet). Sessions n10
-Desktop starts on this machine get `beam` on their `PATH`, connected to the
-same daemon as the app.
-
-In [Orchestra](/docs/orchestra), `spawn.sh`, `sessions.sh`, `screen.sh`,
-`send.sh`, `adopt.sh` and `kill.sh` take `--machine NAME`, where `NAME` is a
-machine in the fleet. They run the same Git and tmux commands on that machine
-through `beam exec`, and players there report back with `beam msg send`.
-
-## Good to know
-
-- Show a ceremony's QR code only where you alone can see it, not on a screen
-  share or in a photo. Anyone who scans it can try to answer first. Approve
-  only a page that names the machine you are enrolling.
-- One passkey per fleet, and one person per fleet.
-- Revocation is eventual: immediate on the revoking machine, within seconds
-  on connected peers, and on offline peers when they reconnect.
-- The worker at beam.n10.is sees sizes, timing, a fleet identifier and the
-  addresses of the browser and machine in a ceremony. It never sees
-  directory contents, shells, commands or messages. A DERP relay sees
-  metadata too, but relayed traffic stays encrypted.
-- Local state lives in `$BEAM_DIR`: `$BEAM_CONFIG_DIR` if set, else
-  `$XDG_CONFIG_HOME/beam`, else `~/.config/beam`. Its files are mode `0600`,
-  and that is their only protection; Beam doesn't encrypt them.
+n10 Desktop's [Fleet view](/docs/guides/fleet) manages the fleet and launches
+agents on its machines, and [Orchestra](/docs/orchestra)'s scripts take
+`--machine NAME` to run a player on one.

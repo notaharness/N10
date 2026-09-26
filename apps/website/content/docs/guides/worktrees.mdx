@@ -3,15 +3,29 @@ title: Work on several branches at once
 description: Each branch gets its own Git worktree and agent session.
 ---
 
-Each branch gets its own Git worktree and agent session. You can keep
-several features in progress without stashing changes or disturbing your
-main checkout.
+Each branch you work on in n10 gets its own Git worktree and agent session.
+Switch between them from the sidebar. There's nothing to stash, and your
+main checkout is left alone.
 
-The sidebar shows each worktree's pull request state, CI results, review
-status, and conflict count. The status indicator turns red when a build
-fails or a reviewer rejects the changes. It turns solid green when CI
-passes and all reviewers approve.
+- **New branch**: press `⌘N` (`Ctrl+N` on Linux and Windows), type the branch name and choose
+  **Create branch … and open a worktree**.
+- **Existing branch or pull request**: find it in the command palette under
+  **Check out branch**, or right-click its row in the sidebar and choose
+  **Check out as worktree**.
 
-n10 also detects merged branches and conflicts with the base branch. You
-can enable automatic cleanup of merged worktrees and use a shortcut to
-rebase onto the latest `main` or `master`.
+## What the sidebar shows
+
+Each worktree's row shows its pull request, CI checks, review status and
+conflicts. The status turns red when a check fails or a reviewer asks
+for changes, and solid green when checks pass and every reviewer approves.
+
+## Keeping worktrees current
+
+n10 checks each worktree for conflicts with the base branch and notices when
+its pull request is merged. In [Settings](/docs/configuration), **Auto
+Rebase** keeps worktree branches rebased onto the base branch, and **Auto
+Delete on Merge** removes a worktree once its pull request is merged. In the
+terminal UI, `u` rebases the selected worktree.
+
+To remove a worktree yourself, right-click it and choose
+**Remove worktree…**.

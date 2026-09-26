@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Footer } from '@/components/landing/footer';
+import { OrchestraAttention } from '@/components/orchestra/orchestra-attention';
 import { OrchestraHero } from '@/components/orchestra/orchestra-hero';
 import { OrchestraInstall } from '@/components/orchestra/orchestra-install';
 import { OrchestraReports } from '@/components/orchestra/orchestra-reports';
@@ -16,6 +17,7 @@ export default function OrchestraPage() {
     <main className="flex flex-1 flex-col">
       <OrchestraHero />
       <OrchestraReports />
+      <OrchestraAttention />
       <OrchestraTags />
       <OrchestraInstall />
       <Footer />
