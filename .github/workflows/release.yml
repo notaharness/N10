@@ -38,6 +38,7 @@ jobs:
   # Its own job, so a GitHub release that fails after publishing can be
   # re-run alone. Why only `latest`: publish-beta's packaging notes.
   publish:
+    if: github.event_name == 'push'
     needs: package
     runs-on: ubuntu-latest
     # Its deployment rule admits only v* tags; npm's trusted publisher names it.
@@ -54,8 +55,21 @@ jobs:
           name: package
           path: package
       - run: npm publish --provenance --tag latest package/*.tgz
-        env:
-          npm_config_dry_run: ${{ github.event_name == 'workflow_dispatch' }}
+
+  # A dispatched rehearsal: outside the tag-only environment, with no token.
+  rehearse:
+    if: github.event_name == 'workflow_dispatch'
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: package
+      - run: npm publish --dry-run --tag latest package/*.tgz
 
   # Release assets are the artifacts named release-*. The Linux package jobs
   # (#122) join `needs` and upload their .deb and AppImage under that prefix.

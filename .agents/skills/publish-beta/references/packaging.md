@@ -49,9 +49,11 @@ the release gate.
 `.github/workflows/release.yml` runs on a `v*` tag, which must equal
 `apps/cli/package.json`'s version. The `publish` job publishes the tarball the
 Package workflow tested, through npm trusted publishing (OIDC) with
-provenance. The trusted publisher on npmjs.com names this repository and
-`release.yml` with no environment; renaming the workflow file breaks
-publishing until it is updated there.
+provenance. The trusted publisher on npmjs.com names this repository, `release.yml`
+and the `npm` environment, whose deployment rule admits only `v*` tags;
+renaming the workflow file or the environment breaks publishing until it is
+updated there. A dispatched rehearsal runs `npm publish --dry-run` in its own
+job, outside that environment.
 
 Trusted publishing authenticates `npm publish` only, not `npm dist-tag`, so a
 release sets one tag: `latest`. Every release, prerelease or not, is what a
