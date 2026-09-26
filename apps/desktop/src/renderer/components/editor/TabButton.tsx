@@ -94,6 +94,16 @@ function PlanCountBadge({ count }: { count: number }) {
   );
 }
 
+/** A tab that opened in the background and has not been looked at. */
+function UnseenDot() {
+  return (
+    <span
+      aria-label="Not yet opened"
+      className="size-1.5 shrink-0 rounded-full bg-primary"
+    />
+  );
+}
+
 /** Always rendered; revealed on hover, or while the tab is active. */
 function TabCloseButton({
   active,
@@ -152,6 +162,31 @@ async function runTabMenu(
   else if (chosen === 'pin') tabs.pin(tab.id);
 }
 
+function tabClassName({
+  active,
+  unseen,
+  startsGroup,
+  flashing,
+}: {
+  active: boolean;
+  unseen: boolean;
+  startsGroup: boolean;
+  flashing: boolean;
+}): string {
+  return cn(
+    'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
+    active
+      ? 'bg-tab-active text-foreground'
+      : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+    unseen && 'text-foreground',
+    // A repository boundary: the gap plus the extra rule reads as a
+    // group edge rather than as one more tab.
+    startsGroup && 'ml-1.5 border-l border-border',
+    // The agent finished a work streak and nobody has looked yet.
+    flashing && !active && 'tab-attention'
+  );
+}
+
 export function TabButton({
   tab,
   item,
@@ -161,6 +196,7 @@ export function TabButton({
   foreignRepo,
   startsGroup,
   running = false,
+  unseen = false,
   machineLabel,
 }: {
   tab: Tab;
@@ -170,6 +206,8 @@ export function TabButton({
   snapshot: SessionActivitySnapshot | undefined;
   /** Live state for a tab that has no item to read it from. */
   running?: boolean;
+  /** Opened in the background and not activated since. */
+  unseen?: boolean;
   /** The other repository this tab belongs to, or null when it is at
    *  home in the open one. */
   foreignRepo: string | null;
@@ -229,17 +267,13 @@ export function TabButton({
       // a test asserting on `border-l` would break on a purely visual
       // restyle that changes nothing about which tab starts a group.
       data-starts-group={startsGroup || undefined}
-      className={cn(
-        'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
-        active
-          ? 'bg-tab-active text-foreground'
-          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-        // A repository boundary: the gap plus the extra rule reads as a
-        // group edge rather than as one more tab.
-        startsGroup && 'ml-1.5 border-l border-border',
-        // The agent finished a work streak and nobody has looked yet.
-        snapshot?.flashing && !active && 'tab-attention'
-      )}
+      data-unseen={unseen || undefined}
+      className={tabClassName({
+        active,
+        unseen,
+        startsGroup,
+        flashing: snapshot?.flashing ?? false,
+      })}
     >
       {active && <span className="absolute inset-x-0 top-0 h-px bg-primary" />}
       <TabIcon
@@ -249,6 +283,7 @@ export function TabButton({
       />
       <TabLabel label={label} preview={tab.preview} foreignRepo={foreignRepo} />
       <PlanCountBadge count={planCount} />
+      {unseen && <UnseenDot />}
       <TabCloseButton
         active={active}
         onClose={(e) => {

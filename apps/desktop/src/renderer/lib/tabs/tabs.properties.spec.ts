@@ -288,6 +288,21 @@ describe('tab reducer invariants', () => {
     );
   });
 
+  it('marks unseen only tabs on the strip, once each, and never the active one', () => {
+    fc.assert(
+      fc.property(sequence, (actions) => {
+        const { tabs, activeId, unseen } = run(actions);
+        const ids = new Set(tabs.map((t) => t.id));
+        expect(new Set(unseen).size).toBe(unseen.length);
+        for (const id of unseen) {
+          expect(ids.has(id)).toBe(true);
+          expect(id).not.toBe(activeId);
+        }
+      }),
+      { numRuns: 500 }
+    );
+  });
+
   it('goes without an active tab only when the repo in view has none', () => {
     fc.assert(
       fc.property(sequence, (actions) => {

@@ -131,6 +131,36 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
+  it('opens it behind the active tab, marked unseen until activated', () => {
+    // An agent started from a shell or by an orchestrator while the
+    // user is looking at something else must not move them.
+    let s = open(empty, 'branch:main');
+    s = sync(s, [live]);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:main'),
+      id('branch:feat-x'),
+    ]);
+    expect(s.activeId).toBe(id('branch:main'));
+    expect(s.lastActiveByRepo[REPO]).toBe(id('branch:main'));
+    expect(s.unseen).toEqual([id('branch:feat-x')]);
+
+    s = reduce(s, { type: 'activate', id: id('branch:feat-x') });
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('forgets an unseen tab that is closed without being opened', () => {
+    let s = sync(open(empty, 'branch:main'), [live]);
+    s = reduce(s, { type: 'close', id: id('branch:feat-x') });
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('focuses the tab the user opens, even one that was unseen', () => {
+    let s = sync(open(empty, 'branch:main'), [live]);
+    s = open(s, 'branch:feat-x');
+    expect(s.activeId).toBe(id('branch:feat-x'));
+    expect(s.unseen).toEqual([]);
+  });
+
   it('leaves an idle worktree alone even though it has a session name', () => {
     // Every worktree row carries a session name whether or not an agent
     // was ever started; only `running` means there is one.
