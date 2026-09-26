@@ -64,6 +64,9 @@ test.use({
 /** The content pane — the rail lists the same drafts beside it. */
 const pane = (page: Page) => page.locator('[data-terminal-pane]');
 
+const walkthroughClose = (page: Page) =>
+  pane(page).getByRole('button', { name: 'Close', exact: true });
+
 async function openWalkthrough(page: Page) {
   await sidebarRow(page, /Add undo support|#42/)
     .first()
@@ -131,9 +134,9 @@ test.describe('Tab keys beside the review walkthrough', () => {
     await liftActiveTab(page);
     await page.keyboard.press('Escape');
     await settle(page);
-    await expect(
-      pane(page).getByText(FIRST).filter({ visible: true })
-    ).toBeVisible();
+    // Only the walkthrough has a Close button; the diff it would exit
+    // to shows the same drafts inline.
+    await expect(walkthroughClose(page)).toBeVisible();
   });
 
   test('after a click on its tab, the walkthrough still takes the arrows', async ({
