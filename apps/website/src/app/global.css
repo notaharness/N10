@@ -816,14 +816,198 @@
   opacity: 0.25;
 }
 
-/* Theme-specific images (see theme-image.tsx): follow the site's
-   `.dark` class, not prefers-color-scheme. */
-.n10-only-dark {
-  display: none;
+/* The desktop demo (src/components/demo). The window's chrome uses the
+ * site tokens above; the terminal inside it carries Claude Code's own
+ * theme colours (its light and dark themes) so the sessions read as the
+ * real thing, a One Light / One Dark ANSI palette for zsh, and syntax
+ * colours for diffs. Diff rows are Claude Code's tints. */
+:root {
+  --n10-t-dim: var(--color-fd-muted-foreground);
+  --n10-t-rule: rgb(110 100 70 / 0.35);
+  --n10-t-user: var(--color-fd-muted);
+  --n10-t-claude: rgb(215 119 87);
+  --n10-t-code: rgb(87 105 247);
+  --n10-t-ok: rgb(44 122 57);
+  --n10-t-err: rgb(171 43 63);
+  --n10-t-accept: rgb(135 0 255);
+  --n10-t-add: rgb(105 219 124 / 0.4);
+  --n10-t-del: rgb(255 168 180 / 0.55);
+  --n10-t-green: #50a14f;
+  --n10-t-cyan: #0184bc;
+  --n10-t-blue: #4078f2;
+  --n10-t-red: #e45649;
+  --n10-t-yellow: #986801;
+  --n10-t-kw: #a626a4;
+  --n10-t-str: #50a14f;
+  --n10-t-num: #986801;
+  --n10-t-type: #c18401;
+  --n10-t-fn: #4078f2;
 }
-.dark .n10-only-dark {
-  display: block;
+
+.dark {
+  --n10-t-rule: rgb(220 210 170 / 0.28);
+  --n10-t-user: rgb(255 255 255 / 0.07);
+  --n10-t-code: rgb(177 185 249);
+  --n10-t-ok: rgb(78 186 101);
+  --n10-t-err: rgb(255 107 128);
+  --n10-t-accept: rgb(175 135 255);
+  --n10-t-add: rgb(34 92 43);
+  --n10-t-del: rgb(122 41 54);
+  --n10-t-green: #98c379;
+  --n10-t-cyan: #56b6c2;
+  --n10-t-blue: #61afef;
+  --n10-t-red: #e06c75;
+  --n10-t-yellow: #e5c07b;
+  --n10-t-kw: #c678dd;
+  --n10-t-str: #98c379;
+  --n10-t-num: #d19a66;
+  --n10-t-type: #e5c07b;
+  --n10-t-fn: #61afef;
 }
-.dark .n10-only-light {
-  display: none;
+
+.n10-term {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 40rem) {
+  .n10-term {
+    font-size: 12.5px;
+  }
+}
+
+.n10-t-dim {
+  color: var(--n10-t-dim);
+}
+.n10-t-bold {
+  font-weight: 700;
+}
+.n10-t-claude {
+  color: var(--n10-t-claude);
+}
+.n10-t-code {
+  color: var(--n10-t-code);
+}
+.n10-t-ok {
+  color: var(--n10-t-ok);
+}
+.n10-t-err {
+  color: var(--n10-t-err);
+}
+.n10-t-accept {
+  color: var(--n10-t-accept);
+}
+.n10-t-green {
+  color: var(--n10-t-green);
+}
+.n10-t-cyan {
+  color: var(--n10-t-cyan);
+}
+.n10-t-blue {
+  color: var(--n10-t-blue);
+}
+.n10-t-red {
+  color: var(--n10-t-red);
+}
+.n10-t-yellow {
+  color: var(--n10-t-yellow);
+}
+.n10-t-kw {
+  color: var(--n10-t-kw);
+}
+.n10-t-str {
+  color: var(--n10-t-str);
+}
+.n10-t-num {
+  color: var(--n10-t-num);
+}
+.n10-t-type {
+  color: var(--n10-t-type);
+}
+.n10-t-fn {
+  color: var(--n10-t-fn);
+}
+.n10-t-add {
+  background: var(--n10-t-add);
+}
+.n10-t-del {
+  background: var(--n10-t-del);
+}
+
+/* A past turn from the user sits on a faint band, as in Claude Code. */
+.n10-t-user {
+  background: var(--n10-t-user);
+}
+
+/* Claude Code draws its input box between two full-width rules. */
+.n10-t-rule {
+  border-top: 1px solid var(--n10-t-rule);
+}
+
+.n10-t-cursor {
+  display: inline-block;
+  width: 1ch;
+  height: 1lh;
+  vertical-align: top;
+  background: currentColor;
+  animation: n10-t-blink 1s steps(1) infinite;
+}
+
+.n10-t-input {
+  caret-color: currentColor;
+}
+
+/* The spinner cycles Claude Code's glyphs out and back. */
+.n10-t-spinner::before {
+  content: '✻';
+  animation: n10-t-spin 1.2s steps(1) infinite;
+}
+
+@keyframes n10-t-spin {
+  0% {
+    content: '·';
+  }
+  10% {
+    content: '✢';
+  }
+  20% {
+    content: '✳';
+  }
+  30% {
+    content: '✶';
+  }
+  40% {
+    content: '✻';
+  }
+  50% {
+    content: '✽';
+  }
+  60% {
+    content: '✻';
+  }
+  70% {
+    content: '✶';
+  }
+  80% {
+    content: '✳';
+  }
+  90% {
+    content: '✢';
+  }
+}
+
+@keyframes n10-t-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .n10-t-spinner::before,
+  .n10-t-cursor {
+    animation: none;
+  }
 }

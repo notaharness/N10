@@ -1,7 +1,7 @@
 import Link from 'next/link';
+import { DesktopDemo } from '@/components/demo/desktop-demo';
 import { HeroBackdrop } from '@/components/hero-backdrop';
 import { Logo } from '@/components/logo';
-import { ThemeImage } from '@/components/theme-image';
 import { buttonVariants } from '@/components/ui/button';
 
 export function Hero() {
@@ -50,11 +50,7 @@ export function Hero() {
             aria-hidden
             className="n10-stage-glow absolute inset-x-[6%] -top-6 bottom-[35%]"
           />
-          <ThemeImage
-            name="hero"
-            alt="n10 Desktop showing worktrees and pull request status beside a code diff with inline review comments"
-            className="n10-frame relative w-full rounded-xl"
-          />
+          <DesktopDemo className="relative" />
         </div>
       </div>
     </section>
