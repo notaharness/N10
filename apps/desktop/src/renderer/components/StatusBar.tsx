@@ -17,10 +17,7 @@ import { useRepo } from '../lib/repo-context.js';
 import { useMachines, useSyncState, useVersion } from '../lib/data/queries.js';
 import { useFleet } from '../lib/fleet/fleet-context.js';
 import { useRefreshRemote } from '../lib/data/mutations.js';
-import {
-  hasPeerMachines,
-  isFleetMember,
-} from '../lib/machines/machine-model.js';
+import { machinesSummary } from '../lib/machines/machine-model.js';
 import { itemRunning } from '../lib/sidebar/sidebar-model.js';
 import { basename, cn, relativeTime } from '../lib/utils.js';
 import { Tip } from './ui/tooltip.js';
@@ -71,7 +68,10 @@ export function StatusBar({
 
       <div className="flex-1" />
 
-      <MachinesSegment machines={machines.data} onOpenFleet={fleet.show} />
+      <MachinesSegment
+        machines={machines.data}
+        onOpenFleet={fleet.section.reveal}
+      />
 
       {running > 0 && (
         <Segment label={`${running} agent${running === 1 ? '' : 's'} running`}>
@@ -162,12 +162,9 @@ function ProviderSegment({
   );
 }
 
-/**
- * `3 machines`, or `3 machines · 1 offline` / `3 machines · 2 queued`
- * when something needs attention (offline takes priority over mail
- * waiting). Hidden entirely with only this machine (D8): a user who
- * never joins a fleet sees today's app.
- */
+/** The fleet's size and what needs attention, hidden entirely with
+ *  only this machine (D8): a user who never joins a fleet sees
+ *  today's app. */
 function MachinesSegment({
   machines,
   onOpenFleet,
@@ -175,26 +172,16 @@ function MachinesSegment({
   machines: MachineView[] | undefined;
   onOpenFleet: () => void;
 }) {
-  if (!hasPeerMachines(machines ?? [])) return null;
-
-  const members = (machines ?? []).filter(isFleetMember);
-  const offline = members.filter((m) => m.state === 'offline').length;
-  const queued = members.reduce((sum, m) => sum + m.queued, 0);
-  const count = members.length + 1; // + this machine
-
-  let suffix = '';
-  if (offline > 0) suffix = ` · ${offline} offline`;
-  else if (queued > 0) suffix = ` · ${queued} queued`;
-
+  const summary = machinesSummary(machines ?? []);
+  if (!summary) return null;
   return (
     <Segment
-      label="Open Fleet"
+      label="Show Fleet"
       onClick={onOpenFleet}
-      className={offline > 0 ? 'text-warning' : undefined}
+      className={summary.offline ? 'text-warning' : undefined}
     >
       <MonitorIcon className="size-3" />
-      {count} machine{count === 1 ? '' : 's'}
-      {suffix}
+      {summary.text}
     </Segment>
   );
 }

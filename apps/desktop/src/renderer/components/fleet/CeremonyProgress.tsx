@@ -103,7 +103,9 @@ export function CeremonyProgress({
           size="sm"
           variant="ghost"
           disabled={view.cancelling}
-          onClick={onCancel}
+          // The second click of a double click on the button that
+          // started this can land here once the progress replaces it.
+          onClick={(e) => e.detail < 2 && onCancel()}
         >
           {cancelLabel}
         </Button>

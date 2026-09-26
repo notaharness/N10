@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/fake-beam.js';
 import { SELF_PEER_ID, WORKBOX, type FakeBeam } from './setup/fake-beam.js';
-import { fleetView, leaveFleet, openFleet } from './setup/machines.js';
+import { fleetView, collapseFleet, openFleet } from './setup/machines.js';
 
 /**
  * This machine's fleet identity and what hangs off it
@@ -72,15 +72,15 @@ test.describe('An enrolled machine', () => {
     await fleetView(page)
       .getByRole('button', { name: 'Add a machine' })
       .click();
-    const dialog = page.getByRole('dialog');
+    const panel = fleetView(page);
     await expect(
-      dialog.getByText(
-        /Choose Fleet → Join an existing fleet.*with 3f9a 0c4e 7d12 e805\./
+      panel.getByText(
+        /Fleet section choose Join an existing fleet.*with 3f9a 0c4e 7d12 e805\./
       )
     ).toBeVisible();
-    await expect(dialog.getByText('beam join --label buildbox')).toBeVisible();
+    await expect(panel.getByText('beam join --label buildbox')).toBeVisible();
     await expect(
-      dialog.getByText(/Over SSH it does not open a browser\./)
+      panel.getByText(/Over SSH it does not open a browser\./)
     ).toBeVisible();
     expect(beam!.ops('join.start')).toHaveLength(0);
   });
@@ -102,7 +102,7 @@ test.describe('Joining a fleet', () => {
     ).toBeVisible();
     await expect(view.getByRole('button', { name: 'Close' })).toHaveCount(0);
 
-    await leaveFleet(page);
+    await collapseFleet(page);
     await openFleet(desktop);
     await view.getByRole('button', { name: 'Fingerprints match' }).click();
     await expect(
@@ -130,7 +130,7 @@ test.describe('Joining a fleet', () => {
       .getByRole('button', { name: 'Reset fleet on this machine…' })
       .click();
     await expect(
-      page.getByRole('dialog').getByRole('heading', {
+      view.getByRole('heading', {
         name: 'Reset fleet on this machine?',
       })
     ).toBeVisible();

@@ -143,6 +143,28 @@ export function isFleetMember(machine: MachineView): boolean {
   return !machine.isLocal && machine.state !== 'revoked';
 }
 
+/**
+ * `3 machines`, or `3 machines · 1 offline` / `3 machines · 2 queued`
+ * when something needs attention (offline takes priority over mail
+ * waiting). Counts this machine; `null` with no other machine (D8).
+ */
+export function machinesSummary(
+  machines: readonly MachineView[]
+): { text: string; offline: boolean } | null {
+  if (!hasPeerMachines(machines)) return null;
+  const members = machines.filter(isFleetMember);
+  const offline = members.filter((m) => m.state === 'offline').length;
+  const queued = members.reduce((sum, m) => sum + m.queued, 0);
+  const count = members.length + 1; // + this machine
+  let suffix = '';
+  if (offline > 0) suffix = ` · ${offline} offline`;
+  else if (queued > 0) suffix = ` · ${queued} queued`;
+  return {
+    text: `${count} machine${count === 1 ? '' : 's'}${suffix}`,
+    offline: offline > 0,
+  };
+}
+
 /** Whether a machine can be launched on right now — this machine
  *  always can; a peer needs a live tunnel, and a grant here is not
  *  what decides that (its grant on *its* side does). Others are listed

@@ -66,7 +66,7 @@ const CATALOGUE: Record<string, FailureCopy> = {
   },
   'already-enrolled': {
     explanation:
-      'This machine already belongs to a fleet. Open Fleet to inspect it.',
+      'This machine already belongs to a fleet. Close this to see its machines.',
     actions: ['close'],
   },
   'not-enrolled': {

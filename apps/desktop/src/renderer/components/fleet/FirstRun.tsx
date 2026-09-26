@@ -8,8 +8,8 @@ import { PasskeyCompatibility } from './PasskeyCompatibility.js';
 function Choices({ disabled }: { disabled: boolean }) {
   const { choose } = useFleet().enrolment;
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Connect your first machine</h2>
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold">Connect your first machine</h2>
       <p className="text-sm text-muted-foreground">
         Create a fleet once. On your other machines, join it with the same
         passkey. Members can run commands as your user unless you restrict their
@@ -110,13 +110,13 @@ function EnrolmentForm({ disabled }: { disabled: boolean }) {
     (creating && nameError(e.fleetName) !== null);
   return (
     <form
-      className="space-y-4"
+      className="space-y-3"
       onSubmit={(ev) => {
         ev.preventDefault();
         e.submit();
       }}
     >
-      <h2 className="text-lg font-semibold">
+      <h2 className="text-sm font-semibold">
         {creating ? 'Create a fleet' : 'Join an existing fleet'}
       </h2>
       {!creating && (
@@ -125,7 +125,7 @@ function EnrolmentForm({ disabled }: { disabled: boolean }) {
           authorizes this machine.
         </p>
       )}
-      <div className="grid max-w-md gap-3">
+      <div className="grid gap-3">
         <NameField
           id="beam-label"
           label="This machine’s name"

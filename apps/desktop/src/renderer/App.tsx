@@ -1,8 +1,8 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useCallback, type ReactNode } from 'react';
+import { useCallback } from 'react';
 import { toast } from 'sonner';
 import type { N10HostApi, RepoInfo } from '../host/contract.js';
-import { FleetScreen } from './components/fleet/FleetScreen.js';
+import { RevokeMachineDialog } from './components/machines/RevokeMachineDialog.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
 import {
@@ -33,9 +33,8 @@ export function App() {
             left — their agents keep running and stay in the strip. */}
         <TabsProvider>
           <FleetProvider>
-            <FleetOver>
-              <Gate />
-            </FleetOver>
+            <Gate />
+            <RevocationDialog />
           </FleetProvider>
         </TabsProvider>
         <Toaster />
@@ -44,18 +43,12 @@ export function App() {
   );
 }
 
-/** Fleet over the screen underneath, which stays mounted but hidden
- *  and inert: `visibility`, not unmounting, keeps its terminals sized. */
-function FleetOver({ children }: { children: ReactNode }) {
-  const { open } = useFleet();
-  return (
-    <>
-      <div className={open ? 'invisible' : undefined} inert={open}>
-        {children}
-      </div>
-      {open && <FleetScreen />}
-    </>
-  );
+/** The one fleet flow in a modal (beam-fleet-ux.md §1): above the
+ *  gate, so switching repositories or hiding the sidebar cannot drop a
+ *  revocation waiting on its passkey. */
+function RevocationDialog() {
+  const { target } = useFleet().revocation;
+  return target ? <RevokeMachineDialog machine={target} /> : null;
 }
 
 function Gate() {

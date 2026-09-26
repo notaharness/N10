@@ -4,7 +4,6 @@ import {
   MenuIcon,
   MonitorIcon,
   MoonIcon,
-  NetworkIcon,
   SearchIcon,
   SettingsIcon,
   SunIcon,
@@ -12,7 +11,6 @@ import {
 import type { RepoInfo } from '../../host/contract.js';
 import { isMacPlatform, useDesktopPrefs } from '../lib/desktop-prefs.js';
 import { useRecentRepos } from '../lib/data/queries.js';
-import { useFleet } from '../lib/fleet/fleet-context.js';
 import { useTheme, type ThemePreference } from '../lib/theme.js';
 import { basename, MOD } from '../lib/utils.js';
 import { Button } from './ui/button.js';
@@ -115,7 +113,6 @@ export function TitleBar({
       )}
 
       <div className="flex h-full flex-1 items-center justify-end gap-0.5 pr-2">
-        <FleetButton />
         <ThemeMenu />
         {repo && onOpenSettings && (
           <Tip label={`Settings (${MOD} ,)`}>
@@ -189,22 +186,6 @@ function RepoMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/** Fleet from any screen, with or without a repository open. */
-function FleetButton() {
-  const fleet = useFleet();
-  return (
-    <Button
-      variant="ghost"
-      aria-pressed={fleet.open}
-      onClick={fleet.open ? fleet.close : fleet.show}
-      className="app-no-drag aria-pressed:bg-accent"
-    >
-      <NetworkIcon />
-      Fleet
-    </Button>
   );
 }
 

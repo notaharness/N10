@@ -1,61 +1,50 @@
 import { CopyIcon, PlusIcon } from 'lucide-react';
-import { useState } from 'react';
 import { copyText } from '../../lib/copy-text.js';
 import { fingerprintGroups } from '../../lib/machines/machine-model.js';
 import { Button } from '../ui/button.js';
-import { AddMachineDialog } from './AddMachineDialog.js';
+import { Tip } from '../ui/tooltip.js';
 
 /**
  * The fleet this machine belongs to, by fingerprint — the 64 bits of
  * `fleetId` that `beam status` prints, and what Copy copies — and the
- * actions on it (beam-fleet-ux.md §1).
+ * way to add to it (beam-fleet-ux.md §1).
  */
 export function FleetHeader({
   fleetId,
-  disabled,
-  onReset,
+  onAdd,
 }: {
   fleetId: string | null;
-  disabled: boolean;
-  onReset: () => void;
+  onAdd: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const fingerprint = fleetId ? fingerprintGroups(fleetId) : null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-2">
       {fingerprint && (
-        <div className="mr-auto flex items-center gap-1 text-sm">
-          <span className="text-muted-foreground">Fleet fingerprint</span>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground">Fleet</span>
           <span
             className="font-mono select-all"
             data-testid="fleet-fingerprint"
           >
             {fingerprint}
           </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => copyText(fingerprint, 'Fleet fingerprint copied')}
-          >
-            <CopyIcon />
-            Copy fleet fingerprint
-          </Button>
+          <Tip label="Copy fleet fingerprint">
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Copy fleet fingerprint"
+              onClick={() => copyText(fingerprint, 'Fleet fingerprint copied')}
+            >
+              <CopyIcon />
+            </Button>
+          </Tip>
         </div>
       )}
       {fingerprint && (
-        <Button size="sm" onClick={() => setAdding(true)}>
+        <Button size="sm" onClick={onAdd}>
           <PlusIcon />
           Add a machine
         </Button>
-      )}
-      <Button size="sm" variant="outline" disabled={disabled} onClick={onReset}>
-        Reset fleet on this machine…
-      </Button>
-      {adding && fingerprint && (
-        <AddMachineDialog
-          fingerprint={fingerprint}
-          onClose={() => setAdding(false)}
-        />
       )}
     </div>
   );

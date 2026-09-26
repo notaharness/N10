@@ -12,7 +12,7 @@ import { Button } from '../ui/button.js';
 export function PasskeyPrompt({ url }: { url: string }) {
   const summary = ceremonySummary(url);
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="flex flex-wrap justify-center gap-4">
       <QrCode value={url} />
       <div className="min-w-0 flex-1 basis-64 space-y-3 text-sm">
         {summary && (

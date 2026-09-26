@@ -1,6 +1,5 @@
 import {
   ChevronRightIcon,
-  NetworkIcon,
   PanelLeftCloseIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -9,7 +8,6 @@ import { useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useRefreshRemote } from '../../lib/data/mutations.js';
-import { useFleet } from '../../lib/fleet/fleet-context.js';
 import {
   groupSections,
   itemKey,
@@ -17,6 +15,7 @@ import {
 } from '../../lib/sidebar/sidebar-model.js';
 import { useRepoTabs } from '../../lib/tabs/tabs.js';
 import { basename, cn } from '../../lib/utils.js';
+import { FleetSection } from '../fleet/FleetSection.js';
 import { Button } from '../ui/button.js';
 import {
   Collapsible,
@@ -30,8 +29,9 @@ import { SidebarRow } from './SidebarRow.js';
 
 /**
  * Explorer-style sidebar: the TUI's unified list (worktrees → PRs →
- * review buckets) as collapsible sections. Single-click previews an
- * item in the editor area, double-click pins it.
+ * review buckets) as collapsible sections, and below them the fleet.
+ * Single-click previews an item in the editor area, double-click pins
+ * it.
  */
 export function Sidebar({
   items,
@@ -54,7 +54,6 @@ export function Sidebar({
   const { repo } = useRepo();
   const tabs = useRepoTabs();
   const refresh = useRefreshRemote(repo.cwd);
-  const fleet = useFleet();
   const sections = groupSections(items);
   const [collapsed, setCollapsed] = useState<
     Partial<Record<SectionKey, boolean>>
@@ -184,16 +183,10 @@ export function Sidebar({
           {error}
         </div>
       )}
-      <div className="shrink-0 border-t border-border p-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start"
-          onClick={fleet.show}
-        >
-          <NetworkIcon />
-          Fleet
-        </Button>
+      {/* Fleet takes what it needs up to most of the height, scrolling
+          past that, so a passkey step never pushes the rows away. */}
+      <div className="flex max-h-[70%] min-h-0 shrink-0 flex-col border-t border-border">
+        <FleetSection />
       </div>
     </aside>
   );
