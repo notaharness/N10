@@ -37,6 +37,8 @@ export default [
       '**/.wrangler',
       '**/next-env.d.ts',
       'src/generated/**',
+      // Copied from desktop:build-demo by sync-demo.
+      'public/desktop-demo/**',
     ],
   },
 ];

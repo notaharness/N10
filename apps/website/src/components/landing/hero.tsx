@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { DesktopDemo } from '@/components/demo/desktop-demo';
+import { DesktopDemo } from '@/components/landing/desktop-demo';
 import { HeroBackdrop } from '@/components/hero-backdrop';
 import { Logo } from '@/components/logo';
 import { buttonVariants } from '@/components/ui/button';
