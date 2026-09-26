@@ -10,7 +10,7 @@ n10 runs coding agents in Git worktrees and lets you review their pull requests,
 
 Every branch gets its own worktree and agent session, so you can have several features and reviews going at once without stashing changes or touching your main checkout. n10 shows each worktree's pull request, CI checks, reviews and conflicts. An agent can draft review comments for you to post, and you can hand review comments on your own pull requests to an agent as one task, without opening GitHub.com or Azure DevOps.
 
-n10 works with Claude, Codex, Gemini, Copilot and OpenCode, and with GitHub and Azure DevOps. It is in beta: we use it every day, but expect rough edges.
+n10 works with Claude, Codex, Gemini, Copilot and OpenCode, and with GitHub and Azure DevOps. It is in beta: I use it every day, but expect rough edges.
 
 Documentation: **[n10.is/docs](https://n10.is/docs)**
 
