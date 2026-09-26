@@ -98,7 +98,10 @@ export function FieldsStep({
             https://dev.azure.com/{config.vendorProject.org || '{org}'}
             /_usersSettings/tokens
           </Text>
-          <Text dimColor>Required scopes: Code (Read), Work Items (Read)</Text>
+          <Text dimColor>
+            Required scopes: Code (Read & Write), Build (Read), Project and Team
+            (Read)
+          </Text>
           <Text> </Text>
         </>
       ) : null}
