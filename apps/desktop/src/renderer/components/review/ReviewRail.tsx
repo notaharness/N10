@@ -1,4 +1,8 @@
-import { BookOpenIcon, PanelLeftCloseIcon } from 'lucide-react';
+import {
+  BookOpenIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+} from 'lucide-react';
 import type { ReviewComment } from '../../../host/contract.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
@@ -11,6 +15,24 @@ import {
   PlanSection,
   ReviewReadySection,
 } from './ReviewRailSections.js';
+
+/** What is left of the rail while it is hidden: the button back. */
+export function CollapsedRail({ onShow }: { onShow: () => void }) {
+  return (
+    <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
+      <Tip label="Show review sidebar" side="right">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onShow}
+          aria-label="Show review sidebar"
+        >
+          <PanelLeftOpenIcon />
+        </Button>
+      </Tip>
+    </div>
+  );
+}
 
 export function ReviewRail({
   hasPr,
@@ -39,6 +61,8 @@ export function ReviewRail({
   onSelectFile,
   commentItems,
   activeCommentId,
+  commentsOpen,
+  onCommentsOpenChange,
   onJumpComment,
   onCommentContextMenu,
 }: {
@@ -69,6 +93,8 @@ export function ReviewRail({
   onSelectFile: (path: string) => void;
   commentItems: CommentListItem[];
   activeCommentId: string | null;
+  commentsOpen: boolean;
+  onCommentsOpenChange: (open: boolean) => void;
   onJumpComment: (item: CommentListItem) => void;
   onCommentContextMenu: (item: CommentListItem) => void;
 }) {
@@ -149,6 +175,8 @@ export function ReviewRail({
         <CommentsList
           items={commentItems}
           activeId={activeCommentId}
+          open={commentsOpen}
+          onOpenChange={onCommentsOpenChange}
           onJump={onJumpComment}
           onContextMenu={onCommentContextMenu}
         />

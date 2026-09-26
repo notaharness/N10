@@ -1,4 +1,3 @@
-import { PanelLeftOpenIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Group,
@@ -20,6 +19,7 @@ import {
 import { usePostDrafts } from '../../lib/data/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useCommentNavigator } from '../../lib/review/use-comment-navigator.js';
+import { useReviewRail } from '../../lib/review/use-review-rail.js';
 import { usePlanCheckout } from '../../lib/plan/use-plan-checkout.js';
 import {
   buildFileEntries,
@@ -33,12 +33,10 @@ import {
   type Mode,
 } from '../../lib/review/review-model.js';
 import { errorMessage } from '../../lib/utils.js';
-import { Button } from '../ui/button.js';
-import { Tip } from '../ui/tooltip.js';
 import { ContentPane } from './ContentPane.js';
 import { type FileEntry } from './diff/FileTree.js';
 import { BranchHeader, PrHeader } from './PrHeader.js';
-import { ReviewRail } from './ReviewRail.js';
+import { CollapsedRail, ReviewRail } from './ReviewRail.js';
 
 /** Shared empty parse, so "no files yet" keeps a stable identity and
  *  the derived lists below are not rebuilt on every render. */
@@ -147,7 +145,6 @@ export function PrWorkspace({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
-  const [railHidden, setRailHidden] = useState(false);
 
   useAgentFocus({ hasSession: Boolean(sessionName), running, active }, () =>
     setMode('agent')
@@ -201,6 +198,8 @@ export function PrWorkspace({
     onShowDiff: showDiff,
   });
 
+  const rail = useReviewRail(nav, rootRef);
+
   // ── The plan ───────────────────────────────────────────────────
   const showPlanItemInDiff = useCallback(
     (item: PlanItem) => nav.jumpToId(item.id, item.file),
@@ -241,7 +240,7 @@ export function PrWorkspace({
   return (
     <div ref={rootRef} className="flex h-full min-h-0 min-w-0 flex-col">
       {pr ? (
-        <PrHeader pr={pr} />
+        <PrHeader pr={pr} onShowUnresolved={rail.showUnresolved} />
       ) : (
         <BranchHeader
           branch={branch}
@@ -250,23 +249,10 @@ export function PrWorkspace({
         />
       )}
       <div className="flex min-h-0 min-w-0 flex-1">
-        {railHidden ? (
-          <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
-            <Tip label="Show review sidebar" side="right">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setRailHidden(false)}
-                aria-label="Show review sidebar"
-              >
-                <PanelLeftOpenIcon />
-              </Button>
-            </Tip>
-          </div>
-        ) : null}
+        {rail.hidden && <CollapsedRail onShow={() => rail.setHidden(false)} />}
 
         <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1">
-          {!railHidden && (
+          {!rail.hidden && (
             <>
               <Panel
                 id="review-rail"
@@ -286,7 +272,7 @@ export function PrWorkspace({
                   onSelectAgent={() => setMode('agent')}
                   onLaunch={onLaunch}
                   onStop={onStop}
-                  onHide={() => setRailHidden(true)}
+                  onHide={() => rail.setHidden(true)}
                   drafts={drafts}
                   reviewActive={effMode === 'review'}
                   onReview={() => setMode('review')}
@@ -314,6 +300,8 @@ export function PrWorkspace({
                   onSelectFile={nav.jumpToFile}
                   commentItems={nav.items}
                   activeCommentId={effMode === 'diff' ? nav.focusId : null}
+                  commentsOpen={rail.commentsOpen}
+                  onCommentsOpenChange={rail.setCommentsOpen}
                   onJumpComment={nav.jumpToItem}
                   onCommentContextMenu={(row) =>
                     plan.onCommentContextMenu(row.id)

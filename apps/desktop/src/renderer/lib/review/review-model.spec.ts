@@ -8,6 +8,7 @@ import {
   buildCommentRows,
   buildFileEntries,
   diffIsPending,
+  firstUnresolvedThread,
   focusesAgent,
   groupDraftsByFile,
   groupThreadsByFile,
@@ -653,6 +654,23 @@ describe('visibleComments', () => {
   it('drops resolved rows and keeps the rest in order', () => {
     const all = rows(['a', false], ['b', true], ['c', false]);
     expect(visibleComments(all, true).map((r) => r.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('firstUnresolvedThread', () => {
+  it('skips resolved threads and drafts, in document order', () => {
+    const [resolved, draft, open, later] = rows(
+      ['resolved', true],
+      ['draft', false],
+      ['open', false],
+      ['later', false]
+    );
+    const all = [resolved, { ...draft, kind: 'draft' as const }, open, later];
+    expect(firstUnresolvedThread(all)?.id).toBe('open');
+  });
+
+  it('is null when every thread is resolved', () => {
+    expect(firstUnresolvedThread(rows(['a', true]))).toBeNull();
   });
 });
 

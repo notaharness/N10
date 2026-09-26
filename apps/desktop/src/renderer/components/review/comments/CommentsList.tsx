@@ -5,7 +5,6 @@ import {
   ChevronRightIcon,
   MessageSquareIcon,
 } from 'lucide-react';
-import { useState } from 'react';
 import type { CommentSeverity } from '../../../../host/contract.js';
 import { cn } from '../../../lib/utils.js';
 import { Avatar } from '../../ui/avatar.js';
@@ -31,16 +30,21 @@ export interface CommentListItem {
 export function CommentsList({
   items,
   activeId,
+  open,
+  onOpenChange,
   onJump,
   onContextMenu,
 }: {
   items: CommentListItem[];
   activeId: string | null;
+  /** Expanded. Owned by the workspace, which opens it from the header's
+   *  unresolved count. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onJump: (item: CommentListItem) => void;
   /** Right-click a row: queue it for the agent (see PrWorkspace). */
   onContextMenu?: (item: CommentListItem) => void;
 }) {
-  const [open, setOpen] = useState(true);
   if (items.length === 0) return null;
   const openCount = items.filter((i) => !i.resolved).length;
   const draftCount = items.filter((i) => i.kind === 'draft').length;
@@ -49,7 +53,7 @@ export function CommentsList({
     <div className="flex min-h-0 flex-col border-t border-border">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => onOpenChange(!open)}
         className="flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
       >
         {open ? (
@@ -70,6 +74,8 @@ export function CommentsList({
             <button
               type="button"
               key={item.id}
+              data-comment-row={item.id}
+              aria-current={activeId === item.id || undefined}
               onClick={() => onJump(item)}
               onContextMenu={(e) => {
                 if (!onContextMenu) return;
