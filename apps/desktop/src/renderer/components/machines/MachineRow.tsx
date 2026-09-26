@@ -109,15 +109,15 @@ export function MachineRow({
 
   return (
     <div data-testid="machine-row" data-peer-id={machine.peerId}>
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-start gap-2 px-3 py-2">
         <span
           aria-hidden
-          className={`size-2 shrink-0 rounded-full ${
+          className={`mt-1.5 size-2 shrink-0 rounded-full ${
             DOT_CLASS[presentation.tone]
           }`}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {editing ? (
               <AliasInput machine={machine} onDone={() => setEditing(false)} />
             ) : (
@@ -125,7 +125,7 @@ export function MachineRow({
             )}
             <RowBadges machine={machine} />
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-x-2 text-xs">
             <span className={TEXT_CLASS[presentation.tone]}>
               {presentation.label}
             </span>
@@ -134,22 +134,21 @@ export function MachineRow({
                 {presentation.secondary}
               </span>
             )}
-            {machine.queued > 0 && (
-              <span className="truncate text-muted-foreground">
-                Waiting to deliver when this machine connects.
-              </span>
-            )}
           </div>
+          {machine.queued > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Waiting to deliver when this machine connects.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => copyFingerprint(machine.peerId)}
+            className="-ml-1 select-all rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Copy fingerprint"
+          >
+            {fingerprintGroups(machine.peerId)}
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => copyFingerprint(machine.peerId)}
-          className="shrink-0 select-all rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Copy fingerprint"
-        >
-          {fingerprintGroups(machine.peerId)}
-        </button>
 
         <MachineMenu
           machine={machine}

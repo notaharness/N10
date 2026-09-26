@@ -14,7 +14,7 @@ import {
   type BeamMachine,
   type Testkit,
 } from './setup/beam-testkit.js';
-import { leaveFleet, openFleet } from './setup/machines.js';
+import { collapseFleet, openFleet } from './setup/machines.js';
 import { findN10SessionFor } from './setup/tmux.js';
 
 /** `laptop` is the daemon in the fixture HOME, which the app finds;
@@ -64,7 +64,7 @@ async function formFleet(page: Page, workbox: BeamMachine): Promise<void> {
     rows.filter({ hasText: 'workbox' }).getByText('Connected')
   ).toBeVisible({ timeout: 60_000 });
   await expect(rows).toHaveCount(2);
-  await leaveFleet(page);
+  await collapseFleet(page);
 }
 
 const BRANCH = 'agent-work';
@@ -139,7 +139,7 @@ test.describe('A fleet of real beam daemons @beam', () => {
     await expect(
       page.getByText(/Refused for tmux:.*grants the sender "msg"/)
     ).toBeVisible({ timeout: 30_000 });
-    await leaveFleet(page);
+    await collapseFleet(page);
     await tab(page, new RegExp(BRANCH)).click();
     await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
     await expect(visibleText(page, /echo:DONE/)).toHaveCount(0);

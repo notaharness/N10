@@ -24,25 +24,27 @@ test.describe('Reset fleet on this machine', () => {
     await fleetView(page)
       .getByRole('button', { name: 'Reset fleet on this machine…' })
       .click();
-    const dialog = page.getByRole('dialog');
+    const panel = fleetView(page);
     await expect(
-      dialog.getByRole('heading', { name: 'Reset fleet on this machine?' })
+      panel.getByRole('heading', { name: 'Reset fleet on this machine?' })
     ).toBeVisible();
     await expect(
-      dialog.getByText(
+      panel.getByText(
         /Its machine identity is kept\. Other machines and the fleet passkey are not reset or revoked\./
       )
     ).toBeVisible();
-    const confirm = dialog.getByLabel('Type reset to confirm');
-    const reset = dialog.getByRole('button', { name: 'Reset fleet' });
+    const confirm = panel.getByLabel('Type reset to confirm');
+    const reset = panel.getByRole('button', { name: 'Reset fleet' });
     await expect(reset).toBeDisabled();
     await confirm.fill('Reset');
     await expect(reset).toBeDisabled();
     await confirm.fill('reset ');
     await expect(reset).toBeDisabled();
 
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
+    await panel.getByRole('button', { name: 'Cancel' }).click();
+    await expect(
+      panel.getByRole('heading', { name: 'Reset fleet on this machine?' })
+    ).toHaveCount(0);
     expect(beam!.ops('fleet.reset')).toHaveLength(0);
     await expect(page.getByTestId('machine-row')).toHaveCount(2);
   });
@@ -56,19 +58,19 @@ test.describe('Reset fleet on this machine', () => {
     await fleetView(page)
       .getByRole('button', { name: 'Reset fleet on this machine…' })
       .click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Type reset to confirm').fill('reset');
-    await dialog.getByLabel('Type reset to confirm').press('Enter');
+    const panel = fleetView(page);
+    await panel.getByLabel('Type reset to confirm').fill('reset');
+    await panel.getByLabel('Type reset to confirm').press('Enter');
 
     await expect(
-      dialog.getByText(
+      panel.getByText(
         'Fleet reset on this machine. Create a fleet or join one to continue.'
       )
     ).toBeVisible();
     expect(beam!.ops('fleet.reset')).toEqual([
       expect.objectContaining({ confirm: 'reset' }),
     ]);
-    await dialog.getByRole('button', { name: 'Close' }).first().click();
+    await panel.getByRole('button', { name: 'Close' }).click();
     await expect(
       fleetView(page).getByRole('heading', {
         name: 'Connect your first machine',
@@ -87,15 +89,16 @@ test.describe('Reset fleet on this machine', () => {
     await fleetView(page)
       .getByRole('button', { name: 'Reset fleet on this machine…' })
       .click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Type reset to confirm').fill('reset');
-    await dialog.getByRole('button', { name: 'Reset fleet' }).click();
+    const panel = fleetView(page);
+    await panel.getByLabel('Type reset to confirm').fill('reset');
+    await panel.getByRole('button', { name: 'Reset fleet' }).click();
     await expect(
-      dialog.getByText('Could not reset this machine’s fleet. disk full')
+      panel.getByText('Could not reset this machine’s fleet. disk full')
     ).toBeVisible();
-    await expect(dialog.getByLabel('Type reset to confirm')).toHaveValue(
+    await expect(panel.getByLabel('Type reset to confirm')).toHaveValue(
       'reset'
     );
+    await panel.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByTestId('machine-row')).toHaveCount(2);
   });
 });
@@ -119,10 +122,10 @@ test.describe('after creating a fleet', () => {
     await view
       .getByRole('button', { name: 'Reset fleet on this machine…' })
       .click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Type reset to confirm').fill('reset');
-    await dialog.getByRole('button', { name: 'Reset fleet' }).click();
-    await dialog.getByRole('button', { name: 'Close' }).first().click();
+    const panel = fleetView(page);
+    await panel.getByLabel('Type reset to confirm').fill('reset');
+    await panel.getByRole('button', { name: 'Reset fleet' }).click();
+    await panel.getByRole('button', { name: 'Close' }).click();
     await expect(
       view.getByRole('heading', { name: 'Connect your first machine' })
     ).toBeVisible();

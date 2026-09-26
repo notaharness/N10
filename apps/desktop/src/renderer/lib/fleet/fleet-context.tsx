@@ -9,23 +9,57 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { MachineView, MenuCommand } from '../../../host/contract.js';
+import type { MachineView } from '../../../host/contract.js';
 import { keys } from '../data/query-keys.js';
 import { useCeremony, type Ceremony } from './use-ceremony.js';
 import { useEnrolment, type Enrolment } from './use-enrolment.js';
 import { useFleetReset } from './use-fleet-reset.js';
 import { usePublication, type Publication } from './publication.js';
 
+const EXPANDED_KEY = 'n10.fleet.expanded';
+
+function readExpanded(): boolean {
+  try {
+    return localStorage.getItem(EXPANDED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storeExpanded(expanded: boolean): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, expanded ? '1' : '0');
+  } catch {
+    // A convenience only: the section opens collapsed next time.
+  }
+}
+
+/** The sidebar's Fleet section: whether it is open, and a request to
+ *  bring it into view from elsewhere (the status bar, Settings). */
+export interface FleetSectionState {
+  expanded: boolean;
+  setExpanded: (expanded: boolean) => void;
+  /** Open the section, show the sidebar holding it and focus it. */
+  reveal: () => void;
+  /** Bumped by `reveal`; the section focuses itself when it changes. */
+  revealSeq: number;
+  /** Whether a reveal is still waiting for the section to take focus;
+   *  true once per reveal, so a remounted section does not steal it. */
+  takeRevealFocus: () => boolean;
+  /** Registers what shows the sidebar (the workspace's), for `reveal`. */
+  setRevealHost: (show: (() => void) | null) => void;
+}
+
 interface FleetContextValue {
-  open: boolean;
-  show: () => void;
-  close: () => void;
+  section: FleetSectionState;
+  /** Add-a-machine instructions showing in the section. */
+  adding: boolean;
+  setAdding: (adding: boolean) => void;
   /** The first run: its choice, form values and ceremony. Owned here,
-   *  above the repository gate, so leaving Fleet or switching
+   *  above the repository gate, so collapsing the sidebar or switching
    *  repositories keeps them. */
   enrolment: Enrolment;
-  /** The revocation dialog's machine and ceremony, kept the same way:
-   *  leaving Fleet must not cancel a revocation waiting on a passkey. */
+  /** The revocation dialog's machine and ceremony, kept the same way. */
   revocation: {
     target: MachineView | null;
     ceremony: Ceremony;
@@ -37,24 +71,6 @@ interface FleetContextValue {
 }
 
 const FleetContext = createContext<FleetContextValue | null>(null);
-
-/** Menu commands that act on the workspace under Fleet, so Fleet
- *  steps aside for them rather than hide their result. */
-const LEAVES_FLEET: Record<MenuCommand, boolean> = {
-  'open-repo': true,
-  'switch-repo': true,
-  'new-worktree': true,
-  'new-terminal': true,
-  'open-settings': true,
-  'close-tab': true,
-  'command-palette': true,
-  'toggle-sidebar': false,
-  'refresh-remote': false,
-  'set-theme': false,
-  'open-url': false,
-  'show-shortcuts': false,
-  about: false,
-};
 
 /** The machines list and beam's status are pushed whole on every
  *  change; they go straight into the cache, whatever screen is up. */
@@ -74,14 +90,51 @@ function useFleetPushes(): void {
   }, [qc]);
 }
 
+function useFleetSection(): FleetSectionState {
+  const [expanded, setExpandedState] = useState(readExpanded);
+  const [revealSeq, setRevealSeq] = useState(0);
+  const focusPending = useRef(false);
+  const revealHost = useRef<(() => void) | null>(null);
+  const setExpanded = useCallback((next: boolean) => {
+    setExpandedState(next);
+    storeExpanded(next);
+  }, []);
+  const reveal = useCallback(() => {
+    revealHost.current?.();
+    setExpanded(true);
+    focusPending.current = true;
+    setRevealSeq((n) => n + 1);
+  }, [setExpanded]);
+  const takeRevealFocus = useCallback(() => {
+    const pending = focusPending.current;
+    focusPending.current = false;
+    return pending;
+  }, []);
+  const setRevealHost = useCallback((show: (() => void) | null) => {
+    revealHost.current = show;
+  }, []);
+  return useMemo(
+    () => ({
+      expanded,
+      setExpanded,
+      reveal,
+      revealSeq,
+      takeRevealFocus,
+      setRevealHost,
+    }),
+    [expanded, setExpanded, reveal, revealSeq, takeRevealFocus, setRevealHost]
+  );
+}
+
 /**
- * Fleet is a destination of its own, not a repository's setting
+ * Fleet lives in the sidebar, not on a page of its own
  * (beam-fleet-ux.md §1). This sits above the repository gate and owns
- * whether Fleet is showing, the fleet data subscriptions and the one
- * enrolment controller.
+ * the section's state, the fleet data subscriptions and the one
+ * enrolment controller, so none of them depend on which sidebar shows.
  */
 export function FleetProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const section = useFleetSection();
+  const [adding, setAdding] = useState(false);
   const publication = usePublication();
   const { settle, clear } = publication;
   const hooks = useMemo(() => ({ onSettled: settle }), [settle]);
@@ -96,33 +149,12 @@ export function FleetProvider({ children }: { children: ReactNode }) {
   const reset = useFleetReset(afterReset);
   useFleetPushes();
 
-  // Focus goes back to whatever opened Fleet, once it is no longer inert.
-  const opener = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!open) opener.current?.focus();
-  }, [open]);
-  const show = useCallback(() => {
-    if (document.activeElement instanceof HTMLElement) {
-      opener.current = document.activeElement;
-    }
-    setOpen(true);
-  }, []);
-  const close = useCallback(() => setOpen(false), []);
-
-  useEffect(
-    () =>
-      window.n10.onMenuCommand(({ command }) => {
-        if (LEAVES_FLEET[command]) setOpen(false);
-      }),
-    []
-  );
-
   const closeRevocation = useCallback(() => setRevokeTarget(null), []);
   const value = useMemo(
     () => ({
-      open,
-      show,
-      close,
+      section,
+      adding,
+      setAdding,
       enrolment,
       revocation: {
         target: revokeTarget,
@@ -134,9 +166,8 @@ export function FleetProvider({ children }: { children: ReactNode }) {
       publication,
     }),
     [
-      open,
-      show,
-      close,
+      section,
+      adding,
       enrolment,
       revokeTarget,
       revokeCeremony,

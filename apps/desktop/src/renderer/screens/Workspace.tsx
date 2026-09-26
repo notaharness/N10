@@ -129,6 +129,16 @@ function WorkspaceInner({
       return !h;
     });
 
+  // Revealing Fleet shows the sidebar that holds it.
+  const { setRevealHost } = useFleet().section;
+  useEffect(() => {
+    setRevealHost(() => {
+      localStorage.setItem(SIDEBAR_KEY, '0');
+      setSidebarHidden(false);
+    });
+    return () => setRevealHost(null);
+  }, [setRevealHost]);
+
   // The sidebar as the tab model sees it.
   const entries: ItemEntry[] = useMemo(
     () =>
@@ -231,21 +241,18 @@ function WorkspaceInner({
   // handled here: palette (⌘K). Tab cycling was removed for now — it
   // collided with Shift+Tab inside agent terminals (Claude Code's mode
   // switch).
-  // Under Fleet, ⌘K leaves Fleet for the palette, as the menu's does.
-  const { open: fleetOpen, close: closeFleet } = useFleet();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        if (fleetOpen) closeFleet();
-        setPaletteOpen((o) => fleetOpen || !o);
+        setPaletteOpen((o) => !o);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [fleetOpen, closeFleet]);
+  }, []);
 
   return (
     <div

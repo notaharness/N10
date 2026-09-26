@@ -25,7 +25,7 @@ export function InboundMailPanel({
   if (waiting.length === 0 && refused.length === 0) return null;
 
   return (
-    <div className="space-y-1 bg-muted/30 px-4 pb-3 pl-[calc(0.75rem+0.5rem+1rem)] text-xs">
+    <div className="space-y-1 bg-muted/30 px-3 pb-2 pl-7 text-xs">
       {waiting.map((row) => (
         <div
           key={row.id}

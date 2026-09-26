@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { useFleet } from '../../../lib/fleet/fleet-context.js';
 
 export interface StepperShortcuts {
   onNext: () => void;
@@ -20,16 +19,15 @@ export interface StepperShortcuts {
  * `window` because the walkthrough has no single focused element to
  * hang it off, which is exactly why `enabled` has to be explicit: the
  * pane stays mounted behind other tabs (a live agent keeps its
- * terminal alive) and under Fleet.
+ * terminal alive).
  */
 export function useStepperShortcuts(
   enabled: boolean,
   handlers: StepperShortcuts
 ): void {
   const { onNext, onPrev, onEdit, onPost, onDiscard, onExit } = handlers;
-  const covered = useFleet().open;
   useEffect(() => {
-    if (!enabled || covered) return;
+    if (!enabled) return;
     // Built inside the effect so the table closes over the same
     // callbacks the dependency list names — a `handlers` object read
     // directly would be a new reference every render and re-bind the
@@ -61,5 +59,5 @@ export function useStepperShortcuts(
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, covered, onNext, onPrev, onEdit, onPost, onDiscard, onExit]);
+  }, [enabled, onNext, onPrev, onEdit, onPost, onDiscard, onExit]);
 }

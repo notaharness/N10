@@ -5,35 +5,28 @@ import { useBeamStatus, useMachines } from '../../lib/data/queries.js';
 import { keys } from '../../lib/data/query-keys.js';
 import { useFleet } from '../../lib/fleet/fleet-context.js';
 import { publicationText } from '../../lib/fleet/publication.js';
+import { fingerprintGroups } from '../../lib/machines/machine-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { MachineRow } from '../machines/MachineRow.js';
-import { RevokeMachineDialog } from '../machines/RevokeMachineDialog.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
+import { AddMachinePanel } from './AddMachinePanel.js';
 import { EnrolmentFlow } from './EnrolmentFlow.js';
 import { FirstRun } from './FirstRun.js';
 import { FleetHeader } from './FleetHeader.js';
-import { ResetFleetDialog } from './ResetFleetDialog.js';
-
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border bg-card">{children}</div>
-  );
-}
+import { ResetFleetPanel } from './ResetFleetPanel.js';
 
 /** Until beam can answer for its fleet: its socket, then (`starting`)
  *  its transport, which every operation but `status` waits for. */
 function Loading({ starting }: { starting: boolean }) {
   return (
-    <Card>
-      <div className="space-y-2 p-4" role="status">
-        <p className="text-sm text-muted-foreground">
-          {starting ? 'Preparing network…' : 'Connecting to beam…'}
-        </p>
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-      </div>
-    </Card>
+    <div className="space-y-2" role="status">
+      <p className="text-sm text-muted-foreground">
+        {starting ? 'Preparing network…' : 'Connecting to beam…'}
+      </p>
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-8 w-full" />
+    </div>
   );
 }
 
@@ -51,19 +44,17 @@ function Failure({
   onRetry: () => void;
 }) {
   return (
-    <Card>
-      <div className="space-y-2 p-4" role="alert">
-        <p className="text-sm font-medium text-destructive">{title}</p>
-        {detail && (
-          <p className="font-mono text-xs text-muted-foreground select-text">
-            {detail}
-          </p>
-        )}
-        <Button size="sm" variant="outline" onClick={onRetry}>
-          {action}
-        </Button>
-      </div>
-    </Card>
+    <div className="space-y-2" role="alert">
+      <p className="text-sm font-medium text-destructive">{title}</p>
+      {detail && (
+        <p className="font-mono text-xs break-words text-muted-foreground select-text">
+          {detail}
+        </p>
+      )}
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        {action}
+      </Button>
+    </div>
   );
 }
 
@@ -79,7 +70,7 @@ function Notice({
     <p
       role="status"
       className={cn(
-        'rounded-md border px-3 py-2 text-sm',
+        'rounded-md border px-2 py-1.5 text-xs',
         warning
           ? 'border-warning/30 bg-warning/10'
           : 'border-border bg-muted/40'
@@ -101,19 +92,17 @@ function FleetRows({
   const local = machines.find((m) => m.isLocal);
   const others = machines.filter((m) => !m.isLocal);
   return (
-    <Card>
-      <div className="divide-y divide-border">
-        {local && <MachineRow machine={local} disabled={disabled} />}
-        {others.map((m) => (
-          <MachineRow key={m.peerId} machine={m} disabled={disabled} />
-        ))}
-        {others.length === 0 && (
-          <p className="px-4 py-4 text-sm text-muted-foreground">
-            No other machines yet. Add a desktop or a headless machine.
-          </p>
-        )}
-      </div>
-    </Card>
+    <div className="-mx-3 divide-y divide-border/60">
+      {local && <MachineRow machine={local} disabled={disabled} />}
+      {others.map((m) => (
+        <MachineRow key={m.peerId} machine={m} disabled={disabled} />
+      ))}
+      {others.length === 0 && (
+        <p className="px-3 py-2 text-sm text-muted-foreground">
+          No other machines yet. Add a desktop or a headless machine.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -132,9 +121,50 @@ function StatusNotices({ beam }: { beam: BeamStatus }) {
   return <Notice>{publicationText(false)}</Notice>;
 }
 
-/** Beam's machines once it answers: an enrolment under way or just
- *  ended, the first-run choices until this machine is in a fleet, and
- *  this machine's fleet once it is. */
+/** This machine's fleet: its fingerprint, its rows and the way to
+ *  reset it, or in their place the add-a-machine instructions. */
+function EnrolledBody({
+  beam,
+  machines,
+  disabled,
+}: {
+  beam: BeamStatus;
+  machines: MachineView[] | undefined;
+  disabled: boolean;
+}) {
+  const { adding, setAdding, reset } = useFleet();
+  if (adding && beam.fleetId) {
+    return (
+      <AddMachinePanel
+        fingerprint={fingerprintGroups(beam.fleetId)}
+        onClose={() => setAdding(false)}
+      />
+    );
+  }
+  return (
+    <>
+      <FleetHeader fleetId={beam.fleetId} onAdd={() => setAdding(true)} />
+      <FleetRows
+        machines={machines ?? []}
+        disabled={beam.state === 'restarting'}
+      />
+      <Button
+        size="sm"
+        variant="ghost"
+        className="-ml-2 text-muted-foreground"
+        disabled={disabled}
+        onClick={reset.show}
+      >
+        Reset fleet on this machine…
+      </Button>
+    </>
+  );
+}
+
+/** Beam's machines once it answers: the reset confirmation when asked
+ *  for, an enrolment under way or just ended, the first-run choices
+ *  until this machine is in a fleet, and this machine's fleet once it
+ *  is. */
 function FleetBody({
   beam,
   machines,
@@ -144,35 +174,22 @@ function FleetBody({
   machines: MachineView[] | undefined;
   loadFailure: ReactNode;
 }) {
-  const { enrolment, revocation, reset } = useFleet();
+  const { enrolment, reset } = useFleet();
   const reconnecting = beam.state === 'restarting';
   const enrolling = enrolment.ceremony.view !== null;
+  if (reset.open) return <ResetFleetPanel />;
   return (
-    <div className="space-y-4">
-      {revocation.target && <RevokeMachineDialog machine={revocation.target} />}
-      {reset.open && <ResetFleetDialog />}
-      {beam.enrolled && (
-        <FleetHeader
-          fleetId={beam.fleetId}
-          disabled={reconnecting || enrolment.ceremony.running}
-          onReset={reset.show}
-        />
-      )}
+    <div className="space-y-3">
       <StatusNotices beam={beam} />
       {loadFailure}
-      {(enrolling || !beam.enrolled) && (
-        <Card>
-          <div className="p-4">
-            {enrolling ? (
-              <EnrolmentFlow />
-            ) : (
-              <FirstRun disabled={reconnecting} />
-            )}
-          </div>
-        </Card>
-      )}
+      {enrolling && <EnrolmentFlow />}
+      {!enrolling && !beam.enrolled && <FirstRun disabled={reconnecting} />}
       {beam.enrolled && (
-        <FleetRows machines={machines ?? []} disabled={reconnecting} />
+        <EnrolledBody
+          beam={beam}
+          machines={machines}
+          disabled={reconnecting || enrolment.ceremony.running}
+        />
       )}
     </div>
   );
@@ -183,8 +200,9 @@ function answering(beam: BeamStatus | undefined): beam is BeamStatus {
   return !!beam && beam.state !== 'connecting' && beam.state !== 'starting';
 }
 
-/** Fleet's body behind beam's availability (beam-fleet-ux.md §1). */
-export function FleetOverview() {
+/** The Fleet section's body behind beam's availability
+ *  (beam-fleet-ux.md §1). */
+export function FleetPanel() {
   const qc = useQueryClient();
   const status = useBeamStatus();
   const machines = useMachines();

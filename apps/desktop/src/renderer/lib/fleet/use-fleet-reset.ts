@@ -4,7 +4,7 @@ import { errorMessage } from '../utils.js';
 
 /**
  * Reset fleet on this machine (beam-fleet-ux.md §3): the dialog's
- * state, held above the repository gate so leaving Fleet mid-reset
+ * state, held above the repository gate so collapsing Fleet mid-reset
  * loses neither the request nor its outcome. `onReset` runs whenever
  * the reset may have happened, to clear results it made stale.
  */
