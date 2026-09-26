@@ -102,15 +102,21 @@ function statuses(page: Page) {
   );
 }
 
-/** Lift the active tab by keyboard, and wait until it is lifted. */
+/** Lift the active tab by keyboard, and wait until the drag listens.
+ *  The row must be at rest first, or a transform left from the last
+ *  drop would pass for the lift. */
 async function liftActiveTab(page: Page) {
   const active = page.getByRole('tab', { selected: true });
+  await expect.poll(() => motion(active)).toMatchObject({ transform: '' });
   await active.focus();
   await page.keyboard.press(LIFT);
   // A sort under way puts a transform on every tab, the lifted one too.
   await expect
     .poll(() => motion(active))
     .toMatchObject({ transform: expect.stringMatching(/^translate3d/) });
+  // dnd-kit's sensor adds its key listener in a timeout queued at the
+  // lift; a zero timeout queued now runs after it.
+  await page.evaluate(() => new Promise((done) => setTimeout(done, 0)));
 }
 
 test.describe('Tab keys beside the review walkthrough', () => {
