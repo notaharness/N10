@@ -13,6 +13,8 @@ import {
 import { activeRepoIs, requireRepo } from './repo.js';
 import { babysatStatuses } from './babysit.js';
 import { isOwnSessionAlive } from './sessions.js';
+import { ownSessionNames } from './session-registry.js';
+import { movedWorktreeSessions, withMovedSessions } from './worktree-sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
 import {
   notifyRemoteUpdated,
@@ -67,6 +69,7 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
     return {
       name,
       label: wt.branch || wt.path.split('/').pop(),
+      path: wt.path,
       running: isOwnSessionAlive(name),
       ...(wt.state ? { state: wt.state } : {}),
     };
@@ -95,7 +98,8 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
   // Merged/conflict decorations come from the host's remote sync loop
   // (same shared passes the TUI's hooks drive).
   const sync = getSyncDecorations();
-  return buildSidebarItems(
+  const moved = movedWorktreeSessions(worktrees, cwd, ownSessionNames());
+  const items = buildSidebarItems(
     sortedSessions,
     orphanPrs,
     categorizedReviews,
@@ -105,6 +109,7 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
     sync.conflicts,
     babysatStatuses(cwd)
   );
+  return withMovedSessions(items, moved, isOwnSessionAlive);
 }
 
 /**

@@ -47,6 +47,11 @@ export interface ItemEntry {
    *  worktree row whether or not an agent was ever started, so it says
    *  nothing about liveness on its own — `running` does. */
   sessionName?: string;
+  /** The worktree checkout the item lives in, when it has one. */
+  worktree?: string;
+  /** The branch the item's agent session was created for, when the
+   *  worktree has since switched to another. */
+  sessionBranch?: string;
 }
 
 export interface TabsState {

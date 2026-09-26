@@ -67,6 +67,12 @@ export interface AgentSession {
   running: boolean;
   /** Mirrors `WorktreeInfo.state` — set when the worktree is mid-rebase. */
   state?: 'rebasing';
+  /** The worktree's checkout directory — its identity, which a branch
+   *  switch inside it does not change. */
+  path?: string;
+  /** The branch the agent session in this worktree was created for,
+   *  set only when the worktree has since switched to another one. */
+  sessionBranch?: string;
 }
 
 export type { DiffFile, FileCategory } from '@n10/diff';

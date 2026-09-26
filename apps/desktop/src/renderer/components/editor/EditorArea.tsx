@@ -15,12 +15,14 @@ import {
   itemBranch,
   itemKey,
   itemSessionName,
+  itemWorktree,
 } from '../../lib/sidebar/sidebar-model.js';
 import { foreignRepoOf, useTabs, type Tab } from '../../lib/tabs/tabs.js';
 import { repoGroupStarts } from '../../lib/tabs/tab-presentation.js';
 import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
+import { BranchSwitchBanner } from './BranchSwitchBanner.js';
 import { EmptyState } from './EmptyState.js';
 import { SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
@@ -96,6 +98,16 @@ export function EditorArea({
     () => new Map(items.map((i) => [itemBranch(i), i])),
     [items]
   );
+  const byWorktree = useMemo(
+    () =>
+      new Map(
+        items.flatMap((i) => {
+          const worktree = itemWorktree(i);
+          return worktree ? [[worktree, i] as const] : [];
+        })
+      ),
+    [items]
+  );
 
   /**
    * The sidebar item a tab is showing.
@@ -106,7 +118,9 @@ export function EditorArea({
    * first. Looking up by key alone would make that render treat the tab
    * as itemless, which unmounts the pane and destroys a live agent's
    * terminal (its scrollback only partly recoverable from the host's
-   * ring buffer) twice over a PR's life.
+   * ring buffer) twice over a PR's life. The worktree is asked first,
+   * for the same reason: `git switch` inside it moves its item to
+   * another key, and can leave its old PR behind under the old one.
    */
   const itemFor = (tab: Tab): SidebarItem | undefined => {
     // A tab from another repository resolves to nothing here on
@@ -115,6 +129,7 @@ export function EditorArea({
     // agent and its diff.
     if (tab.kind !== 'item' || tab.repo !== repo.cwd) return undefined;
     return (
+      (tab.worktree ? byWorktree.get(tab.worktree) : undefined) ??
       byKey.get(tab.itemKey) ??
       (tab.branch ? byBranch.get(tab.branch) : undefined)
     );
@@ -210,6 +225,14 @@ export function EditorArea({
           if (foreignRepoOf(tab, repo.cwd) !== null) return null;
           const active = tab.id === paneActiveId;
           if (!active && !hasSession(tab)) return null;
+          const item = itemFor(tab);
+          const switched =
+            tab.kind === 'item' &&
+            tab.originBranch &&
+            item &&
+            itemBranch(item) !== tab.originBranch
+              ? { current: itemBranch(item), original: tab.originBranch }
+              : null;
           return (
             <div
               key={tab.id}
@@ -219,20 +242,23 @@ export function EditorArea({
                 !active && 'invisible'
               )}
             >
-              <ErrorBoundary resetKey={tab.id}>
-                {/* The pane bodies are code-split (see lazy-panes), but
-                    none suspends — each renders its own placeholder
-                    until its module lands, so there is no Suspense
-                    boundary here to throttle the swap. */}
-                <PaneBody
-                  tab={tab}
-                  item={itemFor(tab)}
-                  items={items}
-                  active={active}
-                  menuActive={tab.id === tabs.activeId}
-                  onPin={() => tabs.pin(tab.id)}
-                />
-              </ErrorBoundary>
+              {switched && <BranchSwitchBanner {...switched} />}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ErrorBoundary resetKey={tab.id}>
+                  {/* The pane bodies are code-split (see lazy-panes), but
+                      none suspends — each renders its own placeholder
+                      until its module lands, so there is no Suspense
+                      boundary here to throttle the swap. */}
+                  <PaneBody
+                    tab={tab}
+                    item={item}
+                    items={items}
+                    active={active}
+                    menuActive={tab.id === tabs.activeId}
+                    onPin={() => tabs.pin(tab.id)}
+                  />
+                </ErrorBoundary>
+              </div>
             </div>
           );
         })}

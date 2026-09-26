@@ -22,6 +22,16 @@ export type Tab =
        *  a worktree's key changes from `branch:x` to `pr:n` the moment
        *  a PR appears (and back when it closes). */
       branch?: string;
+      /** The worktree checkout the tab's item lives in, stamped by
+       *  `sync-items`. A worktree's identity: `git switch` inside it
+       *  moves its item to another branch's key, and the tab follows
+       *  it here before anything else. */
+      worktree?: string;
+      /** The branch the tab was opened for, stamped once by
+       *  `sync-items` — the branch the worktree's agent session was
+       *  created for when it has one. The tab warns while its worktree
+       *  is on any other. */
+      originBranch?: string;
       /** Last-known display title, stamped by `sync-items`. What the
        *  strip shows once the item is out of reach — its repository is
        *  not the open one, so the sidebar cannot describe it — rather
