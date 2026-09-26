@@ -53,6 +53,16 @@ export function OrchestraAttention() {
           </li>
         ))}
       </ul>
+      <p className="text-fd-muted-foreground mt-5 text-sm">
+        The{' '}
+        <a
+          href="https://github.com/notaharness/plugins/tree/main/orchestra#communication-and-attention"
+          className="text-fd-foreground hover:text-fd-primary underline decoration-fd-border underline-offset-4 transition-colors"
+        >
+          Orchestra README
+        </a>{' '}
+        has the full list.
+      </p>
     </section>
   );
 }
