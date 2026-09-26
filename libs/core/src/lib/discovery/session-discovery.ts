@@ -85,6 +85,7 @@ function worthAnnouncing(delta: DiscoveryDelta, adopted: number): boolean {
     adopted > 0 ||
     delta.appeared.length > 0 ||
     delta.disappeared.length > 0 ||
+    delta.switched.length > 0 ||
     delta.ended.length > 0 ||
     delta.endedTerminals.length > 0
   );

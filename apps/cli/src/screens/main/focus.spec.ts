@@ -91,13 +91,29 @@ describe('getSidebarFocused', () => {
 });
 
 describe('getPaneTitle', () => {
-  it('displays the exact branch rather than the qualified registry key', () => {
+  it('displays the row’s branch rather than the qualified registry key', () => {
     expect(
       getPaneTitle({
         ...baseTitle,
-        sessionName: worktreeSessionKey('feature/login', '/repo'),
+        sessionName: worktreeSessionKey(
+          '/repo/.claude/worktrees/feature-login',
+          '/repo'
+        ),
+        rowLabel: 'feature/login',
       })
     ).toBe('🤖 Claude — feature/login');
+  });
+
+  it('falls back to the checkout’s directory without a row label', () => {
+    expect(
+      getPaneTitle({
+        ...baseTitle,
+        sessionName: worktreeSessionKey(
+          '/repo/.claude/worktrees/feature-login',
+          '/repo'
+        ),
+      })
+    ).toBe('🤖 Claude — feature-login');
   });
   // ── Terminal mode (default) — 🤖 AgentName — label ──────────────
 

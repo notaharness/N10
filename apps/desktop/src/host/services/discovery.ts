@@ -28,11 +28,11 @@ export function setDiscoveryNotifier(fn: (() => void) | null): void {
 }
 
 async function attach(worktree: DiscoveredWorktree): Promise<void> {
-  // The desktop's launch path is keyed by branch all the way down —
-  // the worktree it resolves, the registry name, the tab. A
-  // detached-HEAD orphan has no branch to key on, so it is left to the
-  // TUI, which names sessions after the directory instead. Thrown
-  // rather than skipped so the scanner stops offering it every tick.
+  // The session is keyed by its checkout, but the desktop's rows and
+  // tabs for a worktree still name it by branch — a launch request, an
+  // item key — and a detached HEAD has none, so its agent is left to
+  // the TUI. Thrown rather than skipped so the scanner stops offering
+  // it every tick.
   if (!worktree.branch) {
     throw new Error(
       `Cannot attach to ${worktree.name}: the worktree has no branch checked out`

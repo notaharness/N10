@@ -1,4 +1,3 @@
-import { worktreeSessionKey } from '@n10/core';
 import {
   createContext,
   useCallback,
@@ -164,6 +163,9 @@ export interface SidebarContextValue {
   selectedPr: PullRequestInfo | undefined;
   /** Session name to use for terminal: branch-based name for all item kinds. */
   sessionNameForTerminal: string | null;
+  /** The selected worktree row's label — its branch as checked out now,
+   *  which its session key (the checkout) does not carry. */
+  selectedRowLabel: string | null;
   totalItems: number;
   /** Select a sidebar item by its stable identity key. */
   selectByKey: (key: string) => void;
@@ -267,7 +269,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     ? null
     : selectedItem.kind === 'session'
     ? selectedItem.session.name
-    : worktreeSessionKey(selectedItem.pr.sourceBranch);
+    : selectedItem.sessionName ?? null;
+  const selectedRowLabel =
+    selectedItem?.kind === 'session'
+      ? selectedItem.session.label ?? null
+      : null;
 
   // ── Navigation helpers ───────────────────────────────────────────
   const selectByKey = useCallback((key: string) => {
@@ -318,6 +324,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       selectedItem,
       selectedPr,
       sessionNameForTerminal,
+      selectedRowLabel,
       totalItems,
       selectByKey,
       moveSelection,
@@ -329,6 +336,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       selectedItem,
       selectedPr,
       sessionNameForTerminal,
+      selectedRowLabel,
       totalItems,
       selectByKey,
       moveSelection,

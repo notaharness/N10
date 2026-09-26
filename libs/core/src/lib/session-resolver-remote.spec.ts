@@ -75,12 +75,17 @@ function startSession(sessionName: string, tags: Record<string, string>): void {
   }
 }
 
-function tags(repo: string, branch: string): Record<string, string> {
+function tags(
+  repo: string,
+  branch: string,
+  worktreePath: string
+): Record<string, string> {
   return {
     '@orchestra-spawner': 'n10',
     '@orchestra-repo': repo,
     '@orchestra-session-type': 'worktree',
     '@orchestra-branch': branch,
+    '@orchestra-worktree-path': worktreePath,
   };
 }
 
@@ -113,13 +118,17 @@ describe.skipIf(SKIP)(
   'listOurSessionsWith (finding 7, a real executor)',
   () => {
     const REPO = `/repos/remote-${RUN}`;
+    const WT = `${REPO}/.worktrees/feat-remote`;
 
     it('finds a tagged session through an async executor, one round trip', async () => {
-      startSession(name('a'), tags(REPO, 'feat/remote'));
+      startSession(name('a'), tags(REPO, 'feat/remote', WT));
       const sessions = await listOurSessionsWith(executor, MACHINE);
-      expect(
-        resolveWorktreeSession(REPO, 'feat/remote', sessions)
-      ).toMatchObject({ name: name('a'), repo: REPO, branch: 'feat/remote' });
+      expect(resolveWorktreeSession(REPO, WT, sessions)).toMatchObject({
+        name: name('a'),
+        repo: REPO,
+        branch: 'feat/remote',
+        worktreePath: WT,
+      });
       // Second-pass finding 2: the machine it was actually listed on,
       // never the local resolver's default — `live-worktree-sessions.ts`
       // relies on this to keep a remote session's path off the local

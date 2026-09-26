@@ -216,6 +216,7 @@ function MainTabBody({
     aiCommand: configCtx.config.aiCommand,
     prTitle: sidebar.selectedPr?.title,
     sessionName: sidebar.sessionNameForTerminal,
+    rowLabel: sidebar.selectedRowLabel,
     terminalFocused,
   });
 
@@ -290,6 +291,7 @@ function MainTabBody({
             terminal={effectiveTerminal}
             terminalFocused={terminalFocused}
             sessionNameForTerminal={sidebar.sessionNameForTerminal}
+            rowLabel={sidebar.selectedRowLabel}
             selectedPr={sidebar.selectedPr}
             onFocusSidebar={onTerminalEscape}
           />

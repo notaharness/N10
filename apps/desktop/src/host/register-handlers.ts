@@ -80,7 +80,7 @@ export function createHostApi(): N10HostApi {
     launchAgent: (req) => sessions.launchAgent(req),
     launchReviewAgent: (req) => sessions.launchReviewAgent(req),
     getSessionLaunchContext: (branch) =>
-      Promise.resolve(sessions.getSessionLaunchContext(branch)),
+      sessions.getSessionLaunchContext(branch),
     listAgentOptions: () => Promise.resolve(sessions.listAgentOptions()),
     checkoutPlan: (req) => sessions.checkoutPlan(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),

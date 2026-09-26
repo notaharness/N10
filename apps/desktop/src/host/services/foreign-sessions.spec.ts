@@ -77,7 +77,12 @@ describe('listForeignSessions', () => {
   it('lists agents of other repositories, and not the open one’s', () => {
     state.live = [ALPHA_AGENT, BETA_AGENT];
     expect(foreign.listForeignSessions()).toEqual([
-      { repo: '/repos/beta', branch: 'feat/b', sessionName: 'feat-b' },
+      {
+        repo: '/repos/beta',
+        branch: 'feat/b',
+        worktree: '/repos/beta/.claude/worktrees/feat-b',
+        sessionName: 'feat-b',
+      },
     ]);
   });
 

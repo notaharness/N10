@@ -79,6 +79,7 @@ export interface TaggedTmuxSession {
   type: string;
   repo: string;
   branch: string;
+  worktreePath: string;
 }
 
 const LISTING = [
@@ -87,6 +88,7 @@ const LISTING = [
   '#{@orchestra-session-type}',
   '#{@orchestra-repo}',
   '#{@orchestra-branch}',
+  '#{@orchestra-worktree-path}',
 ].join('\t');
 
 /** Every session on the test's tmux server, tags included. Empty when
@@ -108,9 +110,15 @@ export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
       .split('\n')
       .filter((line) => line.trim())
       .map((line) => {
-        const [name = '', spawner = '', type = '', repo = '', branch = ''] =
-          line.split('\t');
-        return { name, spawner, type, repo, branch };
+        const [
+          name = '',
+          spawner = '',
+          type = '',
+          repo = '',
+          branch = '',
+          worktreePath = '',
+        ] = line.split('\t');
+        return { name, spawner, type, repo, branch, worktreePath };
       });
   } catch {
     return [];

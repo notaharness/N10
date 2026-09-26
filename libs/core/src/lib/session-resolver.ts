@@ -106,11 +106,11 @@ function oldest(sessions: TaggedSession[]): TaggedSession | null {
 /** The worktree session for (repo, branch), or `null`. */
 export function resolveWorktreeSession(
   repoRoot: string,
-  branch: string,
+  worktreePath: string,
   sessions: TaggedSession[] = listOurSessions()
 ): TaggedSession | null {
   return oldest(
-    sessions.filter((s) => isWorktreeSessionFor(s, repoRoot, branch))
+    sessions.filter((s) => isWorktreeSessionFor(s, repoRoot, worktreePath))
   );
 }
 
@@ -134,12 +134,12 @@ export function resolveSessionByName(
 
 /**
  * The worktree session a PTY-registry key names in this repository:
- * the one whose branch keys to it. This is how a caller that holds
+ * the one whose checkout keys to it. This is how a caller that holds
  * only a registry key — the merged-branch sweep, the worktree removal
  * — reaches the resolver without composing a name.
  *
  * Nothing is matched by name here, only tags: `registryNameOf` rebuilds
- * each candidate session's key from its `repo`/`branch` tags (via
+ * each candidate session's key from its `repo`/worktree-path tags (via
  * {@link worktreeSessionKey}, a JSON tuple — see `session-key.ts`) and
  * compares that to `registryName`. A registry key is never a tmux
  * name by construction, so matching on the name directly could answer

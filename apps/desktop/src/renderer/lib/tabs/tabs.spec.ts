@@ -570,8 +570,7 @@ describe('tabs across repositories', () => {
   });
 
   it('auto-opens the same session name once per repository', () => {
-    // The PTY registry keys sessions by bare branch name, so both
-    // repos' agents are called `main`. One tab each.
+    // Two repos' agents can share a session name here. One tab each.
     let s = sync(empty, [live]);
     s = sync(s, [live], OTHER);
     expect(s.tabs.map((t) => t.id)).toEqual([

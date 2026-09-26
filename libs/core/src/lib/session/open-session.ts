@@ -33,6 +33,7 @@ import { readWorktreeHead } from '../discovery/worktree-origin.js';
 import type { LaunchSpec } from '../agents/registry.js';
 import type { SessionRequest } from './session-request.js';
 import { localSessionEnv } from './local-session-env.js';
+import { worktreeIdentity } from './worktree-identity.js';
 
 export interface OpenSessionParams {
   session: SessionRequest;
@@ -72,14 +73,17 @@ async function findSession(
           machineId
         );
   return request.type === 'worktree'
-    ? resolveWorktreeSession(request.repo, request.branch, sessions)
+    ? resolveWorktreeSession(request.repo, request.path, sessions)
     : request.target
     ? resolveSessionByName(request.target, sessions)
     : null;
 }
 
+/** A caller that names the branch it expects must find it checked out.
+ *  Attaching to a session discovery found names none: the session is
+ *  the checkout's whichever branch it is on now. */
 function validateCheckout(request: SessionRequest, cwd: string): void {
-  if (request.type !== 'worktree') return;
+  if (request.type !== 'worktree' || !request.branch) return;
   const head = readWorktreeHead(cwd);
   if (head && !head.detached && head.branch !== request.branch) {
     throw new Error(`Worktree is on "${head.branch}", not "${request.branch}"`);
@@ -97,7 +101,7 @@ export function openSession(params: OpenSessionParams): Promise<NamedPtyEntry> {
   const machineId = request.machine ?? LOCAL_MACHINE;
   const key =
     request.type === 'worktree'
-      ? worktreeSessionKey(request.branch, request.repo, machineId)
+      ? worktreeSessionKey(request.path, request.repo, machineId)
       : request.target
       ? terminalSessionKey(request.target, machineId)
       : undefined;
@@ -133,28 +137,55 @@ async function performOpen(params: OpenSessionParams): Promise<NamedPtyEntry> {
     : params.build(existing?.agent, !!existing);
   const fresh = !attaching && (params.fresh || launch.fresh);
   const plan: TmuxLaunchPlan = attaching
-    ? {
-        mode: 'attach',
-        target: existing!.name,
-        ...(params.expected
-          ? {
-              expected: params.expected,
-              expectedTags: identityGuard(existing!),
-            }
-          : {}),
-      }
-    : launchPlan(session, existing, launch.agent, fresh, params.expected);
+    ? attachPlan(existing!, params.expected)
+    : launchPlan(
+        session,
+        existing,
+        launch.agent,
+        fresh,
+        params.expected,
+        params.cwd
+      );
   const machineId = session.machine ?? LOCAL_MACHINE;
   const spec = sessionSpec(params, launch.spec, !!fresh, machineId);
   const backend: SessionBackend =
     machineId === LOCAL_MACHINE
       ? await createTmuxBackend(spec, plan)
       : await createRemoteBackend(spec, plan, machineId);
-  const key =
-    session.type === 'worktree'
-      ? worktreeSessionKey(session.branch, session.repo, machineId)
-      : terminalSessionKey(backend.name!, machineId);
-  return spawnSession(key, backend, cols, rows, launch.agent);
+  const { key, createdFor } = registration(params, backend, existing, plan);
+  return spawnSession(key, backend, cols, rows, launch.agent, createdFor);
+}
+
+function attachPlan(
+  existing: TaggedSession,
+  expected: TmuxSessionIncarnation | undefined
+): TmuxLaunchPlan {
+  return {
+    mode: 'attach',
+    target: existing.name,
+    ...(expected ? { expected, expectedTags: identityGuard(existing) } : {}),
+  };
+}
+
+/** The registry key the opened session answers to, and — for a
+ *  worktree — the branch it was created for: its tag when it existed,
+ *  else what the create just wrote. */
+function registration(
+  params: OpenSessionParams,
+  backend: SessionBackend,
+  existing: TaggedSession | null,
+  plan: TmuxLaunchPlan
+): { key: string; createdFor?: string } {
+  const { session } = params;
+  const machineId = session.machine ?? LOCAL_MACHINE;
+  if (session.type !== 'worktree')
+    return { key: terminalSessionKey(backend.name!, machineId) };
+  const written =
+    plan.mode === 'create' ? plan.tags[ORCHESTRA_TAG.branch] : undefined;
+  return {
+    key: worktreeSessionKey(session.path, session.repo, machineId),
+    createdFor: existing?.branch || written || undefined,
+  };
 }
 
 /** The remote twin of `createTmuxBackend`: the same plan, executed on
@@ -237,14 +268,16 @@ function sessionSpec(
 function launchPlan(
   request: SessionRequest,
   existing: TaggedSession | null,
-  agent?: string,
-  fresh = false,
-  expected?: TmuxSessionIncarnation
+  agent: string | undefined,
+  fresh: boolean | undefined,
+  expected: TmuxSessionIncarnation | undefined,
+  cwd: string
 ): TmuxLaunchPlan {
-  const identity =
-    request.type === 'worktree'
-      ? { type: 'worktree' as const, branch: request.branch }
-      : { type: request.kind };
+  const worktree =
+    request.type === 'worktree' ? worktreeIdentity(request, cwd) : null;
+  const identity = worktree ?? {
+    type: (request as Extract<SessionRequest, { type: 'terminal' }>).kind,
+  };
   const agentTags: Record<string, string> = agent
     ? { [ORCHESTRA_TAG.agent]: agent }
     : {};
@@ -282,7 +315,7 @@ function launchPlan(
     mode: 'create',
     label:
       request.type === 'worktree'
-        ? worktreeSessionLabel(request.repo, request.branch)
+        ? worktreeSessionLabel(request.repo, worktree!.branch)
         : terminalSessionLabel(request.repo, request.kind),
     tags: { ...sessionTags(request.repo, identity), ...agentTags },
     retainOnExit,

@@ -1,4 +1,5 @@
 import { worktreeSessionKey } from '../session-key.js';
+import { sessionKeyForBranch } from '../worktree-rows.js';
 /**
  * Watching a pull request on an agent's behalf.
  *
@@ -149,7 +150,6 @@ function injectIntoLive(
 async function spawnForUpdate(
   opts: PrBabysitterOptions,
   pr: PullRequestInfo,
-  name: string,
   prompt: string,
   live: () => boolean
 ): Promise<Delivery> {
@@ -173,9 +173,11 @@ async function spawnForUpdate(
   // `seed`, never `continue-or-seed`: continuing a prior conversation
   // takes the prompt only when there is nothing to continue, and an
   // agent that already worked on this pull request is the normal case.
+  const name = worktreeSessionKey(worktree, opts.cwd);
   await launchSession({
     name,
     cwd: worktree,
+    branch: pr.sourceBranch,
     cols,
     rows,
     config,
@@ -193,12 +195,13 @@ async function deliver(
   prompt: string,
   live: () => boolean
 ): Promise<Delivery> {
-  const name = worktreeSessionKey(pr.sourceBranch, opts.cwd);
-  if (opts.isForeignSession?.(name)) {
+  const name = await sessionKeyForBranch(pr.sourceBranch, opts.cwd);
+  if (!live()) return { outcome: 'held', held: 'interrupted' };
+  if (name && opts.isForeignSession?.(name)) {
     return { outcome: 'held', held: 'foreign-session' };
   }
-  if (isSessionAlive(name)) return injectIntoLive(opts, name, prompt);
-  return spawnForUpdate(opts, pr, name, prompt, live);
+  if (name && isSessionAlive(name)) return injectIntoLive(opts, name, prompt);
+  return spawnForUpdate(opts, pr, prompt, live);
 }
 
 function initialStatus(pr: PullRequestInfo): BabysitStatus {

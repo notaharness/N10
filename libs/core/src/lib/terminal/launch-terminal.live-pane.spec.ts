@@ -35,6 +35,7 @@ const liveAgentPane: TaggedSession = {
   name: 'saved-label',
   repo: '/repo',
   branch: '',
+  worktreePath: '',
   path: base.cwd,
   type: 'agent',
   spawner: 'orchestra',

@@ -1,4 +1,5 @@
 import {
+  canonicalWorktreePath,
   worktreeSessionKey,
   terminalSessionKey,
   LOCAL_MACHINE,
@@ -33,8 +34,16 @@ export const ORCHESTRA_TAG = {
   sessionType: '@orchestra-session-type',
   /** `worktree` sessions only: the branch the session was spawned
    *  under, unsanitized (`feature/x`); a detached-HEAD worktree's
-   *  directory name. */
+   *  directory name. Written once, as the session's task context — the
+   *  worktree may since have switched to another branch, so it never
+   *  says which checkout the session belongs to. */
   branch: '@orchestra-branch',
+  /** `worktree` sessions only: the canonical checkout directory the
+   *  session belongs to — its identity. Written before the agent
+   *  starts. More exact than `#{session_path}`, which
+   *  `attach-session -c` can change; a session without it (an older
+   *  one) falls back to that. */
+  worktreePath: '@orchestra-worktree-path',
   /** Orchestra's: the harness in the pane (`claude`, `codex`, …). */
   agent: '@orchestra-agent',
   /** Orchestra's: the player's reporting target — `tmux:<session>`,
@@ -56,8 +65,8 @@ export const LISTED_TAGS: readonly string[] = Object.values(ORCHESTRA_TAG);
 export const N10_SPAWNER = 'n10';
 
 /**
- * - `worktree`: an agent bound to one git worktree and branch (n10's
- *   worktree sessions, Orchestra's players). Identity = (repo, branch).
+ * - `worktree`: an agent bound to one git worktree (n10's worktree
+ *   sessions, Orchestra's players). Identity = (repo, worktree path).
  * - `shell` / `agent`: a n10 terminal tab — the user's shell, or an
  *   agent CLI not bound to a worktree. Identity = the name, which is
  *   unique on the server and stable for the session's life.
@@ -84,8 +93,16 @@ export interface TaggedSession {
   spawner: string;
   repo: string;
   type: SessionType;
-  /** Set on `worktree` sessions; `''` when the tag is missing. */
+  /** Set on `worktree` sessions; `''` when the tag is missing. The
+   *  branch it was created for, not necessarily the one checked out. */
   branch: string;
+  /** `worktree` sessions: the checkout it belongs to — the
+   *  `@orchestra-worktree-path` tag, else `#{session_path}` for a
+   *  session created before the tag existed. `''` otherwise. An
+   *  explicit tag wins even when it names a directory that is gone:
+   *  such a session belongs to no worktree, and is never re-associated
+   *  by its branch. */
+  worktreePath: string;
   agent?: string;
   orchestrator?: string;
   lastReport?: string;
@@ -138,22 +155,29 @@ export function taggedSession(
     repo: repo ?? '',
     type: type as SessionType,
     branch: tags[ORCHESTRA_TAG.branch] ?? '',
+    worktreePath:
+      type === 'worktree' ? tags[ORCHESTRA_TAG.worktreePath] || info.path : '',
     machine,
     ...orchestraTagFields(tags),
   };
 }
 
-/** The worktree session for a repository and branch: string equality
- *  on the symlink-resolved repo path and on the unsanitized branch. */
+/** The worktree session for a repository and checkout: string
+ *  equality on the symlink-resolved repo path and on the canonical
+ *  worktree path. The branch is not consulted — the checkout may have
+ *  switched to another since, and another worktree may have the
+ *  session's branch checked out now. */
 export function isWorktreeSessionFor(
   session: TaggedSession,
   repoRoot: string,
-  branch: string
+  worktreePath: string
 ): boolean {
   return (
     session.type === 'worktree' &&
     session.repo === repoRoot &&
-    session.branch === branch
+    !!session.worktreePath &&
+    canonicalWorktreePath(session.worktreePath, session.machine) ===
+      canonicalWorktreePath(worktreePath, session.machine)
   );
 }
 
@@ -166,27 +190,32 @@ export function isTerminalSession(
 
 /**
  * The PTY-registry key a session answers to in its own repository:
- * a worktree session is keyed by `worktreeSessionKey(branch)`, the
- * key both shells spawn it under; a terminal tab by its tmux name,
+ * a worktree session is keyed by `worktreeSessionKey(path)`, the
+ * checkout it belongs to and the key both shells spawn it under; a terminal tab by its tmux name,
  * which discovery learns from the listing.
  */
 export function registryNameOf(session: TaggedSession): string {
   return session.type === 'worktree'
-    ? worktreeSessionKey(session.branch, session.repo, session.machine)
+    ? worktreeSessionKey(session.worktreePath, session.repo, session.machine)
     : terminalSessionKey(session.name, session.machine);
 }
 
 /** The tags n10 writes on a session it creates. */
 export function sessionTags(
   repoRoot: string,
-  identity: { type: 'worktree'; branch: string } | { type: 'shell' | 'agent' }
+  identity:
+    | { type: 'worktree'; branch: string; worktreePath: string }
+    | { type: 'shell' | 'agent' }
 ): Record<string, string> {
   return {
     [ORCHESTRA_TAG.spawner]: N10_SPAWNER,
     [ORCHESTRA_TAG.repo]: repoRoot,
     [ORCHESTRA_TAG.sessionType]: identity.type,
     ...(identity.type === 'worktree'
-      ? { [ORCHESTRA_TAG.branch]: identity.branch }
+      ? {
+          [ORCHESTRA_TAG.branch]: identity.branch,
+          [ORCHESTRA_TAG.worktreePath]: identity.worktreePath,
+        }
       : {}),
   };
 }

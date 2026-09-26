@@ -46,16 +46,15 @@ function makePr(
 }
 
 describe('findOrphanPrs', () => {
-  it('returns PRs that have no matching session', () => {
+  it('returns PRs whose branch no worktree has checked out', () => {
     const prMap: BranchPrMap = {
       'feature/branch-1': makePr({ id: 1 }),
       'feature/branch-2': makePr({ id: 2 }),
       'feature/branch-3': makePr({ id: 3 }),
     };
-    // branchToSessionName('feature/branch-2') → worktreeSessionKey('feature/branch-2')
-    const sessionNames = new Set([worktreeSessionKey('feature/branch-2')]);
+    const checkedOut = new Set(['feature/branch-2']);
 
-    const result = findOrphanPrs(prMap, sessionNames, mockConfig, mockProvider);
+    const result = findOrphanPrs(prMap, checkedOut, mockConfig, mockProvider);
     expect(result.map((p) => p.id)).toEqual([3, 1]); // sorted descending
   });
 
@@ -273,14 +272,15 @@ describe('buildSessionLookups', () => {
       'feature/bar': null,
     };
 
-    const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap);
-    expect(sessionBranchMap.get(worktreeSessionKey('feature/foo'))).toBe(
-      'feature/foo'
-    );
-    expect(sessionBranchMap.get(worktreeSessionKey('feature/bar'))).toBe(
-      'feature/bar'
-    );
-    expect(sessionPrMap.get(worktreeSessionKey('feature/foo'))).toBe(pr1);
-    expect(sessionPrMap.has('feature-bar')).toBe(false);
+    const foo = worktreeSessionKey('/wt/foo');
+    const bar = worktreeSessionKey('/wt/bar');
+    const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap, [
+      { name: foo, running: true, branch: 'feature/foo', path: '/wt/foo' },
+      { name: bar, running: false, branch: 'feature/bar', path: '/wt/bar' },
+    ]);
+    expect(sessionBranchMap.get(foo)).toBe('feature/foo');
+    expect(sessionBranchMap.get(bar)).toBe('feature/bar');
+    expect(sessionPrMap.get(foo)).toBe(pr1);
+    expect(sessionPrMap.has(bar)).toBe(false);
   });
 });

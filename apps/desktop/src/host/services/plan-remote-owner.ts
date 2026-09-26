@@ -2,7 +2,6 @@ import {
   hasLiveTmuxSession,
   isSessionAlive,
   listOurSessionsWith,
-  resolveWorktreeSession,
 } from '@n10/core';
 import { listMachines } from './machines.js';
 import { machineFor } from './remote-machines.js';
@@ -54,8 +53,16 @@ async function ownerLabelIfRunning(
       machineFor(machine.peerId).executor,
       machine.peerId
     );
-    const found = resolveWorktreeSession(repoCwd, branch, sessions);
-    return found && !found.paneDead ? machine.label : null;
+    // Another machine's checkout paths are its own, so the fleet check
+    // asks by the branch a session was created for, not by path.
+    const found = sessions.some(
+      (s) =>
+        s.type === 'worktree' &&
+        s.repo === repoCwd &&
+        s.branch === branch &&
+        !s.paneDead
+    );
+    return found ? machine.label : null;
   } catch {
     return null; // Lost mid-check — do not block on it.
   }
@@ -88,9 +95,10 @@ function hasLocalAgent(name: string): boolean {
 export async function refuseIfRemoteOwns(
   repoCwd: string,
   branch: string,
-  name: string
+  /** The local session for the checkout, when there is one yet. */
+  name: string | null
 ): Promise<void> {
-  if (hasLocalAgent(name)) return;
+  if (name && hasLocalAgent(name)) return;
   const remoteOwner = await findRemoteBranchOwner(repoCwd, branch);
   if (remoteOwner) {
     throw new Error(

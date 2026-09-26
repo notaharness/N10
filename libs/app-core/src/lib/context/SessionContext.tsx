@@ -134,8 +134,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const orphanPrs = useMemo(() => {
     if (!provider) return [];
-    const sessionNames = new Set(sessionMgr.sessions.map((s) => s.name));
-    return findOrphanPrs(prMap, sessionNames, config, provider);
+    const checkedOut = new Set(
+      sessionMgr.sessions.flatMap((s) => (s.branch ? [s.branch] : []))
+    );
+    return findOrphanPrs(prMap, checkedOut, config, provider);
   }, [prMap, sessionMgr.sessions, config, provider]);
 
   const categorizedReviews = useMemo((): CategorizedReviews => {
@@ -145,8 +147,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [prMap, config, provider]);
 
   const { sessionBranchMap, sessionPrMap } = useMemo(
-    () => buildSessionLookups(prMap),
-    [prMap]
+    () => buildSessionLookups(prMap, sessionMgr.sessions),
+    [prMap, sessionMgr.sessions]
   );
 
   const sortedSessions = useMemo(

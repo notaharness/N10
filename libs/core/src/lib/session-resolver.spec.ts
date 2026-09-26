@@ -31,6 +31,8 @@ const created: string[] = [];
 /** Unique per run so parallel workers on one socket cannot collide. */
 const RUN = `${process.pid}-${Date.now().toString(36)}`;
 const name = (label: string) => `resolver-${RUN}-${label}`;
+/** A checkout path per label; the path tag wins, so it need not exist. */
+const wt = (label: string) => `/worktrees/${RUN}/${label}`;
 
 function startSession(
   sessionName: string,
@@ -58,13 +60,15 @@ function startSession(
 function tags(
   type: 'worktree' | 'shell' | 'agent',
   repo: string,
-  branch?: string
+  branch?: string,
+  worktreePath = branch ? wt(branch) : undefined
 ): Record<string, string> {
   return {
     '@orchestra-spawner': 'n10',
     '@orchestra-repo': repo,
     '@orchestra-session-type': type,
     ...(branch ? { '@orchestra-branch': branch } : {}),
+    ...(worktreePath ? { '@orchestra-worktree-path': worktreePath } : {}),
   };
 }
 
@@ -98,21 +102,22 @@ describe.skipIf(SKIP)('session resolver', () => {
 
   it('finds a worktree session by its tags, whatever it is called', () => {
     startSession(name('anything'), tags('worktree', REPO, 'feat/a'));
-    expect(resolveWorktreeSession(REPO, 'feat/a')).toMatchObject({
+    expect(resolveWorktreeSession(REPO, wt('feat/a'))).toMatchObject({
       name: name('anything'),
       repo: REPO,
       branch: 'feat/a',
+      worktreePath: wt('feat/a'),
       path: process.cwd(),
     });
   });
 
   // The name n10 would have chosen, on a session nobody tagged: not
-  // ours. Neither the branch lookup nor the registry-key lookup may
+  // ours. Neither the checkout lookup nor the registry-key lookup may
   // land on it.
   it('does not find an untagged session that carries the expected name', () => {
     startSession(`alpha-${RUN}-feat-a`, {});
     startSession(name('half'), { '@orchestra-spawner': 'n10' });
-    expect(resolveWorktreeSession(REPO, 'feat-a')).toBeNull();
+    expect(resolveWorktreeSession(REPO, process.cwd())).toBeNull();
     expect(resolveRegistrySession(REPO, `alpha-${RUN}-feat-a`)).toBeNull();
     expect(resolveSessionByName(`alpha-${RUN}-feat-a`)).toBeNull();
     expect(resolveSessionByName(name('half'))).toBeNull();
@@ -121,11 +126,12 @@ describe.skipIf(SKIP)('session resolver', () => {
     );
   });
 
-  it('matches the repo and the unsanitized branch exactly', () => {
+  it('matches the repo and the checkout exactly, never the branch', () => {
     startSession(name('a'), tags('worktree', REPO, 'feat/a'));
-    expect(resolveWorktreeSession(REPO, 'feat-a')).toBeNull();
-    expect(resolveWorktreeSession(`${REPO}/`, 'feat/a')).toBeNull();
-    expect(resolveWorktreeSession('/repos/beta', 'feat/a')).toBeNull();
+    expect(resolveWorktreeSession(REPO, 'feat/a')).toBeNull();
+    expect(resolveWorktreeSession(REPO, wt('feat-a'))).toBeNull();
+    expect(resolveWorktreeSession(`${REPO}/`, wt('feat/a'))).toBeNull();
+    expect(resolveWorktreeSession('/repos/beta', wt('feat/a'))).toBeNull();
   });
 
   it('takes the oldest of several sessions claiming one identity, and lists the rest', async () => {
@@ -133,7 +139,7 @@ describe.skipIf(SKIP)('session resolver', () => {
     // `session_created` has one-second resolution.
     await new Promise((r) => setTimeout(r, 1100));
     startSession(name('second'), tags('worktree', REPO, 'dup'));
-    expect(resolveWorktreeSession(REPO, 'dup')?.name).toBe(name('first'));
+    expect(resolveWorktreeSession(REPO, wt('dup'))?.name).toBe(name('first'));
     expect(
       listOurSessions()
         .filter((s) => s.branch === 'dup')
@@ -183,34 +189,33 @@ describe.skipIf(SKIP)('session resolver', () => {
     );
   });
 
-  // The registry keys a worktree session by `branchToSessionName`, and
-  // a terminal by its name; a caller holding only that key reaches the
-  // same session the tags describe.
-  it('resolves a registry key to the worktree session whose branch keys to it', () => {
+  // The registry keys a worktree session by its checkout
+  // (`worktreeSessionKey`), and a terminal by its name; a caller holding
+  // only that key reaches the same session the tags describe.
+  it('resolves a registry key to the worktree session whose checkout keys to it', () => {
     startSession(name('slashy'), tags('worktree', REPO, 'feat/b'));
     startSession(name('other-repo'), tags('worktree', '/repos/beta', 'feat/c'));
     expect(
-      resolveRegistrySession(REPO, worktreeSessionKey('feat/b', REPO))?.name
+      resolveRegistrySession(REPO, worktreeSessionKey(wt('feat/b'), REPO))?.name
     ).toBe(name('slashy'));
-    expect(resolveRegistrySession(REPO, 'feat/b')).toBeNull();
+    expect(resolveRegistrySession(REPO, wt('feat/b'))).toBeNull();
     expect(
-      resolveRegistrySession(REPO, worktreeSessionKey('feat/c', REPO))
+      resolveRegistrySession(REPO, worktreeSessionKey(wt('feat/c'), REPO))
     ).toBeNull();
   });
 
-  // A registry key handed here is a branch (rewritten), and a session's
-  // own name is never one: repository `feature` with an agent on branch
-  // `x`, labelled `feature-x`, must not answer for the branch
-  // `feature/x`; and an agent tab named like a branch (`app-agent`) must
-  // not answer for that branch either. Terminal tabs are reached by
-  // `resolveSessionByName`, never through a key.
-  it('resolves a registry key by branch only, never to any session by name', () => {
+  // A registry key handed here names a checkout, and a session's own
+  // name is never one: an agent labelled `feature-x` must not answer
+  // for its label, and an agent tab must not answer for its name
+  // either. Terminal tabs are reached by `resolveSessionByName`, never
+  // through a key.
+  it('resolves a registry key by checkout only, never to any session by name', () => {
     startSession(name('term'), tags('agent', REPO));
     startSession(name('feature-x'), tags('worktree', REPO, 'x'));
     expect(resolveRegistrySession(REPO, name('term'))).toBeNull();
     expect(resolveRegistrySession(REPO, name('feature-x'))).toBeNull();
     expect(
-      resolveRegistrySession(REPO, worktreeSessionKey('x', REPO))?.name
+      resolveRegistrySession(REPO, worktreeSessionKey(wt('x'), REPO))?.name
     ).toBe(name('feature-x'));
   });
 });

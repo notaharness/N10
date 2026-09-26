@@ -67,6 +67,9 @@ export interface AgentSession {
   running: boolean;
   /** Mirrors `WorktreeInfo.state` — set when the worktree is mid-rebase. */
   state?: 'rebasing';
+  /** The branch checked out in the worktree now; `''` on a detached
+   *  HEAD. */
+  branch?: string;
   /** The worktree's checkout directory — its identity, which a branch
    *  switch inside it does not change. */
   path?: string;

@@ -32,7 +32,10 @@ export interface SessionSummary {
 export interface ForeignSessionSummary {
   /** The repository it runs in — the real path of the main checkout. */
   repo: string;
+  /** The branch its checkout is on now. */
   branch: string;
-  /** Its qualified core registry key (repository plus exact branch). */
+  /** The checkout the agent belongs to. */
+  worktree: string;
+  /** Its qualified core registry key (repository plus checkout). */
   sessionName: string;
 }

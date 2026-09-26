@@ -44,6 +44,7 @@ export * from './lib/session/open-session.js';
 export type * from './lib/terminal/terminal-name.js';
 export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';
+export * from './lib/worktree-rows.js';
 export {
   attach,
   detach,
@@ -122,6 +123,7 @@ export {
 export * from './lib/plan/prompt-composer.js';
 
 export {
+  canonicalWorktreePath,
   worktreeSessionKey,
   keyForWorktree,
   terminalSessionKey,

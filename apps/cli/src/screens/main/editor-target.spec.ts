@@ -28,7 +28,7 @@ describe('resolveEditorTarget', () => {
   it('returns the existing worktree path for a session row', async () => {
     const item: SidebarItem = {
       kind: 'session',
-      session: { name: worktreeSessionKey('feature/foo'), running: false },
+      session: { name: worktreeSessionKey('/wt/feature-foo'), running: false },
       isMerged: false,
     };
     const path = await resolveEditorTarget(item, {
@@ -44,7 +44,7 @@ describe('resolveEditorTarget', () => {
     // worktree under the user.
     const item: SidebarItem = {
       kind: 'session',
-      session: { name: worktreeSessionKey('feature/foo'), running: false },
+      session: { name: worktreeSessionKey('/wt/feature-foo'), running: false },
       isMerged: false,
     };
     const createWorktree = vi.fn();

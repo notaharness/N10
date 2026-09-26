@@ -1,4 +1,3 @@
-import { worktreeSessionKey } from '../session-key.js';
 import type { PullRequestInfo, CategorizedReviews } from '@n10/vcs-core';
 import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
 import type { BabysitStatus } from '../babysit/babysit-model.js';
@@ -102,11 +101,15 @@ export function buildSidebarItems(
     babysat
   );
 
-  const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
+  const sessionByBranch = new Map<string, AgentSession>();
+  for (const s of sortedSessions) {
+    const branch = sessionBranchMap.get(s.name);
+    if (branch) sessionByBranch.set(branch, s);
+  }
 
-  /** The alive worktree session backing a PR's branch, if any. */
+  /** The worktree session of the checkout on a PR's branch, if any. */
   const prSession = (pr: PullRequestInfo): AgentSession | undefined =>
-    sessionByName.get(worktreeSessionKey(pr.sourceBranch));
+    sessionByBranch.get(pr.sourceBranch);
 
   const orphanItem = (pr: PullRequestInfo): SidebarItem => {
     const session = prSession(pr);

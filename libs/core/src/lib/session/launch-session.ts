@@ -91,8 +91,13 @@ export function buildLaunchSpec(
 }
 
 export interface LaunchSessionParams {
+  /** The worktree session's key — its checkout (`keyForWorktree`). */
   name: string;
   cwd: string;
+  /** The branch the caller expects checked out in `cwd`, checked before
+   *  anything starts. Discovery's attaches leave it unset: the session
+   *  belongs to the checkout whichever branch it is on. */
+  branch?: string;
   cols: number;
   rows: number;
   config: AppConfig;
@@ -118,7 +123,7 @@ export function launchSession(
   params: LaunchSessionParams
 ): Promise<NamedPtyEntry> {
   return openSession({
-    session: worktreeRequest(params.name),
+    session: worktreeRequest(params.name, params.branch),
     mode: params.mode,
     fresh: params.fresh,
     intent: params.request.intent.startsWith('continue') ? 'continue' : 'fresh',

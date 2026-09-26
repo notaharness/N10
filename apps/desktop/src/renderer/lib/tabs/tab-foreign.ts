@@ -18,6 +18,8 @@ export interface ForeignSessionEntry {
   /** The repository it runs in — never the one in view. */
   repo: string;
   branch: string;
+  /** The checkout the agent belongs to, when the host said. */
+  worktree?: string;
   /** Its registry name in that repository, the key its auto-open
    *  history is kept under there. */
   sessionName: string;
@@ -65,7 +67,10 @@ function hasTabFor(tabs: readonly Tab[], entry: ForeignSessionEntry): boolean {
     (t) =>
       t.kind === 'item' &&
       t.repo === entry.repo &&
-      (t.itemKey === key || t.id === id || t.branch === entry.branch)
+      (t.itemKey === key ||
+        t.id === id ||
+        t.branch === entry.branch ||
+        (!!entry.worktree && t.worktree === entry.worktree))
   );
 }
 
@@ -78,6 +83,7 @@ function foreignTab(entry: ForeignSessionEntry): Tab {
     itemKey: key,
     preview: false,
     branch: entry.branch,
+    ...(entry.worktree ? { worktree: entry.worktree } : {}),
     title: entry.title ?? entry.branch,
   };
 }

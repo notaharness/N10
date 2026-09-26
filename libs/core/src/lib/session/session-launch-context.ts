@@ -32,14 +32,11 @@ export function getSessionLaunchContext(
   const empty = { exists: false, running: false, canResume: false };
   const identity = sessionIdentity(name);
   if (identity?.kind !== 'worktree') return empty;
-  const candidate = resolveWorktreeSession(identity.repo, identity.branch);
+  const candidate = resolveWorktreeSession(identity.repo, identity.path);
   if (!candidate) return empty;
   const snapshot = tmuxSessionSnapshot(candidate.name, LISTED_TAGS);
   const session = snapshot && taggedSession(snapshot);
-  if (
-    !session ||
-    !isWorktreeSessionFor(session, identity.repo, identity.branch)
-  )
+  if (!session || !isWorktreeSessionFor(session, identity.repo, identity.path))
     return empty;
   const known = session.agent && isKnownAgentId(session.agent);
   const agent = known

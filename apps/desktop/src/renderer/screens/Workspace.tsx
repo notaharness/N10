@@ -114,6 +114,7 @@ function WorkspaceInner({
       foreignSessions.data?.map((s) => ({
         repo: s.repo,
         branch: s.branch,
+        worktree: s.worktree,
         sessionName: s.sessionName,
       })),
     [foreignSessions.data]
@@ -140,7 +141,8 @@ function WorkspaceInner({
         running: itemRunning(i),
         sessionName: itemSessionName(i),
         worktree: itemWorktree(i),
-        sessionBranch: i.kind === 'session' ? i.session.sessionBranch : undefined,
+        sessionBranch:
+          i.kind === 'session' ? i.session.sessionBranch : undefined,
       })),
     [items]
   );

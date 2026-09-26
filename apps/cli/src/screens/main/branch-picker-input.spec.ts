@@ -134,26 +134,26 @@ describe('branch picker — select', () => {
     expect(createWorktree).toHaveBeenCalledExactlyOnceWith('feat/x');
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
-      `session:${worktreeSessionKey('feat/x')}`
+      `session:${worktreeSessionKey('/wt/feat-x')}`
     );
     // The menu is not set on this pane — the selection move (or the
     // refresh before it) can remount it; the request is what survives.
     expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
     expect(t.pane.setPaneMode).not.toHaveBeenCalled();
-    expect(peekSessionMenuRequest()).toBe(worktreeSessionKey('feat/x'));
+    expect(peekSessionMenuRequest()).toBe(worktreeSessionKey('/wt/feat-x'));
     expect(t.branchPicker.setCreating).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it('opens straight into a session that is already running', async () => {
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-x');
-    liveSessions.add(worktreeSessionKey('feat/x'));
+    liveSessions.add(worktreeSessionKey('/wt/feat-x'));
     const t = makeCtx();
 
     handleBranchPickerInput('', makeKey({ return: true }), t.ctx);
     await t.settle();
 
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
-      `session:${worktreeSessionKey('feat/x')}`
+      `session:${worktreeSessionKey('/wt/feat-x')}`
     );
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');

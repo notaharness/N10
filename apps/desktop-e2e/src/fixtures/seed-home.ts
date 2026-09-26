@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -165,20 +166,44 @@ function seedDrafts(
 /** Start the agents and terminal tabs a test wants already running when
  *  the app comes up — agents in the test's repository, or in another one
  *  a test names; terminals wherever they say. */
+/** An agent session alive in tmux before the app starts. */
+export interface LiveSessionSeed {
+  branch: string;
+  command: string;
+  repo?: string;
+  /** Check this new branch out in the worktree once the agent runs —
+   *  the state a restart finds after `git switch` inside it. */
+  switchTo?: string;
+  /** Tag the checkout as `@orchestra-worktree-path`, as n10 does; left
+   *  off, the session looks like one made before the tag existed. */
+  tagWorktreePath?: boolean;
+}
+
 export function seedTmux(
   repoPath: string,
   homeDir: string,
-  sessions: { branch: string; command: string; repo?: string }[] | undefined,
+  sessions: LiveSessionSeed[] | undefined,
   terminals: Record<string, TerminalSeed> | undefined
 ): void {
-  for (const { branch, command, repo = repoPath } of sessions ?? []) {
+  for (const seed of sessions ?? []) {
+    const repo = seed.repo ?? repoPath;
+    const worktreePath = addExternalWorktree(repo, seed.branch);
     startExternalTmuxSession({
       repoPath: repo,
       homeDir,
-      branch,
-      worktreePath: addExternalWorktree(repo, branch),
-      command,
+      branch: seed.branch,
+      worktreePath,
+      command: seed.command,
+      ...(seed.tagWorktreePath
+        ? { tags: { '@orchestra-worktree-path': realpathSync(worktreePath) } }
+        : {}),
     });
+    if (seed.switchTo) {
+      execFileSync('git', ['switch', '-c', seed.switchTo], {
+        cwd: worktreePath,
+        stdio: 'ignore',
+      });
+    }
   }
   for (const [name, t] of Object.entries(terminals ?? {})) {
     startSurvivingTerminal({ name, ...t, homeDir });
