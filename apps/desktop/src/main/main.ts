@@ -15,12 +15,7 @@ import {
   setFolderPicker,
   setShellGlue,
 } from '../host/register-handlers.js';
-import {
-  applySessionBackend,
-  getTmuxAvailability,
-  killAll,
-  probeTmuxAvailability,
-} from '@n10/core';
+import { applySessionBackend, killAll, probeTmuxAvailability } from '@n10/core';
 import {
   MENU_EVENTS,
   type ContextMenuItem,
@@ -119,22 +114,6 @@ function showAbout(): Promise<void> {
       buttons: ['OK'],
     })
     .then(() => undefined);
-}
-
-/** n10 cannot run without tmux; this says so and how to install it. */
-async function showTmuxMissing(): Promise<void> {
-  const { reason, installHint } = getTmuxAvailability() ?? {};
-  await dialog.showMessageBox({
-    type: 'error',
-    title: 'n10 needs tmux',
-    message: 'n10 needs tmux 3.2 or newer',
-    detail: `${
-      reason ?? 'tmux was not found'
-    }.\n\nInstall it, then start n10 again:\n  ${
-      installHint ?? 'https://github.com/tmux/tmux/wiki/Installing'
-    }`,
-    buttons: ['Quit'],
-  });
 }
 
 function popupContextMenu(items: ContextMenuItem[]): Promise<string | null> {
@@ -299,17 +278,13 @@ if (!app.requestSingleInstanceLock()) {
       // Before anything that runs a command: sessions, and the beam
       // daemon's remote shells, get this PATH.
       if (app.isPackaged && !FROM_TERMINAL) await importLoginShellPath();
+      // Throws without tmux, before the beam daemon starts for nothing.
+      await probeTmuxAvailability();
+      applySessionBackend();
       beam.start();
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
       installDesktopTmuxPreparer();
-      await probeTmuxAvailability();
-      if (!getTmuxAvailability()?.available) {
-        await showTmuxMissing();
-        app.quit();
-        return;
-      }
-      applySessionBackend();
       const opened = openStartupRepo(START_DIR);
       mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);

@@ -8,6 +8,7 @@
 import { execFile } from 'node:child_process';
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** The dev build's name, from apps/desktop's private manifest. The npm
  *  package and the installers are named `n10`. */
@@ -56,7 +57,11 @@ export function launchStartDir(launch: {
     .slice(1)
     .reverse()
     .find((arg) => arg !== '' && !arg.startsWith('-'));
-  if (path) return resolve(cwd, path);
+  // A desktop entry's %U passes local paths as file:// URIs.
+  if (path)
+    return path.startsWith('file://')
+      ? fileURLToPath(path)
+      : resolve(cwd, path);
   return launch.fromTerminal ? cwd : undefined;
 }
 
@@ -65,12 +70,10 @@ const MARK = '__N10_LOGIN_ENV__';
  *  inherited variable can echo back into the output. */
 const PRINT_MARK = `printf '%s%s\\n' ${MARK.slice(0, 5)} ${MARK.slice(5)}`;
 
-/** PATH from `env` output printed between two marks, which keep
- *  whatever the shell's startup files print out of it. */
-export function pathFromEnvOutput(stdout: string): string | undefined {
-  const body = stdout.split(MARK)[1];
-  const line = body?.split('\n').find((l) => l.startsWith('PATH='));
-  return line?.slice('PATH='.length) || undefined;
+/** The PATH printed between two marks, which keep whatever the
+ *  shell's startup files print out of it. */
+export function pathBetweenMarks(stdout: string): string | undefined {
+  return stdout.split(MARK)[1]?.trim() || undefined;
 }
 
 /** `first`'s entries, then those of `rest` it lacks. */
@@ -88,10 +91,10 @@ export function loginShellPath(shell: string): Promise<string | undefined> {
   return new Promise((done) => {
     const child = execFile(
       shell,
-      ['-ilc', `${PRINT_MARK}; env; ${PRINT_MARK}`],
+      ['-ilc', `${PRINT_MARK}; printenv PATH; ${PRINT_MARK}`],
       // SIGKILL: interactive shells ignore the default SIGTERM.
       { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL' },
-      (error, stdout) => done(error ? undefined : pathFromEnvOutput(stdout))
+      (error, stdout) => done(error ? undefined : pathBetweenMarks(stdout))
     );
     // An interactive shell reading its stdin would wait forever.
     child.stdin?.end();

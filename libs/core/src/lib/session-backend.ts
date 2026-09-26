@@ -51,9 +51,12 @@ export function getTmuxAvailability(): TmuxStatus | null {
 export function applySessionBackend(): void {
   if (!cachedTmuxStatus?.available) {
     throw new Error(
-      `n10 requires tmux 3.2 or newer. ${
-        cachedTmuxStatus?.reason ?? 'Availability has not been checked.'
-      } ${cachedTmuxStatus?.installHint ?? 'Install tmux and restart n10.'}`
+      `n10 requires tmux 3.2 or newer: ${
+        cachedTmuxStatus?.reason ?? 'availability has not been checked'
+      }. Install it, then start n10 again: ${
+        cachedTmuxStatus?.installHint ??
+        'see https://github.com/tmux/tmux/wiki/Installing'
+      }`
     );
   }
 }

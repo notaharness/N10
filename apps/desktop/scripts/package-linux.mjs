@@ -56,6 +56,13 @@ function copyPackage(name, filter = () => true) {
 }
 
 const platform = `${process.platform}-${process.arch}`;
+// node-pty ships no Linux prebuild: without the addon its install script
+// built, the package would install and fail at the first terminal.
+const ptyAddon = resolve(
+  dirname(require.resolve('node-pty/package.json')),
+  'build/Release/pty.node'
+);
+if (!existsSync(ptyAddon)) throw new Error(`${ptyAddon} is missing`);
 // node-pty's sources and other platforms' prebuilds are not loaded.
 const ptyRuntime = (path) =>
   !/^(src|deps|third_party|scripts)(\/|$)/.test(path) &&

@@ -4,7 +4,7 @@ import {
   launchStartDir,
   loginShellPath,
   mergePath,
-  pathFromEnvOutput,
+  pathBetweenMarks,
 } from './launch-env.js';
 
 describe('appIdentity', () => {
@@ -56,6 +56,15 @@ describe('launchStartDir', () => {
     ).toBe('/home/u/other');
   });
 
+  it('opens a file URI from the desktop entry as a path', () => {
+    expect(
+      launchStartDir({
+        ...base,
+        argv: [base.argv[0]!, 'file:///home/u/my%20repo'],
+      })
+    ).toBe('/home/u/my repo');
+  });
+
   it('opens the cwd of a terminal launch, not of a menu launch', () => {
     expect(launchStartDir(base)).toBe('/home/u/repo');
     expect(launchStartDir({ ...base, fromTerminal: false })).toBeUndefined();
@@ -70,10 +79,9 @@ describe('launchStartDir', () => {
 
 describe('login shell PATH', () => {
   it('reads PATH between the marks, ignoring startup output', () => {
-    const out =
-      'PATH=/noise\n__N10_LOGIN_ENV__\nPATH=/a:/b\nHOME=/h\n__N10_LOGIN_ENV__';
-    expect(pathFromEnvOutput(out)).toBe('/a:/b');
-    expect(pathFromEnvOutput('PATH=/a')).toBeUndefined();
+    const out = '/noise\n__N10_LOGIN_ENV__\n/a:/b\n__N10_LOGIN_ENV__';
+    expect(pathBetweenMarks(out)).toBe('/a:/b');
+    expect(pathBetweenMarks('/a')).toBeUndefined();
   });
 
   it('puts the shell PATH first and keeps the rest', () => {
