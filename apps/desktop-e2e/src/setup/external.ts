@@ -79,8 +79,6 @@ export function startExternalTmuxSession(opts: {
   branch: string;
   worktreePath: string;
   command: string;
-  /** Further tags, on top of the identity every session carries. */
-  tags?: Record<string, string>;
 }): string {
   const name = n10TmuxLabel(opts.repoPath, opts.branch);
   execFileSync(
@@ -114,7 +112,7 @@ export function startExternalTmuxSession(opts: {
       '@orchestra-repo': repoRootOf(opts.repoPath),
       '@orchestra-session-type': 'worktree',
       '@orchestra-branch': opts.branch,
-      ...opts.tags,
+      '@orchestra-worktree-path': realpathSync(opts.worktreePath),
     },
     opts.homeDir
   );

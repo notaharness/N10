@@ -74,6 +74,7 @@ function ours(
       '@orchestra-repo': repo,
       '@orchestra-session-type': type,
       ...(branch === null ? {} : { '@orchestra-branch': branch }),
+      ...(type === 'worktree' ? { '@orchestra-worktree-path': path } : {}),
     },
   };
 }

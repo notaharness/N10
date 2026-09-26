@@ -8,9 +8,9 @@ import type { TmuxSessionInfo } from '@n10/terminal-tmux';
  * A worktree session belongs to its checkout, not to the branch it was
  * created for: `git switch`, a branch rename or a restart leave it the
  * checkout's, a second worktree on its original branch never claims
- * it, and the `@orchestra-worktree-path` tag outranks tmux's own
- * `session_path` — with a fallback to that for sessions made before the
- * tag existed, and never a fallback to the branch.
+ * it. The `@orchestra-worktree-path` tag is the association, over
+ * tmux's own `session_path` and never falling back to the branch; a
+ * worktree session without it is foreign.
  */
 
 const { listMock, execFileSyncMock, liveNamesMock, entries } = vi.hoisted(
@@ -102,10 +102,11 @@ describe('discovery matches a session to its checkout', () => {
     expect([...seen.persisted]).toEqual([keyForWorktree({ path: WT }, REPO)]);
   });
 
-  it('matches a session made before the tag existed by its session_path', () => {
+  it('treats a worktree session without the tag as foreign', () => {
     listMock.mockReturnValue([session({ branch: 'feature', path: WT })]);
-    const seen = observeTmuxSessions([worktree(WT, 'renamed')]);
-    expect([...seen.persisted]).toEqual([keyForWorktree({ path: WT }, REPO)]);
+    const seen = observeTmuxSessions([worktree(WT, 'feature')]);
+    expect(seen.persisted.size).toBe(0);
+    expect(seen.terminals).toEqual([]);
   });
 
   it('trusts the tag over a session_path that has since changed', () => {
@@ -142,11 +143,11 @@ describe('resolving a checkout’s session', () => {
     expect(resolveWorktreeSession(REPO, WT2, [s])).toBeNull();
   });
 
-  it('reads the tag, then the session_path, and nothing for a terminal', () => {
+  it('reads the tag, never the session_path, and nothing for a terminal', () => {
     expect(
       tagged(session({ branch: 'b', path: '/p', tag: WT })).worktreePath
     ).toBe(WT);
-    expect(tagged(session({ branch: 'b', path: WT })).worktreePath).toBe(WT);
+    expect(taggedSession(session({ branch: 'b', path: WT }))).toBeNull();
     const terminal = session({ branch: 'b', path: WT });
     terminal.options!['@orchestra-session-type'] = 'shell';
     expect(tagged(terminal).worktreePath).toBe('');

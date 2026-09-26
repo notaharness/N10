@@ -17,8 +17,7 @@ import { listTaggedSessions } from './setup/tmux.js';
 /**
  * A worktree session belongs to its checkout. The agent in it stays
  * behind the worktree's tab through a branch rename and across a
- * restart of the app — whether the session carries n10's
- * `@orchestra-worktree-path` tag or predates it — and a second worktree
+ * restart of the app, and a second worktree
  * that checks the original branch out again gets no agent of its own.
  */
 
@@ -109,48 +108,35 @@ test.describe('A worktree session belongs to its checkout', () => {
  * The app starts on an agent that was already running in a worktree
  * whose branch was switched while n10 was closed — a restart.
  */
-for (const tagged of [true, false]) {
-  const kind = tagged ? 'tagged' : 'untagged (older)';
-  const SEEDED = tagged ? 'e2e-ext-seeded' : 'e2e-ext-legacy';
-  const MOVED = tagged ? 'e2e-ext-moved' : 'e2e-ext-legacy-moved';
-
-  test.describe(`After a restart, an ${kind} session`, () => {
-    test.skip(!tmuxAvailable(), 'tmux is not installed');
-    test.use({
-      liveSessions: [
-        {
-          branch: SEEDED,
-          command: `printf '%s\\n' restored-agent-here; sleep 300`,
-          switchTo: MOVED,
-          tagWorktreePath: tagged,
-        },
-      ],
-    });
-    test.afterEach(({ desktop }) => {
-      cleanupExternalSessions(
-        desktop.repoPath,
-        [SEEDED, MOVED],
-        desktop.homeDir
-      );
-    });
-
-    test('comes back behind its switched worktree’s tab', async ({
-      desktop,
-    }) => {
-      const { page } = desktop;
-      await expect(tab(page, new RegExp(MOVED))).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(tabs(page)).toHaveCount(1);
-      await expect(visibleText(page, 'restored-agent-here')).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(banner(page)).toContainText(MOVED);
-      await expect(banner(page)).toContainText(SEEDED);
-      // Not an orphan agent terminal as well.
-      await expect(
-        page.locator('[role="tab"][data-face="terminal"]')
-      ).toHaveCount(0);
-    });
+test.describe('After a restart, a switched worktree’s session', () => {
+  const SEEDED = 'e2e-ext-seeded';
+  const MOVED = 'e2e-ext-moved';
+  test.skip(!tmuxAvailable(), 'tmux is not installed');
+  test.use({
+    liveSessions: [
+      {
+        branch: SEEDED,
+        command: `printf '%s\\n' restored-agent-here; sleep 300`,
+        switchTo: MOVED,
+      },
+    ],
   });
-}
+  test.afterEach(({ desktop }) => {
+    cleanupExternalSessions(desktop.repoPath, [SEEDED, MOVED], desktop.homeDir);
+  });
+
+  test('comes back behind the worktree’s tab', async ({ desktop }) => {
+    const { page } = desktop;
+    await expect(tab(page, new RegExp(MOVED))).toBeVisible({ timeout: 30_000 });
+    await expect(tabs(page)).toHaveCount(1);
+    await expect(visibleText(page, 'restored-agent-here')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(banner(page)).toContainText(MOVED);
+    await expect(banner(page)).toContainText(SEEDED);
+    // Not an orphan agent terminal as well.
+    await expect(
+      page.locator('[role="tab"][data-face="terminal"]')
+    ).toHaveCount(0);
+  });
+});

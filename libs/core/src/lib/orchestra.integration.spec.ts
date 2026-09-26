@@ -1,6 +1,12 @@
 import { worktreeSessionKey } from './session-key.js';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { orchestraFixture } from '../../tests/orchestra-fixture.js';
@@ -45,6 +51,25 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
+      // The pinned plugin predates `@orchestra-worktree-path`, which the
+      // current plugin writes at spawn; without it the player is foreign
+      // to n10. Write it the way the plugin does: the canonical checkout.
+      const [name, path] = fixture
+        .tmux(
+          'list-sessions',
+          '-F',
+          '#{session_name}\t#{session_path}\t#{@orchestra-branch}'
+        )
+        .split('\n')
+        .map((line) => line.split('\t'))
+        .find((cols) => cols[2] === branch)!;
+      fixture.tmux(
+        'set-option',
+        '-t',
+        `=${name}:`,
+        '@orchestra-worktree-path',
+        realpathSync(path!)
+      );
       // Found by the branch Orchestra tagged it with, once: from here on
       // it is addressed by its checkout, as n10 addresses it.
       const session = listOurSessions().find(

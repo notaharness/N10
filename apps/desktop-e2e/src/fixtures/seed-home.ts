@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -174,9 +174,6 @@ export interface LiveSessionSeed {
   /** Check this new branch out in the worktree once the agent runs —
    *  the state a restart finds after `git switch` inside it. */
   switchTo?: string;
-  /** Tag the checkout as `@orchestra-worktree-path`, as n10 does; left
-   *  off, the session looks like one made before the tag existed. */
-  tagWorktreePath?: boolean;
 }
 
 export function seedTmux(
@@ -194,9 +191,6 @@ export function seedTmux(
       branch: seed.branch,
       worktreePath,
       command: seed.command,
-      ...(seed.tagWorktreePath
-        ? { tags: { '@orchestra-worktree-path': realpathSync(worktreePath) } }
-        : {}),
     });
     if (seed.switchTo) {
       execFileSync('git', ['switch', '-c', seed.switchTo], {

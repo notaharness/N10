@@ -41,8 +41,8 @@ export const ORCHESTRA_TAG = {
   /** `worktree` sessions only: the canonical checkout directory the
    *  session belongs to — its identity. Written before the agent
    *  starts. More exact than `#{session_path}`, which
-   *  `attach-session -c` can change; a session without it (an older
-   *  one) falls back to that. */
+   *  `attach-session -c` can change. A worktree session without it is
+   *  foreign. */
   worktreePath: '@orchestra-worktree-path',
   /** Orchestra's: the harness in the pane (`claude`, `codex`, …). */
   agent: '@orchestra-agent',
@@ -96,12 +96,10 @@ export interface TaggedSession {
   /** Set on `worktree` sessions; `''` when the tag is missing. The
    *  branch it was created for, not necessarily the one checked out. */
   branch: string;
-  /** `worktree` sessions: the checkout it belongs to — the
-   *  `@orchestra-worktree-path` tag, else `#{session_path}` for a
-   *  session created before the tag existed. `''` otherwise. An
-   *  explicit tag wins even when it names a directory that is gone:
-   *  such a session belongs to no worktree, and is never re-associated
-   *  by its branch. */
+  /** `worktree` sessions: the checkout it belongs to, from the
+   *  `@orchestra-worktree-path` tag; `''` for a terminal. It holds even
+   *  when it names a directory that is gone: such a session belongs to
+   *  no worktree, and is never re-associated by its branch. */
   worktreePath: string;
   agent?: string;
   orchestrator?: string;
@@ -129,10 +127,22 @@ function orchestraTagFields(
   };
 }
 
+/** A worktree session's checkout tag — `null` when it lacks the repo
+ *  or checkout tag and so is not ours — or `''` for a terminal. */
+function checkoutTag(
+  type: string,
+  tags: Record<string, string>
+): string | null {
+  if (type !== 'worktree') return '';
+  const path = tags[ORCHESTRA_TAG.worktreePath];
+  return tags[ORCHESTRA_TAG.repo] && path ? path : null;
+}
+
 /**
  * Read a listed session's tags, or `null` when it is not one of ours:
  * "ours" is `@orchestra-spawner` set and `@orchestra-session-type` one
- * of the known values; worktrees also require a nonempty repo tag.
+ * of the known values; worktrees also require nonempty repo and
+ * worktree-path tags.
  * Nothing about the name is consulted.
  */
 export function taggedSession(
@@ -144,7 +154,8 @@ export function taggedSession(
   const type = tags[ORCHESTRA_TAG.sessionType];
   const repo = tags[ORCHESTRA_TAG.repo];
   if (!spawner || !type || !SESSION_TYPES.has(type)) return null;
-  if (type === 'worktree' && !repo) return null;
+  const worktreePath = checkoutTag(type, tags);
+  if (worktreePath === null) return null;
   return {
     name: info.name,
     created: info.created,
@@ -155,8 +166,7 @@ export function taggedSession(
     repo: repo ?? '',
     type: type as SessionType,
     branch: tags[ORCHESTRA_TAG.branch] ?? '',
-    worktreePath:
-      type === 'worktree' ? tags[ORCHESTRA_TAG.worktreePath] || info.path : '',
+    worktreePath,
     machine,
     ...orchestraTagFields(tags),
   };

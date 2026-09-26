@@ -29,9 +29,10 @@ The reasoning behind each rule is in `docs/decisions.md`.
   detaches; `kill()` terminates; shutdown must dispose.
 - **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
   labels, `@orchestra-*` tags are identity. A worktree session belongs to the
-  checkout in `@orchestra-worktree-path`, else (older sessions) its
-  `#{session_path}`; an explicit tag wins and never falls back to
-  `@orchestra-branch`, which is only the branch it was created for.
+  checkout in `@orchestra-worktree-path`, never `#{session_path}` or
+  `@orchestra-branch` (only the branch it was created for); one without the
+  tag is foreign. No migration paths for session tags: users close sessions
+  before upgrading.
   Attach and continuation preserve creator/reporting tags. Fresh
   conversations preserve creator/repo/branch but clear supervisor and
   last-report tags; record the actual launched agent.

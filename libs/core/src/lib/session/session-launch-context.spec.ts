@@ -23,6 +23,7 @@ vi.mock('@n10/terminal-tmux', () => ({
             '@orchestra-spawner': 'orchestra',
             '@orchestra-repo': '/repo',
             '@orchestra-branch': 'feature',
+            '@orchestra-worktree-path': '/repo/worktree',
             '@orchestra-session-type': 'worktree',
             '@orchestra-agent': state.agent,
             '@orchestra-orchestrator': 'tmux:boss',
