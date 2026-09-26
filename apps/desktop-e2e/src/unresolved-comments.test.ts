@@ -111,3 +111,20 @@ test('the unresolved count expands a collapsed Comments list', async ({
   await indicator.click();
   await expectFirstOpenThreadShown(page);
 });
+
+test.describe('before the threads have loaded', () => {
+  // The count arrives with the pull request list; the threads are a
+  // second, slower call. A click in between is held until they land.
+  test.use({ fakeGitHub: { ...GITHUB, latencyMs: 3_000 } });
+
+  test('the click lands on the first open thread once they arrive', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const indicator = await openPr(page);
+    await expect(page.locator('[data-thread]')).toHaveCount(0);
+
+    await indicator.click();
+    await expectFirstOpenThreadShown(page);
+  });
+});

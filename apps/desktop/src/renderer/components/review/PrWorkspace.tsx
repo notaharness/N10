@@ -198,7 +198,7 @@ export function PrWorkspace({
     onShowDiff: showDiff,
   });
 
-  const rail = useReviewRail(nav, rootRef);
+  const rail = useReviewRail(nav, comments, rootRef);
 
   // ── The plan ───────────────────────────────────────────────────
   const showPlanItemInDiff = useCallback(
