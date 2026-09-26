@@ -13,7 +13,8 @@ export interface StepperShortcuts {
 /**
  * Keyboard shortcuts for the review walkthrough.
  *
- * Ignored while editing the textarea, and while this tab is in the
+ * Ignored while editing the textarea, for keys already handled
+ * (`defaultPrevented`), and while this tab is in the
  * background — `d` discards and `Enter` posts, so a stray keypress
  * elsewhere in the app must not reach them. The listener is on
  * `window` because the walkthrough has no single focused element to
@@ -47,6 +48,10 @@ export function useStepperShortcuts(
       Escape: onExit,
     };
     const onKey = (e: KeyboardEvent) => {
+      // Something nearer the target took the key: a keyboard drag in
+      // the tab row drops on Enter and cancels on Escape, and must not
+      // post or exit here as well.
+      if (e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
       const run = actions[e.key];

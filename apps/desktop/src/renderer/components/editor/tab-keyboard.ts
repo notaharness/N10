@@ -1,5 +1,5 @@
 import { KeyboardSensor } from '@dnd-kit/core';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 
 /** Ctrl+Shift+Space lifts the focused tab; Enter and Space are left to
  *  the tab pattern, where they activate it. */
@@ -37,28 +37,53 @@ const FOCUS_STEP: Record<string, (at: number, count: number) => number> = {
   End: (_at, count) => count - 1,
 };
 
+/** What the keys on a focused tab do to it. */
+export interface TabKeyActions {
+  activate: () => void;
+  close: () => void;
+}
+
 /**
  * The tab pattern's keys on a tab that is not being dragged: Enter or
- * Space activates it, the arrows (wrapping), Home and End move focus
- * along the row.
+ * Space activates it, Delete closes it, the arrows (wrapping), Home and
+ * End move focus along the row. Each handled key is `preventDefault`ed,
+ * which window-level shortcuts take as already handled.
  */
 export function handleTabKey(
   e: KeyboardEvent<HTMLElement>,
-  onActivate: () => void
+  actions: TabKeyActions
 ): void {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-  if (e.key === 'Enter' || e.key === ' ') {
+  const action =
+    e.key === 'Enter' || e.key === ' '
+      ? actions.activate
+      : e.key === 'Delete'
+      ? actions.close
+      : undefined;
+  if (action) {
     e.preventDefault();
-    // Handled here, so no window-level shortcut sees it as well.
-    e.stopPropagation();
-    onActivate();
+    action();
     return;
   }
   const step = FOCUS_STEP[e.key];
   const row = e.currentTarget.closest('[role="tablist"]');
   if (!step || !row) return;
   e.preventDefault();
-  e.stopPropagation();
   const tabs = [...row.querySelectorAll<HTMLElement>('[role="tab"]')];
   tabs[step(tabs.indexOf(e.currentTarget), tabs.length)]?.focus();
+}
+
+/**
+ * A primary press on a tab takes no focus, and lets go of whatever had
+ * it. The pane it activates then owns the keyboard — a terminal focuses
+ * itself, the review walkthrough's window shortcuts see the keys — and
+ * the row is reached with Tab. Drags start on `pointerdown`, which this
+ * leaves alone.
+ */
+export function pressWithoutFocus(e: MouseEvent<HTMLElement>): void {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
 }

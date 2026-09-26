@@ -20,6 +20,7 @@ import {
 import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
 import type { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
+import { pressWithoutFocus } from './tab-keyboard.js';
 import { useSortableTab } from './TabStrip.js';
 
 type Closer = ReturnType<typeof useCloseTabs>;
@@ -105,7 +106,9 @@ function UnseenDot() {
   );
 }
 
-/** Always rendered; revealed on hover, or while the tab is active. */
+/** Always rendered; revealed on hover, or while the tab is active.
+ *  Out of the Tab order: the row is one Tab stop, and Delete closes
+ *  the focused tab. */
 function TabCloseButton({
   active,
   onClose,
@@ -116,6 +119,7 @@ function TabCloseButton({
   return (
     <button
       type="button"
+      tabIndex={-1}
       onClick={onClose}
       aria-label="Close tab"
       className={cn(
@@ -229,7 +233,10 @@ export function TabButton({
     id: tab.id,
     label,
     tabStop,
-    onActivate: () => tabs.activate(tab.id),
+    actions: {
+      activate: () => tabs.activate(tab.id),
+      close: () => closer.close(tab.id),
+    },
   });
 
   return (
@@ -239,6 +246,7 @@ export function TabButton({
       style={style}
       aria-selected={active}
       onMouseDown={(e) => {
+        pressWithoutFocus(e);
         if (e.button === 1) {
           e.preventDefault();
           closer.close(tab.id);

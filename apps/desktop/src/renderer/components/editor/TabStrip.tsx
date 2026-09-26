@@ -23,6 +23,7 @@ import {
   ChordKeyboardSensor,
   handleTabKey,
   screenReaderInstructions,
+  type TabKeyActions,
 } from './tab-keyboard.js';
 
 /** How far the pointer travels before a press becomes a drag, so
@@ -115,12 +116,12 @@ export function useSortableTab({
   id,
   label,
   tabStop,
-  onActivate,
+  actions,
 }: {
   id: string;
   label: string;
   tabStop: boolean;
-  onActivate: () => void;
+  actions: TabKeyActions;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const {
@@ -145,7 +146,7 @@ export function useSortableTab({
   });
   return {
     // The tab is its own handle. Naming it the activator also keeps
-    // Enter on its close button from lifting the tab.
+    // keys on its close button from lifting the tab.
     setNode: (node: HTMLElement | null) => {
       setNodeRef(node);
       setActivatorNodeRef(node);
@@ -159,7 +160,7 @@ export function useSortableTab({
         // the key was meant for the close button inside the tab.
         if (e.defaultPrevented || active || e.target !== e.currentTarget)
           return;
-        handleTabKey(e, onActivate);
+        handleTabKey(e, actions);
       },
     },
     style: { transform: CSS.Translate.toString(transform), transition },
