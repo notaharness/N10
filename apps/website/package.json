@@ -146,6 +146,11 @@
           "command": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
           "cwd": "apps/website"
         }
+      },
+      "lint": {
+        "dependsOn": [
+          "sync-content"
+        ]
       }
     }
   },
