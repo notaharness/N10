@@ -101,7 +101,38 @@ function ReviewerDots({
   );
 }
 
-export function PrHeader({ pr }: { pr: PullRequestInfo }) {
+/** The unresolved-thread count, which opens the rail's comments at the
+ *  first of them. */
+function UnresolvedButton({
+  count,
+  onClick,
+}: {
+  count: number;
+  onClick: () => void;
+}) {
+  const label = `Show ${unresolvedCommentsLabel(count)}`;
+  return (
+    <Tip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <MessageSquareIcon className="size-3.5" />
+        {count} unresolved
+      </button>
+    </Tip>
+  );
+}
+
+export function PrHeader({
+  pr,
+  onShowUnresolved,
+}: {
+  pr: PullRequestInfo;
+  onShowUnresolved: () => void;
+}) {
   const reviewers = pr.reviewers ?? [];
   return (
     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
@@ -144,12 +175,10 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
         <CiBadge ci={pr.buildStatus} />
         <ReviewerDots reviewers={reviewers} />
         {(pr.activeCommentCount ?? 0) > 0 && (
-          <Tip label={unresolvedCommentsLabel(pr.activeCommentCount ?? 0)}>
-            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground">
-              <MessageSquareIcon className="size-3.5" />
-              {pr.activeCommentCount} unresolved
-            </span>
-          </Tip>
+          <UnresolvedButton
+            count={pr.activeCommentCount ?? 0}
+            onClick={onShowUnresolved}
+          />
         )}
       </span>
 

@@ -303,6 +303,17 @@ export function visibleComments(
   return hideResolved ? rows.filter((r) => !r.resolved) : rows;
 }
 
+/**
+ * Where the header's "N unresolved" indicator lands: the first open
+ * remote thread in document order. Drafts are skipped — the count is
+ * the provider's, and an agent draft is not on the pull request yet.
+ */
+export function firstUnresolvedThread(
+  rows: readonly CommentRow[]
+): CommentRow | null {
+  return rows.find((r) => r.kind === 'thread' && !r.resolved) ?? null;
+}
+
 /** Position of the focused comment in the visible list, or -1. */
 export function navIndexOf(
   rows: readonly CommentRow[],
