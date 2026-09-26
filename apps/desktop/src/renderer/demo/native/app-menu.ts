@@ -4,7 +4,7 @@ import type {
   MenuCommand,
   ThemePreference,
 } from '../../../host/contract.js';
-import { buildMenuTemplate } from '../../../main/menu.js';
+import { buildMenuTemplate } from '../../../host/menu-template.js';
 import { showContextMenu } from './context-menu.js';
 
 /**

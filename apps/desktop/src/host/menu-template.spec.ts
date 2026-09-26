@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { MenuItemConstructorOptions } from 'electron';
-import { buildMenuTemplate } from './menu.js';
+import { buildMenuTemplate } from './menu-template.js';
 
 const env = (platform: NodeJS.Platform) => ({
   platform,

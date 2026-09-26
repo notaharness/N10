@@ -1,5 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron';
-import type { MenuCommand, ThemePreference } from '../host/contract.js';
+import type { MenuCommand, ThemePreference } from './contract.js';
 
 /**
  * Native application menu. Pure template builder so it is testable
@@ -9,6 +9,10 @@ import type { MenuCommand, ThemePreference } from '../host/contract.js';
  * macOS shows this in the system menu bar; Linux/Windows show it as
  * the window menu bar when the native frame is enabled, and as a
  * popup from the title bar's menu button otherwise.
+ *
+ * It lives in host/ because the web demo (`renderer/demo`) builds the
+ * same template for its title bar menu, so it takes nothing from
+ * Electron but types.
  */
 export interface MenuEnv {
   platform: NodeJS.Platform;
