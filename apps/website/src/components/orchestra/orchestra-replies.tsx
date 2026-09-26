@@ -1,6 +1,7 @@
 /**
  * One pair of real orchestrator replies from the benchmark in
- * notaharness/plugins#9: the same scripted message at the same point in
+ * notaharness/plugins#9, from two drafts of the unreleased guidance
+ * (9da6d10 and 242d759): the same scripted message at the same point in
  * the run, quoted exactly as the PR records them, backticks included
  * (backticked spans render as code). Each side is a list because the
  * replies are quoted in parts.
@@ -46,15 +47,17 @@ export function OrchestraReplies() {
       <div className="border-fd-border bg-fd-card rounded-xl border p-4 sm:p-5">
         <p className="text-sm font-medium">{pair.moment}</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Quotes label="Baseline" lines={pair.before} />
-          <Quotes label="With plugins#9" lines={pair.after} />
+          <Quotes label="Earlier draft (9da6d10)" lines={pair.before} />
+          <Quotes label="Later draft (242d759)" lines={pair.after} />
         </div>
       </div>
       <p className="text-fd-muted-foreground mt-3 text-xs text-pretty">
-        Replies to the same message at the same point, from one scripted run of
-        each in a toy repository, quoted as written. The baseline already gave
-        useful context here. Neither benchmark showed a clear overall
-        improvement: in{' '}
+        Replies to the same message at the same point in the benchmark in
+        plugins#9, one scripted run of each in a toy repository, quoted as
+        written. Both are drafts of the unreleased guidance: the earlier one
+        already contains plugins#8, and the guidance changed again after the
+        later one. The earlier draft already gave useful context here. Neither
+        benchmark showed a clear overall improvement. In{' '}
         <a
           href="https://github.com/notaharness/plugins/pull/8"
           className="hover:text-fd-foreground underline decoration-fd-border underline-offset-4 transition-colors"
@@ -62,14 +65,14 @@ export function OrchestraReplies() {
           plugins#8
         </a>{' '}
         the new guidance still asked several decisions at checkpoints and
-        repeated a pending question, and{' '}
+        repeated a pending question;{' '}
         <a
           href="https://github.com/notaharness/plugins/pull/9"
           className="hover:text-fd-foreground underline decoration-fd-border underline-offset-4 transition-colors"
         >
           plugins#9
         </a>{' '}
-        ended with no clear overall improvement.
+        called its results mixed.
       </p>
     </div>
   );
