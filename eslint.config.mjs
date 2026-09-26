@@ -441,6 +441,12 @@ export default tseslint.config(
       '.claude/worktrees',
       '**/.tui-test',
       '**/eslint.config.mjs',
+      // apps/website (Next.js + Fumadocs) build and generated dirs.
+      '**/.next',
+      '**/.source',
+      '**/.open-next',
+      '**/.wrangler',
+      '**/next-env.d.ts',
     ],
   }
 );

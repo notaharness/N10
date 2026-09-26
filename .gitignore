@@ -63,6 +63,18 @@ perf-output
 # Playwright MCP browser session output (manual interactive QA)
 .playwright-mcp/
 
+# Next.js / Fumadocs (apps/website). next-env.d.ts is regenerated
+# deterministically by `next dev`/`build`/`typegen` and, if committed,
+# matches `*.{ts,tsx}` in lint-staged and trips ESLint's
+# "file ignored by pattern" warning at --max-warnings 0.
+.next
+out
+.source
+.open-next
+.wrangler
+next-env.d.ts
+apps/website/src/generated
+
 # Intermediate recordings from the README capture script. The published
 # GIFs and stills in docs/media/ are committed; the multi-megabyte
 # lossless captures they are made from are not.

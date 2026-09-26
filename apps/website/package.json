@@ -1,0 +1,182 @@
+{
+  "name": "@n10/website",
+  "version": "0.0.1",
+  "description": "n10.is — landing page and documentation",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/notaharness/n10.git",
+    "directory": "apps/website"
+  },
+  "scripts": {
+    "build": "NODE_ENV=production next build"
+  },
+  "nx": {
+    "name": "website",
+    "tags": [
+      "type:app",
+      "scope:website"
+    ],
+    "targets": {
+      "sync-content": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": [
+          "{projectRoot}/content/**/*",
+          "{projectRoot}/source.config.ts",
+          {
+            "externalDependencies": [
+              "fumadocs-mdx"
+            ]
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/.source",
+          "{projectRoot}/src/generated"
+        ],
+        "options": {
+          "commands": [
+            "fumadocs-mdx",
+            "node scripts/generate-llms-full.mjs"
+          ],
+          "cwd": "apps/website",
+          "parallel": false
+        }
+      },
+      "build": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          "sync-content"
+        ],
+        "inputs": [
+          "production",
+          {
+            "externalDependencies": [
+              "next",
+              "fumadocs-ui",
+              "fumadocs-core",
+              "fumadocs-mdx",
+              "@opennextjs/cloudflare",
+              "tailwindcss",
+              "react",
+              "react-dom"
+            ]
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/.open-next"
+        ],
+        "options": {
+          "command": "opennextjs-cloudflare build",
+          "cwd": "apps/website"
+        }
+      },
+      "typecheck": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          "sync-content"
+        ],
+        "inputs": [
+          "production",
+          {
+            "externalDependencies": [
+              "typescript",
+              "next"
+            ]
+          }
+        ],
+        "options": {
+          "command": "next typegen && tsc -p tsconfig.app.json --noEmit",
+          "cwd": "apps/website"
+        }
+      },
+      "dev": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "sync-content"
+        ],
+        "options": {
+          "command": "next dev --port 3100",
+          "cwd": "apps/website"
+        }
+      },
+      "serve": {
+        "executor": "nx:noop",
+        "dependsOn": [
+          "dev"
+        ]
+      },
+      "preview": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "opennextjs-cloudflare preview",
+          "cwd": "apps/website"
+        }
+      },
+      "deploy": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "opennextjs-cloudflare deploy",
+          "cwd": "apps/website"
+        }
+      },
+      "deploy:check": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+          "cwd": "apps/website"
+        }
+      },
+      "lint": {
+        "dependsOn": [
+          "sync-content"
+        ]
+      }
+    }
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "fumadocs-core": "16.15.8",
+    "fumadocs-ui": "16.15.8",
+    "lucide-react": "^1.31.0",
+    "mermaid": "11.17.2",
+    "next": "16.3.4",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "16.3.4",
+    "@opennextjs/cloudflare": "1.20.6",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.4",
+    "fumadocs-mdx": "15.4.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.3.3",
+    "wrangler": "4.130.0"
+  }
+}

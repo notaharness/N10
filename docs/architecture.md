@@ -49,6 +49,13 @@ apps/cli-e2e/                    — E2E tests (@playwright/test)
   src/setup/                     — git-repo.ts, sidebar.ts, constants.ts, github.ts
   src/*.test.ts                  — Test files (one per feature area)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
+apps/website/                    — Next.js 16 + Fumadocs site at n10.is, deployed to Cloudflare via OpenNext
+  content/docs/                  — MDX docs content, compiled by fumadocs-mdx into the generated .source/
+  src/app/(home)/                — Landing page (HomeLayout)
+  src/app/docs/                  — Docs layout + catch-all page (DocsLayout, source loader)
+  src/app/llms.txt, llms-full.txt — Agent-facing page index and full content (see src/lib/llms.ts)
+  src/components/landing/        — Marketing page sections, data-driven where repeated (Features)
+  Own tsconfig/eslint/import conventions — see apps/website/README.md, not this file
 libs/core/                       — Shell-agnostic core. No React, Ink or Electron (lint-enforced)
   src/lib/session/               — Session launch + plan checkout flows
   src/lib/plan/                  — Plan store (external store) + prompt composition

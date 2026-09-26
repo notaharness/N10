@@ -1,0 +1,17 @@
+---
+title: Work on several branches at once
+description: Each branch gets its own Git worktree and agent session.
+---
+
+Each branch gets its own Git worktree and agent session. You can keep
+several features in progress without stashing changes or disturbing your
+main checkout.
+
+The sidebar shows each worktree's pull request state, CI results, review
+status, and conflict count. The status indicator turns red when a build
+fails or a reviewer rejects the changes. It turns solid green when CI
+passes and all reviewers approve.
+
+n10 also detects merged branches and conflicts with the base branch. You
+can enable automatic cleanup of merged worktrees and use a shortcut to
+rebase onto the latest `main` or `master`.

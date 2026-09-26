@@ -1,0 +1,170 @@
+'use client';
+
+import { Pause, Play } from 'lucide-react';
+import { useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { centreLine, ribbon, shift, TRACK_WIDTH, type Vec2 } from './geometry';
+import { Ground } from './ground';
+import { Laptop, Mini, Rack, Tower } from './machines';
+import { BEAM_COLORS } from './palette';
+
+/**
+ * Several paired machines on one ground plane, each pair joined by its
+ * own beam with traffic running both ways. Drawn in a 30° isometric
+ * projection (see geometry.ts); machines are listed back to front,
+ * which is also the order they have to be painted in. The svg
+ * overflows its box on purpose: ground.tsx draws the plane out across
+ * the whole hero.
+ */
+const machines = [
+  { id: 'rack', cx: 3, cy: 3, Shape: Rack },
+  { id: 'tower', cx: 10, cy: 3, Shape: Tower },
+  { id: 'laptop', cx: 3, cy: 10, Shape: Laptop },
+  { id: 'mini', cx: 10, cy: 10, Shape: Mini },
+] as const;
+
+interface Beam {
+  id: string;
+  color: string;
+  /** Axis-aligned ground path between two machines' centres. */
+  path: readonly Vec2[];
+  /** Seconds for a packet to travel the whole beam. */
+  seconds: number;
+}
+
+const beams: Beam[] = [
+  {
+    id: 'rack-tower',
+    color: BEAM_COLORS.sand,
+    path: [
+      [3, 3],
+      [10, 3],
+    ],
+    seconds: 3.2,
+  },
+  {
+    id: 'rack-laptop',
+    color: BEAM_COLORS.sage,
+    path: [
+      [3, 3],
+      [3, 10],
+    ],
+    seconds: 2.6,
+  },
+  {
+    id: 'laptop-mini',
+    color: BEAM_COLORS.clay,
+    path: [
+      [3, 10.5],
+      [10, 10.5],
+    ],
+    seconds: 3.8,
+  },
+  {
+    id: 'tower-mini',
+    color: BEAM_COLORS.blue,
+    path: [
+      [10, 3],
+      [10, 10],
+    ],
+    seconds: 2.9,
+  },
+  {
+    id: 'laptop-tower',
+    color: BEAM_COLORS.mauve,
+    path: [
+      [3, 9.5],
+      [6.5, 9.5],
+      [6.5, 4],
+      [10, 4],
+    ],
+    seconds: 4.4,
+  },
+];
+
+const REDUCED = '(prefers-reduced-motion: reduce)';
+
+function subscribeReduced(onChange: () => void) {
+  const query = window.matchMedia(REDUCED);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+/** How far each direction's track sits from the beam's centre line. */
+const LANE = 0.18;
+
+/** One beam: a track out and a track back, each as wide as a ray. */
+function BeamTrack({ beam }: { beam: Beam }) {
+  const vars = {
+    '--n10-mesh-color': beam.color,
+    '--n10-mesh-seconds': `${beam.seconds}s`,
+  } as CSSProperties;
+  return (
+    <g style={vars}>
+      {[-LANE, LANE].map((offset) => {
+        const path = shift(beam.path, offset);
+        return (
+          <g key={offset}>
+            {ribbon(path, TRACK_WIDTH).map((points) => (
+              <polygon
+                key={points}
+                points={points}
+                className="n10-mesh-ribbon"
+              />
+            ))}
+            <polyline
+              points={centreLine(path)}
+              pathLength={100}
+              className={
+                offset < 0
+                  ? 'n10-mesh-packet'
+                  : 'n10-mesh-packet n10-mesh-packet--back'
+              }
+            />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+export function BeamMesh({ className }: { className?: string }) {
+  const reduced = useSyncExternalStore(
+    subscribeReduced,
+    () => window.matchMedia(REDUCED).matches,
+    () => false
+  );
+  // null follows the system setting; a click on the button overrides it.
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const playing = choice ?? !reduced;
+  const Icon = playing ? Pause : Play;
+
+  return (
+    <figure className={className}>
+      <div className="relative">
+        <svg
+          viewBox="-285 -30 570 332"
+          className="n10-mesh h-auto w-full overflow-visible"
+          data-playing={choice === null ? undefined : String(choice)}
+          role="img"
+          aria-label="Four machines — a laptop, a workstation, a build box and a home server — each connected to the others by its own beam, with data moving along every beam in both directions."
+        >
+          <Ground />
+          {beams.map((beam) => (
+            <BeamTrack key={beam.id} beam={beam} />
+          ))}
+          {machines.map(({ id, cx, cy, Shape }) => (
+            <Shape key={id} cx={cx} cy={cy} />
+          ))}
+        </svg>
+        <button
+          type="button"
+          onClick={() => setChoice(!playing)}
+          aria-label={playing ? 'Pause the animation' : 'Play the animation'}
+          className="text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-foreground focus-visible:ring-fd-ring absolute right-0 bottom-0 inline-flex size-8 items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2"
+        >
+          <Icon className="size-4" aria-hidden />
+        </button>
+      </div>
+    </figure>
+  );
+}

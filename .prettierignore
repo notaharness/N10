@@ -3,3 +3,14 @@
 /coverage
 /.nx/cache
 /.nx/workspace-data
+
+# apps/website: Prettier 2 predates MDX v3 and mangles JSX/ESM inside
+# MDX; content and generated/build dirs are excluded wholesale.
+/apps/website/content
+/apps/website/public
+/apps/website/.next
+/apps/website/out
+/apps/website/.source
+/apps/website/.open-next
+/apps/website/.wrangler
+/apps/website/src/generated

@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "n10-website",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "workers_dev": true
+  // Uncomment once n10.is is a zone in this Cloudflare account —
+  // until then `wrangler deploy` fails on an unresolvable route:
+  // "routes": [{ "pattern": "n10.is", "custom_domain": true }]
+}

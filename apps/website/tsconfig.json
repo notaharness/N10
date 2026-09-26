@@ -1,0 +1,32 @@
+{
+  // This file exists for two consumers, neither of them Next.js:
+  //
+  // 1. `@nx/js:typescript-sync` walks every project with a root
+  //    tsconfig.json and requires it in the workspace's root
+  //    `references`. It filters that list by `composite`, which this
+  //    file inherits from tsconfig.base.json — a non-composite file
+  //    here would be added and dropped on alternate `nx sync` runs and
+  //    `nx sync:check` would never come clean.
+  // 2. Editors and eslint's `projectService` resolve a file to its
+  //    owning project by following the reference below, the same way
+  //    apps/desktop/tsconfig.json does.
+  //
+  // Next.js reads tsconfig.app.json instead (via `typescript.tsconfigPath`
+  // in next.config.mjs), because Next's required options (`noEmit`,
+  // `moduleResolution: "bundler"`, `jsx: "preserve"`) cannot coexist with
+  // this workspace's composite, `emitDeclarationOnly` base.
+  //
+  // Consequence: `tsc --build apps/website` fails — a composite project
+  // may not reference a non-composite one. Nothing runs it. The website's
+  // own `typecheck` target runs `tsc -p tsconfig.app.json --noEmit`
+  // directly, and no inferred typecheck/build target is created for this
+  // project (see `nx.addTypecheckTarget: false` below, and
+  // `@nx/js/typescript`'s own Next.js detection).
+  "extends": "../../tsconfig.base.json",
+  "files": [],
+  "include": [],
+  "nx": {
+    "addTypecheckTarget": false
+  },
+  "references": [{ "path": "./tsconfig.app.json" }]
+}

@@ -1,0 +1,34 @@
+---
+title: Introduction
+description: What n10 is and why it exists.
+---
+
+n10 runs AI coding agents across Git worktrees, tracks pull requests, and
+lets you review code from a desktop app or terminal UI.
+
+Each branch gets its own Git worktree and agent session, so you can keep
+several features in progress without stashing changes or disturbing your
+main checkout. n10 works with Claude, Codex, Gemini, Copilot and OpenCode,
+and supports GitHub and Azure DevOps.
+
+n10 Desktop can also run agents on your other machines. Add them to a
+fleet with [Beam](/docs/beam), then pick a machine when you launch an
+agent; its worktree, tmux session and agent run there. See the
+[Fleet guide](/docs/guides/fleet).
+
+## Install
+
+```sh
+npm install -g @notaharness/n10-desktop  # Desktop app
+npm install -g @notaharness/n10          # Terminal UI and CLI utilities
+npm install -g @notaharness/beam         # Run agents on another machine
+```
+
+See [Installation](/docs/installation) for prerequisites and first-run
+setup, or [Fleet](/docs/guides/fleet) to add a second machine.
+
+## For agents
+
+This site publishes [`/llms.txt`](/llms.txt) (a page index) and
+[`/llms-full.txt`](/llms-full.txt) (every page's content) for agents that
+read documentation directly.
