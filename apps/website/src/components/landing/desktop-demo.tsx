@@ -104,7 +104,6 @@ export function DesktopDemo({ className }: { className?: string }) {
           ref={frame}
           src={SRC}
           title="n10 Desktop, running on sample data"
-          loading="lazy"
           tabIndex={interactive ? 0 : -1}
           inert={!interactive}
           onLoad={(event) => send(event.currentTarget, { playing })}

@@ -22,6 +22,9 @@
       "type:app",
       "scope:website"
     ],
+    "implicitDependencies": [
+      "desktop"
+    ],
     "targets": {
       "sync-content": {
         "executor": "nx:run-commands",
