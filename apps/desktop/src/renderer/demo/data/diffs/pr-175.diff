@@ -1,0 +1,2248 @@
+diff --git a/apps/desktop-e2e/src/unresolved-comments.test.ts b/apps/desktop-e2e/src/unresolved-comments.test.ts
+new file mode 100644
+index 00000000..4b93fc46
+--- /dev/null
++++ b/apps/desktop-e2e/src/unresolved-comments.test.ts
+@@ -0,0 +1,130 @@
++import type { Page } from '@playwright/test';
++import { test, expect } from './fixtures/desktop.js';
++import { sidebarRow } from './setup/app.js';
++import type { FakeGitHub } from './setup/fake-gh.js';
++
++/**
++ * The "N unresolved" count in a pull request's header is the way to the
++ * threads it counts: clicking it brings the rail's Comments list into
++ * view and lands on the first open thread, in the list and in the diff.
++ *
++ * The rail starts hidden and the target sits far down a long file,
++ * behind enough files that its row is below the rail's fold — so each
++ * part of "shows it" has to happen for the test to pass.
++ */
++
++const BRANCH = 'long-review';
++const LINES = 400;
++const FILES = 40;
++
++const longFile = Array.from({ length: LINES }, (_, i) => `line ${i + 1}`).join(
++  '\n'
++);
++const padding = Object.fromEntries(
++  Array.from({ length: FILES }, (_, i) => [
++    `src/a${String(i).padStart(2, '0')}.txt`,
++    'x\n',
++  ])
++);
++
++const GITHUB: FakeGitHub = {
++  username: 'n10-tester',
++  prs: [
++    {
++      number: 7,
++      title: 'Long review',
++      headRefName: BRANCH,
++      threads: [
++        {
++          id: 'T-resolved',
++          path: 'z-long.txt',
++          line: 5,
++          isResolved: true,
++          comments: [{ author: 'alice', body: 'Settled already.' }],
++        },
++        {
++          id: 'T-first-open',
++          path: 'z-long.txt',
++          line: 300,
++          comments: [{ author: 'alice', body: 'This one still needs work.' }],
++        },
++        {
++          id: 'T-second-open',
++          path: 'z-long.txt',
++          line: 380,
++          comments: [{ author: 'bob', body: 'And this one.' }],
++        },
++      ],
++    },
++  ],
++};
++
++test.use({
++  fakeGitHub: GITHUB,
++  repo: {
++    worktrees: [
++      { branch: BRANCH, files: { ...padding, 'z-long.txt': `${longFile}\n` } },
++    ],
++  },
++});
++
++async function openPr(page: Page) {
++  await sidebarRow(page, /Long review|#7/)
++    .first()
++    .click();
++  const indicator = page.getByRole('button', {
++    name: 'Show 2 unresolved comments',
++  });
++  await expect(indicator).toBeVisible({ timeout: 30_000 });
++  return indicator;
++}
++
++async function expectFirstOpenThreadShown(page: Page) {
++  const row = page.locator('[data-comment-row="T-first-open"]');
++  await expect(row).toHaveAttribute('aria-current', 'true');
++  await expect(row).toBeInViewport();
++  await expect(page.locator('[data-thread="T-first-open"]')).toBeInViewport();
++}
++
++test('the unresolved count opens a hidden rail at the first open thread', async ({
++  desktop,
++}) => {
++  const { page } = desktop;
++  const indicator = await openPr(page);
++
++  await page.getByRole('button', { name: 'Hide review sidebar' }).click();
++  await expect(page.locator('[data-comment-row]')).toHaveCount(0);
++
++  await indicator.click();
++  await expectFirstOpenThreadShown(page);
++});
++
++test('the unresolved count expands a collapsed Comments list', async ({
++  desktop,
++}) => {
++  const { page } = desktop;
++  const indicator = await openPr(page);
++
++  await page.getByRole('button', { name: /^Comments/ }).click();
++  await expect(page.locator('[data-comment-row]')).toHaveCount(0);
++
++  await indicator.click();
++  await expectFirstOpenThreadShown(page);
++});
++
++test.describe('before the threads have loaded', () => {
++  // The count arrives with the pull request list; the threads are a
++  // second, slower call. A click in between is held until they land.
++  test.use({ fakeGitHub: { ...GITHUB, latencyMs: 3_000 } });
++
++  test('the click lands on the first open thread once they arrive', async ({
++    desktop,
++  }) => {
++    const { page } = desktop;
++    const indicator = await openPr(page);
++    await expect(page.locator('[data-thread]')).toHaveCount(0);
++
++    await indicator.click();
++    await expectFirstOpenThreadShown(page);
++  });
++});
+diff --git a/apps/desktop/src/renderer/components/review/PrHeader.tsx b/apps/desktop/src/renderer/components/review/PrHeader.tsx
+index 047468ec..9d31cf2b 100644
+--- a/apps/desktop/src/renderer/components/review/PrHeader.tsx
++++ b/apps/desktop/src/renderer/components/review/PrHeader.tsx
+@@ -1,198 +1,227 @@
+ import {
+   CheckCircle2Icon,
+   CircleDotIcon,
+   CodeIcon,
+   CopyIcon,
+   ExternalLinkIcon,
+   GitBranchIcon,
+   GitPullRequestIcon,
+   MessageSquareIcon,
+   XCircleIcon,
+ } from 'lucide-react';
+ import { toast } from 'sonner';
+ import type { PullRequestInfo } from '@n10/vcs-core';
+ import { useOpenInEditor } from '../../lib/data/mutations.js';
+ import { unresolvedCommentsLabel } from '../../lib/sidebar/sidebar-model.js';
+ import { cn, errorMessage } from '../../lib/utils.js';
+ import { Avatar } from '../ui/avatar.js';
+ import { Badge } from '../ui/badge.js';
+ import { Button } from '../ui/button.js';
+ import { Tip } from '../ui/tooltip.js';
+ 
+ /** Launch the configured external editor on the branch's worktree. */
+ export function OpenInEditorButton({ branch }: { branch: string }) {
+   const open = useOpenInEditor();
+   return (
+     <Tip label="Open worktree in editor">
+       <Button
+         variant="ghost"
+         size="sm"
+         disabled={open.isPending}
+         onClick={() =>
+           open.mutate(branch, {
+             onSuccess: ({ editor }) => toast.success(`Opened in ${editor}`),
+             onError: (e) => toast.error(errorMessage(e)),
+           })
+         }
+       >
+         <CodeIcon /> Editor
+       </Button>
+     </Tip>
+   );
+ }
+ 
+ /** CI verdict, or nothing at all when no build has reported. */
+ function CiBadge({ ci }: { ci: PullRequestInfo['buildStatus'] }) {
+   if (!ci || ci === 'none') return null;
+   const variant =
+     ci === 'succeeded'
+       ? 'success'
+       : ci === 'failed'
+       ? 'destructive'
+       : 'warning';
+   return (
+     <Badge variant={variant}>
+       {ci === 'succeeded' && <CheckCircle2Icon />}
+       {ci === 'failed' && <XCircleIcon />}
+       {ci === 'pending' && <CircleDotIcon />}
+       CI {ci}
+     </Badge>
+   );
+ }
+ 
+ /** Colour of the dot on a reviewer's avatar, by their verdict. */
+ function decisionDotClass(decision: string): string {
+   if (decision === 'approved') return 'bg-success';
+   if (decision === 'rejected') return 'bg-destructive';
+   if (decision === 'changes-requested' || decision === 'waiting-for-author') {
+     return 'bg-warning';
+   }
+   if (decision === 'no-response') return 'bg-muted-foreground/50';
+   if (decision === 'declined') return 'bg-muted-foreground';
+   return '';
+ }
+ 
+ /** Reviewer avatars, each dotted with where that reviewer landed. */
+ function ReviewerDots({
+   reviewers,
+ }: {
+   reviewers: NonNullable<PullRequestInfo['reviewers']>;
+ }) {
+   if (reviewers.length === 0) return null;
+   return (
+     <span className="flex items-center gap-1.5">
+       {reviewers.slice(0, 6).map((r) => (
+         <Tip
+           key={r.identifier}
+           label={`${r.displayName}: ${r.decision.replaceAll('-', ' ')}`}
+         >
+           <span className="relative">
+             <Avatar name={r.displayName} size="xs" />
+             <span
+               className={cn(
+                 'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
+                 decisionDotClass(r.decision)
+               )}
+             />
+           </span>
+         </Tip>
+       ))}
+     </span>
+   );
+ }
+ 
+-export function PrHeader({ pr }: { pr: PullRequestInfo }) {
++/** The unresolved-thread count, which opens the rail's comments at the
++ *  first of them. */
++function UnresolvedButton({
++  count,
++  onClick,
++}: {
++  count: number;
++  onClick: () => void;
++}) {
++  const label = `Show ${unresolvedCommentsLabel(count)}`;
++  return (
++    <Tip label={label}>
++      <button
++        type="button"
++        aria-label={label}
++        onClick={onClick}
++        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
++      >
++        <MessageSquareIcon className="size-3.5" />
++        {count} unresolved
++      </button>
++    </Tip>
++  );
++}
++
++export function PrHeader({
++  pr,
++  onShowUnresolved,
++}: {
++  pr: PullRequestInfo;
++  onShowUnresolved: () => void;
++}) {
+   const reviewers = pr.reviewers ?? [];
+   return (
+     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+       <GitPullRequestIcon className="size-4 shrink-0 text-info" />
+       <span className="flex min-w-0 shrink items-center gap-2">
+         <span className="truncate font-medium">{pr.title}</span>
+         <span className="shrink-0 text-sm text-muted-foreground">#{pr.id}</span>
+         <Tip label="Copy branch name">
+           <button
+             type="button"
+             onClick={() => {
+               void navigator.clipboard.writeText(pr.sourceBranch);
+               toast.success('Branch name copied');
+             }}
+             className="hidden min-w-0 items-center gap-1 truncate rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground sm:flex"
+           >
+             <span className="truncate">
+               {pr.sourceBranch} → {pr.targetBranch}
+             </span>
+             <CopyIcon className="size-3 shrink-0" />
+           </button>
+         </Tip>
+       </span>
+ 
+       <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+ 
+       {/* Never squeezed: the title truncates instead, and a cluster that
+           shrinks wraps its counts onto a second line or runs under the
+           buttons. */}
+       <span className="flex shrink-0 items-center gap-2 text-sm whitespace-nowrap">
+         <Tip label={`Opened by ${pr.createdByDisplayName}`}>
+           <span className="flex items-center gap-1.5">
+             <Avatar name={pr.createdByDisplayName} size="xs" />
+             <span className="hidden truncate text-muted-foreground md:inline">
+               {pr.createdByDisplayName}
+             </span>
+           </span>
+         </Tip>
+         {pr.isDraft && <Badge variant="outline">Draft</Badge>}
+         <CiBadge ci={pr.buildStatus} />
+         <ReviewerDots reviewers={reviewers} />
+         {(pr.activeCommentCount ?? 0) > 0 && (
+-          <Tip label={unresolvedCommentsLabel(pr.activeCommentCount ?? 0)}>
+-            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground">
+-              <MessageSquareIcon className="size-3.5" />
+-              {pr.activeCommentCount} unresolved
+-            </span>
+-          </Tip>
++          <UnresolvedButton
++            count={pr.activeCommentCount ?? 0}
++            onClick={onShowUnresolved}
++          />
+         )}
+       </span>
+ 
+       <div className="flex-1" />
+ 
+       <OpenInEditorButton branch={pr.sourceBranch} />
+       <Tip label="Open on the provider">
+         <Button
+           variant="ghost"
+           size="sm"
+           onClick={() => void window.n10.openExternal(pr.url)}
+         >
+           <ExternalLinkIcon /> Open
+         </Button>
+       </Tip>
+     </header>
+   );
+ }
+ 
+ /** Header for a worktree tab without a PR: branch → base + files count. */
+ export function BranchHeader({
+   branch,
+   baseBranch,
+   fileCount,
+ }: {
+   branch: string;
+   baseBranch: string;
+   fileCount: number;
+ }) {
+   return (
+     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+       <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+       <span className="flex min-w-0 shrink items-center gap-2">
+         <span className="truncate font-medium">{branch}</span>
+         <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
+           diff vs {baseBranch}
+         </span>
+       </span>
+       <div className="flex-1" />
+       <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+         {fileCount} file{fileCount === 1 ? '' : 's'} changed
+       </span>
+       <OpenInEditorButton branch={branch} />
+     </header>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/components/review/PrWorkspace.tsx b/apps/desktop/src/renderer/components/review/PrWorkspace.tsx
+index 20994457..fda120d8 100644
+--- a/apps/desktop/src/renderer/components/review/PrWorkspace.tsx
++++ b/apps/desktop/src/renderer/components/review/PrWorkspace.tsx
+@@ -1,367 +1,355 @@
+-import { PanelLeftOpenIcon } from 'lucide-react';
+ import { useCallback, useMemo, useRef, useState } from 'react';
+ import {
+   Group,
+   Panel,
+   Separator as PanelSeparator,
+ } from 'react-resizable-panels';
+ import { toast } from 'sonner';
+ import { type DiffLine } from '@n10/diff';
+ import type { PlanItem } from '@n10/core/plan';
+ import type { PullRequestInfo } from '@n10/vcs-core';
+ import { useDiffOptions } from '../../lib/diff/diff-options.js';
+ import {
+   useDiff,
+   useDraftComments,
+   useParsedDiff,
+   useThreads,
+   useWorktreeDiff,
+ } from '../../lib/data/queries.js';
+ import { usePostDrafts } from '../../lib/data/mutations.js';
+ import { useRepo } from '../../lib/repo-context.js';
+ import { useCommentNavigator } from '../../lib/review/use-comment-navigator.js';
++import { useReviewRail } from '../../lib/review/use-review-rail.js';
+ import { usePlanCheckout } from '../../lib/plan/use-plan-checkout.js';
+ import {
+   buildFileEntries,
+   diffIsPending,
+   groupDraftsByFile,
+   groupThreadsByFile,
+   focusesAgent,
+   resolveMode,
+   type AgentPresence,
+   unpostedDrafts,
+   type Mode,
+ } from '../../lib/review/review-model.js';
+ import { errorMessage } from '../../lib/utils.js';
+-import { Button } from '../ui/button.js';
+-import { Tip } from '../ui/tooltip.js';
+ import { ContentPane } from './ContentPane.js';
+ import { type FileEntry } from './diff/FileTree.js';
+ import { BranchHeader, PrHeader } from './PrHeader.js';
+-import { ReviewRail } from './ReviewRail.js';
++import { CollapsedRail, ReviewRail } from './ReviewRail.js';
+ 
+ /** Shared empty parse, so "no files yet" keeps a stable identity and
+  *  the derived lists below are not rebuilt on every render. */
+ const NO_FILES: [string, DiffLine[]][] = [];
+ 
+ /**
+  * The review workspace for a PR: a persistent left rail (Agent · Files
+  * · Comments) beside a single content pane that swaps between the diff
+  * and the agent terminal. Selecting a file/comment shows the diff;
+  * selecting the agent shows its terminal (which stays mounted so its
+  * scrollback survives). The diff's own toolbar lives inside the diff
+  * pane, so it's gone while the terminal is showing.
+  *
+  * What to show is decided in `lib/review-model.ts`; this component
+  * wires that to the queries, the refs and the markup.
+  */
+ /**
+  * The terminal takes over the pane whenever an agent starts, and
+  * whenever the user comes back to a tab that already has one running —
+  * the agent is what they returned for, not the diff. {@link focusesAgent}
+  * owns which changes count as either.
+  *
+  * Written as state adjusted during render (React's own pattern for
+  * "derive from a prop change") rather than an effect, so the pane never
+  * paints the diff for one frame before switching.
+  */
+ function useAgentFocus(next: AgentPresence, onFocusAgent: () => void): void {
+   const [prev, setPrev] = useState(next);
+   if (
+     prev.hasSession !== next.hasSession ||
+     prev.running !== next.running ||
+     prev.active !== next.active
+   ) {
+     setPrev(next);
+     if (focusesAgent(prev, next)) onFocusAgent();
+   }
+ }
+ 
+ /** What the agent pane's connection banner needs (ux-machines.md §6),
+  *  resolved by the caller (ItemView) so PrWorkspace stays free of the
+  *  machines query and the reconnect mutation. */
+ export interface PrConnectionBanner {
+   state: 'reconnecting' | 'failed';
+   machineLabel: string;
+   onReconnect: () => void;
+   reconnecting: boolean;
+ }
+ 
+ export function PrWorkspace({
+   pr,
+   branch,
+   baseBranch,
+   sessionName,
+   sessionEpoch,
+   running,
+   active,
+   busy,
+   onLaunch,
+   onStop,
+   connectionBanner,
+   inputDisabled,
+ }: {
+   /** Absent for a worktree without a PR: the rail degrades gracefully
+    *  (no comments, drafts or review walkthrough — just Agent + Files). */
+   pr?: PullRequestInfo;
+   branch: string;
+   baseBranch: string;
+   /** PTY session for this branch, if one exists (running or its final frame). */
+   sessionName?: string;
+   /** When that session was spawned. A restart in the same pane keeps
+    *  the name and changes this, which is what tells the terminal a new
+    *  agent is on the other end of it. */
+   sessionEpoch: number;
+   running: boolean;
+   active: boolean;
+   busy: boolean;
+   onLaunch: () => void;
+   onStop: () => void;
+   /** Set only while the session's connection is reconnecting/failed
+    *  (ux-machines.md §6) — the headline capability of this feature runs
+    *  here, so a silent dead connection does the most damage in exactly
+    *  this pane. */
+   connectionBanner?: PrConnectionBanner | null;
+   inputDisabled?: boolean;
+ }) {
+   const { repo } = useRepo();
+   const prId = pr?.id ?? 0;
+   // A pull request is reviewed against its commits — that is what the
+   // comment threads anchor to. A worktree without one has nothing to
+   // anchor, so it shows the working tree instead and follows the agent
+   // as it edits, which is the whole reason to have the pane open while
+   // one is running.
+   const isWorktreeOnly = pr == null;
+   const commitDiff = useDiff(repo.cwd, branch, baseBranch, {
+     enabled: !isWorktreeOnly,
+   });
+   const workingDiff = useWorktreeDiff(repo.cwd, branch, baseBranch, {
+     enabled: isWorktreeOnly,
+     live: running,
+   });
+   const diff = isWorktreeOnly ? workingDiff : commitDiff;
+   const comments = useThreads(repo.cwd, prId);
+   const draftsQuery = useDraftComments(repo.cwd, prId);
+   const postAll = usePostDrafts(repo.cwd);
+   const options = useDiffOptions();
+   const rootRef = useRef<HTMLDivElement>(null);
+ 
+   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
+-  const [railHidden, setRailHidden] = useState(false);
+ 
+   useAgentFocus({ hasSession: Boolean(sessionName), running, active }, () =>
+     setMode('agent')
+   );
+   // Whole-file diffs can be megabytes; the parse runs in the diff
+   // worker so opening a tab never blocks the UI thread on it. The query
+   // is keyed on the patch content, so what it hands back always belongs
+   // to the text on screen — while a newer patch is parsing there is no
+   // data for its key and the viewer shows no files, never the old ones.
+   const parsed = useParsedDiff(diff.data);
+   const files = parsed.data ?? NO_FILES;
+   const diffPending = diffIsPending(diff.isLoading, diff.data, parsed.data);
+   const inlineThreads = useMemo(
+     () => comments.data?.threads ?? [],
+     [comments.data]
+   );
+   const general = useMemo(
+     () => comments.data?.generalComments ?? [],
+     [comments.data]
+   );
+   const drafts = useMemo(
+     () => unpostedDrafts(draftsQuery.data ?? []),
+     [draftsQuery.data]
+   );
+   const draftsByFile = useMemo(() => groupDraftsByFile(drafts), [drafts]);
+   const threadsByFile = useMemo(
+     () => groupThreadsByFile(inlineThreads),
+     [inlineThreads]
+   );
+ 
+   const fileOrder = useMemo(
+     () => new Map(files.map(([f], i) => [f, i])),
+     [files]
+   );
+   const filesByName = useMemo(() => new Map(files), [files]);
+ 
+   const hasDrafts = drafts.length > 0;
+ 
+   const entries = useMemo<FileEntry[]>(
+     () => buildFileEntries(files, threadsByFile, draftsByFile),
+     [files, threadsByFile, draftsByFile]
+   );
+ 
+   const showDiff = useCallback(() => setMode('diff'), []);
+   const nav = useCommentNavigator({
+     files,
+     general,
+     inlineThreads,
+     drafts,
+     hideResolved: options.hideResolved,
+     onShowDiff: showDiff,
+   });
+ 
++  const rail = useReviewRail(nav, comments, rootRef);
++
+   // ── The plan ───────────────────────────────────────────────────
+   const showPlanItemInDiff = useCallback(
+     (item: PlanItem) => nav.jumpToId(item.id, item.file),
+     [nav]
+   );
+   const backToAgent = useCallback(() => setMode('agent'), []);
+   const openPlanPane = useCallback(() => setMode('plan'), []);
+   // Both comment sources the rail can offer, as one list to resolve an
+   // id against.
+   const allThreads = useMemo(
+     () => [...inlineThreads, ...general],
+     [inlineThreads, general]
+   );
+   const plan = usePlanCheckout({
+     cwd: repo.cwd,
+     pr,
+     running,
+     paneRef: rootRef,
+     threads: allThreads,
+     drafts,
+     onSent: backToAgent,
+     onShowInDiff: showPlanItemInDiff,
+     onOpenPlan: openPlanPane,
+   });
+ 
+   // Which pane is actually showing. Computed last because it asks
+   // whether the plan has anything in it — every mode falls back to the
+   // diff when its own precondition is gone (see resolveMode).
+   const effMode = resolveMode(mode, {
+     hasSession: Boolean(sessionName),
+     hasDrafts,
+     hasPr: pr != null,
+     // A plan belongs to a pull request: it is a queue of *its* review
+     // comments, and the prompt names them. A bare worktree has none.
+     hasPlan: plan.count > 0,
+   });
+ 
+   return (
+     <div ref={rootRef} className="flex h-full min-h-0 min-w-0 flex-col">
+       {pr ? (
+-        <PrHeader pr={pr} />
++        <PrHeader pr={pr} onShowUnresolved={rail.showUnresolved} />
+       ) : (
+         <BranchHeader
+           branch={branch}
+           baseBranch={baseBranch}
+           fileCount={files.length}
+         />
+       )}
+       <div className="flex min-h-0 min-w-0 flex-1">
+-        {railHidden ? (
+-          <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
+-            <Tip label="Show review sidebar" side="right">
+-              <Button
+-                variant="ghost"
+-                size="icon"
+-                onClick={() => setRailHidden(false)}
+-                aria-label="Show review sidebar"
+-              >
+-                <PanelLeftOpenIcon />
+-              </Button>
+-            </Tip>
+-          </div>
+-        ) : null}
++        {rail.hidden && <CollapsedRail onShow={() => rail.setHidden(false)} />}
+ 
+         <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1">
+-          {!railHidden && (
++          {!rail.hidden && (
+             <>
+               <Panel
+                 id="review-rail"
+                 defaultSize="270px"
+                 minSize="200px"
+                 maxSize="45%"
+                 className="min-w-0"
+               >
+                 <ReviewRail
+                   hasPr={Boolean(pr)}
+                   overviewActive={effMode === 'overview'}
+                   onOverview={() => setMode('overview')}
+                   running={running}
+                   busy={busy}
+                   hasSession={Boolean(sessionName)}
+                   agentActive={effMode === 'agent'}
+                   onSelectAgent={() => setMode('agent')}
+                   onLaunch={onLaunch}
+                   onStop={onStop}
+-                  onHide={() => setRailHidden(true)}
++                  onHide={() => rail.setHidden(true)}
+                   drafts={drafts}
+                   reviewActive={effMode === 'review'}
+                   onReview={() => setMode('review')}
+                   postingAll={postAll.isPending}
+                   onPostAll={() =>
+                     postAll.mutate(
+                       { prId, headSha: pr?.headSha },
+                       {
+                         onSuccess: (n) =>
+                           toast.success(
+                             `Posted ${n} comment${n === 1 ? '' : 's'}`
+                           ),
+                         onError: (e) =>
+                           toast.error(`Post failed: ${errorMessage(e)}`),
+                       }
+                     )
+                   }
+                   planCount={plan.count}
+                   planNoted={plan.noted}
+                   planActive={effMode === 'plan'}
+                   onPlan={openPlanPane}
+                   entries={entries}
+                   diffLoading={diffPending}
+                   selectedFile={effMode === 'diff' ? nav.selectedFile : null}
+                   onSelectFile={nav.jumpToFile}
+                   commentItems={nav.items}
+                   activeCommentId={effMode === 'diff' ? nav.focusId : null}
++                  commentsOpen={rail.commentsOpen}
++                  onCommentsOpenChange={rail.setCommentsOpen}
+                   onJumpComment={nav.jumpToItem}
+                   onCommentContextMenu={(row) =>
+                     plan.onCommentContextMenu(row.id)
+                   }
+                 />
+               </Panel>
+               <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
+             </>
+           )}
+ 
+           <Panel id="review-content" minSize="30%" className="min-w-0">
+             <ContentPane
+               effMode={effMode}
+               pr={pr}
+               prId={prId}
+               branch={branch}
+               baseBranch={baseBranch}
+               sessionName={sessionName}
+               sessionEpoch={sessionEpoch}
+               active={active}
+               connectionBanner={connectionBanner}
+               inputDisabled={inputDisabled}
+               files={files}
+               filesByName={filesByName}
+               fileOrder={fileOrder}
+               threadsByFile={threadsByFile}
+               draftsByFile={draftsByFile}
+               general={general}
+               hideResolved={options.hideResolved}
+               drafts={drafts}
+               hasDrafts={hasDrafts}
+               commentsLoading={comments.isLoading}
+               diffPending={diffPending}
+               diffError={diff.error}
+               focusThreadId={nav.focusId}
+               scrollRef={nav.scrollRef}
+               jumpRef={nav.jumpRef}
+               navCount={nav.items.length}
+               navIndex={nav.navIndex}
+               onPrev={() => nav.step(-1)}
+               onNext={() => nav.step(1)}
+               onExitReview={showDiff}
+               onOpenInDiff={nav.jumpToFile}
+               plan={plan.wiring}
+             />
+           </Panel>
+         </Group>
+       </div>
+     </div>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/components/review/ReviewRail.tsx b/apps/desktop/src/renderer/components/review/ReviewRail.tsx
+index 57e5a313..f8c83e4b 100644
+--- a/apps/desktop/src/renderer/components/review/ReviewRail.tsx
++++ b/apps/desktop/src/renderer/components/review/ReviewRail.tsx
+@@ -1,158 +1,186 @@
+-import { BookOpenIcon, PanelLeftCloseIcon } from 'lucide-react';
++import {
++  BookOpenIcon,
++  PanelLeftCloseIcon,
++  PanelLeftOpenIcon,
++} from 'lucide-react';
+ import type { ReviewComment } from '../../../host/contract.js';
+ import { cn } from '../../lib/utils.js';
+ import { Button } from '../ui/button.js';
+ import { ScrollArea } from '../ui/scroll-area.js';
+ import { Tip } from '../ui/tooltip.js';
+ import { CommentsList, type CommentListItem } from './comments/CommentsList.js';
+ import { FileTree, type FileEntry } from './diff/FileTree.js';
+ import {
+   AgentSection,
+   PlanSection,
+   ReviewReadySection,
+ } from './ReviewRailSections.js';
+ 
++/** What is left of the rail while it is hidden: the button back. */
++export function CollapsedRail({ onShow }: { onShow: () => void }) {
++  return (
++    <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
++      <Tip label="Show review sidebar" side="right">
++        <Button
++          variant="ghost"
++          size="icon"
++          onClick={onShow}
++          aria-label="Show review sidebar"
++        >
++          <PanelLeftOpenIcon />
++        </Button>
++      </Tip>
++    </div>
++  );
++}
++
+ export function ReviewRail({
+   hasPr,
+   overviewActive,
+   onOverview,
+   running,
+   busy,
+   hasSession,
+   agentActive,
+   onSelectAgent,
+   onLaunch,
+   onStop,
+   onHide,
+   drafts,
+   reviewActive,
+   onReview,
+   postingAll,
+   onPostAll,
+   planCount,
+   planNoted,
+   planActive,
+   onPlan,
+   entries,
+   diffLoading,
+   selectedFile,
+   onSelectFile,
+   commentItems,
+   activeCommentId,
++  commentsOpen,
++  onCommentsOpenChange,
+   onJumpComment,
+   onCommentContextMenu,
+ }: {
+   hasPr: boolean;
+   overviewActive: boolean;
+   onOverview: () => void;
+   running: boolean;
+   busy: boolean;
+   hasSession: boolean;
+   agentActive: boolean;
+   onSelectAgent: () => void;
+   onLaunch: () => void;
+   onStop: () => void;
+   onHide: () => void;
+   drafts: ReviewComment[];
+   reviewActive: boolean;
+   onReview: () => void;
+   postingAll: boolean;
+   onPostAll: () => void;
+   /** Comments queued for the agent; the entry hides at zero. */
+   planCount: number;
+   planNoted: number;
+   planActive: boolean;
+   onPlan: () => void;
+   entries: FileEntry[];
+   diffLoading: boolean;
+   selectedFile: string | null;
+   onSelectFile: (path: string) => void;
+   commentItems: CommentListItem[];
+   activeCommentId: string | null;
++  commentsOpen: boolean;
++  onCommentsOpenChange: (open: boolean) => void;
+   onJumpComment: (item: CommentListItem) => void;
+   onCommentContextMenu: (item: CommentListItem) => void;
+ }) {
+   return (
+     <div className="flex h-full min-h-0 flex-col bg-sidebar/60">
+       <div className="flex h-8 shrink-0 items-center justify-between pr-1 pl-3">
+         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+           Review
+         </span>
+         <Tip label="Hide review sidebar">
+           <Button
+             variant="ghost"
+             size="icon-sm"
+             onClick={onHide}
+             aria-label="Hide review sidebar"
+           >
+             <PanelLeftCloseIcon />
+           </Button>
+         </Tip>
+       </div>
+ 
+       {/* Overview — the PR's title, description and verdict actions. */}
+       {hasPr && (
+         <div className="shrink-0 px-2 pb-1">
+           <button
+             type="button"
+             onClick={onOverview}
+             className={cn(
+               'flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-base transition-colors',
+               overviewActive
+                 ? 'bg-sidebar-active text-foreground'
+                 : 'hover:bg-sidebar-accent'
+             )}
+           >
+             <BookOpenIcon className="size-4 shrink-0 text-muted-foreground" />
+             <span className="min-w-0 flex-1 truncate text-left">Overview</span>
+           </button>
+         </div>
+       )}
+ 
+       {/* Agent — a running row you can select to view the terminal, or
+           a launch button (opening the session/review menu) otherwise. */}
+       <div className="shrink-0 border-b border-border px-2 pb-2">
+         <AgentSection
+           running={running}
+           busy={busy}
+           hasSession={hasSession}
+           agentActive={agentActive}
+           onSelectAgent={onSelectAgent}
+           onLaunch={onLaunch}
+           onStop={onStop}
+         />
+       </div>
+ 
+       <ReviewReadySection
+         drafts={drafts}
+         reviewActive={reviewActive}
+         onReview={onReview}
+         postingAll={postingAll}
+         onPostAll={onPostAll}
+       />
+ 
+       <PlanSection
+         planCount={planCount}
+         planNoted={planNoted}
+         planActive={planActive}
+         onPlan={onPlan}
+       />
+ 
+       {/* Files + Comments */}
+       <ScrollArea className="min-h-0 flex-1">
+         <FileTree
+           entries={entries}
+           loading={diffLoading}
+           selected={selectedFile}
+           onSelect={onSelectFile}
+         />
+         <CommentsList
+           items={commentItems}
+           activeId={activeCommentId}
++          open={commentsOpen}
++          onOpenChange={onCommentsOpenChange}
+           onJump={onJumpComment}
+           onContextMenu={onCommentContextMenu}
+         />
+       </ScrollArea>
+     </div>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/components/review/comments/CommentsList.tsx b/apps/desktop/src/renderer/components/review/comments/CommentsList.tsx
+index dd318597..cb50c24e 100644
+--- a/apps/desktop/src/renderer/components/review/comments/CommentsList.tsx
++++ b/apps/desktop/src/renderer/components/review/comments/CommentsList.tsx
+@@ -1,123 +1,129 @@
+ import {
+   BotIcon,
+   CheckCircle2Icon,
+   ChevronDownIcon,
+   ChevronRightIcon,
+   MessageSquareIcon,
+ } from 'lucide-react';
+-import { useState } from 'react';
+ import type { CommentSeverity } from '../../../../host/contract.js';
+ import { cn } from '../../../lib/utils.js';
+ import { Avatar } from '../../ui/avatar.js';
+ import { SEVERITY_DOT } from '../../../lib/review/severity.js';
+ 
+ export interface CommentListItem {
+   id: string;
+   /** 'thread' = a real (remote) comment; 'draft' = an agent draft. */
+   kind: 'thread' | 'draft';
+   author: string;
+   /** "file:line" or "Conversation" for general PR comments. */
+   where: string;
+   preview: string;
+   resolved: boolean;
+   severity?: CommentSeverity;
+ }
+ 
+ /**
+  * Jump list of every comment on the PR — remote threads (inline +
+  * general) and the agent's drafts — under the file tree. Click to
+  * scroll the diff to it. Open items first; drafts flagged.
+  */
+ export function CommentsList({
+   items,
+   activeId,
++  open,
++  onOpenChange,
+   onJump,
+   onContextMenu,
+ }: {
+   items: CommentListItem[];
+   activeId: string | null;
++  /** Expanded. Owned by the workspace, which opens it from the header's
++   *  unresolved count. */
++  open: boolean;
++  onOpenChange: (open: boolean) => void;
+   onJump: (item: CommentListItem) => void;
+   /** Right-click a row: queue it for the agent (see PrWorkspace). */
+   onContextMenu?: (item: CommentListItem) => void;
+ }) {
+-  const [open, setOpen] = useState(true);
+   if (items.length === 0) return null;
+   const openCount = items.filter((i) => !i.resolved).length;
+   const draftCount = items.filter((i) => i.kind === 'draft').length;
+ 
+   return (
+     <div className="flex min-h-0 flex-col border-t border-border">
+       <button
+         type="button"
+-        onClick={() => setOpen((o) => !o)}
++        onClick={() => onOpenChange(!open)}
+         className="flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+       >
+         {open ? (
+           <ChevronDownIcon className="size-3.5" />
+         ) : (
+           <ChevronRightIcon className="size-3.5" />
+         )}
+         <MessageSquareIcon className="size-3.5" />
+         Comments
+         <span className="ml-auto rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums">
+           {draftCount > 0 && `${draftCount} draft · `}
+           {openCount} open
+         </span>
+       </button>
+       {open && (
+         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+           {items.map((item) => (
+             <button
+               type="button"
+               key={item.id}
++              data-comment-row={item.id}
++              aria-current={activeId === item.id || undefined}
+               onClick={() => onJump(item)}
+               onContextMenu={(e) => {
+                 if (!onContextMenu) return;
+                 e.preventDefault();
+                 onContextMenu(item);
+               }}
+               className={cn(
+                 'flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent',
+                 activeId === item.id && 'bg-sidebar-active',
+                 item.resolved && 'opacity-60'
+               )}
+             >
+               {item.kind === 'draft' ? (
+                 <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                   <span
+                     className={cn(
+                       'size-2.5 rounded-full',
+                       item.severity ? SEVERITY_DOT[item.severity] : 'bg-primary'
+                     )}
+                   />
+                 </span>
+               ) : (
+                 <Avatar name={item.author} size="xs" className="mt-0.5" />
+               )}
+               <span className="min-w-0 flex-1">
+                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                   {item.kind === 'draft' ? (
+                     <span className="flex items-center gap-1 font-medium text-foreground">
+                       <BotIcon className="size-3" /> Draft
+                     </span>
+                   ) : (
+                     <span className="font-medium text-foreground">
+                       {item.author}
+                     </span>
+                   )}
+                   <span className="truncate font-mono">{item.where}</span>
+                   {item.resolved && (
+                     <CheckCircle2Icon className="ml-auto size-3 shrink-0 text-success" />
+                   )}
+                 </span>
+                 <span className="line-clamp-2 text-sm leading-snug">
+                   {item.preview}
+                 </span>
+               </span>
+             </button>
+           ))}
+         </div>
+       )}
+     </div>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/lib/review/review-model.spec.ts b/apps/desktop/src/renderer/lib/review/review-model.spec.ts
+index 38f8efdf..cbd8a86a 100644
+--- a/apps/desktop/src/renderer/lib/review/review-model.spec.ts
++++ b/apps/desktop/src/renderer/lib/review/review-model.spec.ts
+@@ -1,713 +1,731 @@
+ import { describe, expect, it } from 'vitest';
+ import type { DiffLine } from '@n10/diff';
+ import type {
+   RemoteCommentThread,
+   ReviewComment,
+ } from '../../../host/contract.js';
+ import {
+   buildCommentRows,
+   buildFileEntries,
+   diffIsPending,
++  firstUnresolvedThread,
+   focusesAgent,
+   groupDraftsByFile,
+   groupThreadsByFile,
+   navIndexOf,
+   resolveMode,
+   compareCommentRows,
+   stepComment,
+   unpostedDrafts,
+   visibleComments,
+   type AgentPresence,
+   type CommentRow,
+   type Mode,
+ } from './review-model.js';
+ 
+ /**
+  * The review workspace's decisions, tested where they have actually
+  * been wrong: which pane survives its precondition disappearing, and
+  * what "the next comment" means once the list is filtered.
+  */
+ 
+ // ── Fixtures ─────────────────────────────────────────────────────
+ 
+ function thread(o: Partial<RemoteCommentThread> = {}): RemoteCommentThread {
+   return {
+     id: 't1',
+     file: 'src/a.ts',
+     lineStart: 1,
+     lineEnd: 1,
+     side: 'RIGHT',
+     isResolved: false,
+     isOutdated: false,
+     canResolve: true,
+     comments: [
+       {
+         id: 'c1',
+         author: 'ada',
+         body: 'body',
+         createdAt: '2024-01-01T00:00:00Z',
+       },
+     ],
+     ...o,
+   } as RemoteCommentThread;
+ }
+ 
+ function draft(o: Partial<ReviewComment> = {}): ReviewComment {
+   return {
+     id: 'd1',
+     file: 'src/a.ts',
+     lineStart: 1,
+     lineEnd: 1,
+     severity: 'minor',
+     body: 'draft body',
+     side: 'RIGHT',
+     status: 'draft',
+     createdAt: '2024-01-01T00:00:00Z',
+     ...o,
+   };
+ }
+ 
+ function line(type: DiffLine['type']): DiffLine {
+   return { type, content: 'x', oldLine: 1, newLine: 1 } as DiffLine;
+ }
+ 
+ function files(...names: string[]): [string, DiffLine[]][] {
+   return names.map((n) => [n, []]);
+ }
+ 
+ // ── focusesAgent ─────────────────────────────────────────────────
+ 
+ describe('focusesAgent', () => {
+   const NONE: AgentPresence = {
+     hasSession: false,
+     running: false,
+     active: true,
+   };
+ 
+   it('hands the pane to an agent that died before any poll saw it running', () => {
+     // A command that is not on PATH is gone in milliseconds, and
+     // `running` is polled — so the session can appear already finished.
+     // The shell's complaint is in that terminal and nowhere else.
+     expect(
+       focusesAgent(NONE, { hasSession: true, running: false, active: true })
+     ).toBe(true);
+   });
+ 
+   it('hands the pane to an agent that is up by the time it is seen', () => {
+     expect(
+       focusesAgent(NONE, { hasSession: true, running: true, active: true })
+     ).toBe(true);
+   });
+ 
+   it('leaves the pane alone when nothing about the agent changed', () => {
+     const live: AgentPresence = {
+       hasSession: true,
+       running: true,
+       active: true,
+     };
+     expect(focusesAgent(live, live)).toBe(false);
+   });
+ 
+   it('leaves the pane alone when a running agent exits', () => {
+     // The user may be reading the diff by then; an exit is not a reason
+     // to pull them off it.
+     expect(
+       focusesAgent(
+         { hasSession: true, running: true, active: true },
+         { hasSession: true, running: false, active: true }
+       )
+     ).toBe(false);
+   });
+ 
+   it('returns to a working agent when its tab comes back to the front', () => {
+     expect(
+       focusesAgent(
+         { hasSession: true, running: true, active: false },
+         { hasSession: true, running: true, active: true }
+       )
+     ).toBe(true);
+   });
+ 
+   it('does not return to an agent that has already finished', () => {
+     expect(
+       focusesAgent(
+         { hasSession: true, running: false, active: false },
+         { hasSession: true, running: false, active: true }
+       )
+     ).toBe(false);
+   });
+ });
+ 
+ // ── resolveMode ──────────────────────────────────────────────────
+ 
+ describe('resolveMode', () => {
+   const ALL: Mode[] = ['diff', 'agent', 'review', 'overview', 'plan'];
+   const NOTHING = {
+     hasSession: false,
+     hasDrafts: false,
+     hasPr: false,
+     hasPlan: false,
+   };
+   const EVERYTHING = {
+     hasSession: true,
+     hasDrafts: true,
+     hasPr: true,
+     hasPlan: true,
+   };
+ 
+   it('keeps every mode when its own precondition holds', () => {
+     expect(ALL.map((m) => resolveMode(m, EVERYTHING))).toEqual(ALL);
+   });
+ 
+   it('falls every mode back to the diff when nothing is available', () => {
+     expect(ALL.map((m) => resolveMode(m, NOTHING))).toEqual(
+       ALL.map(() => 'diff')
+     );
+   });
+ 
+   /**
+    * Each mode is gated on its own precondition and no other — the whole
+    * grid, so a condition wired to the wrong flag shows up as a cell.
+    */
+   it('gates each mode on its own precondition only', () => {
+     const grid = ALL.map((mode) => [
+       resolveMode(mode, { ...NOTHING, hasSession: true }),
+       resolveMode(mode, { ...NOTHING, hasDrafts: true }),
+       resolveMode(mode, { ...NOTHING, hasPr: true }),
+       resolveMode(mode, { ...NOTHING, hasPlan: true }),
+     ]);
+     expect(grid).toEqual([
+       // requested       session-only  drafts-only  pr-only   plan-only
+       /* diff     */ ['diff', 'diff', 'diff', 'diff'],
+       /* agent    */ ['agent', 'diff', 'diff', 'diff'],
+       /* review   */ ['diff', 'review', 'diff', 'diff'],
+       /* overview */ ['diff', 'diff', 'overview', 'diff'],
+       /* plan     */ ['diff', 'diff', 'diff', 'plan'],
+     ]);
+   });
+ 
+   it('does not let another mode’s precondition rescue the request', () => {
+     // A PR whose last draft was just posted, while a session is alive:
+     // the walkthrough is gone, and the answer is the diff — never the
+     // agent, which the user did not ask for.
+     expect(
+       resolveMode('review', {
+         hasSession: true,
+         hasDrafts: false,
+         hasPr: true,
+         hasPlan: false,
+       })
+     ).toBe('diff');
+   });
+ 
+   /**
+    * Emptying the cart while looking at it is the ordinary way out of
+    * the plan pane — remove the last row and there is nothing left to
+    * send. Stranding the user on an empty checkout screen was the bug
+    * this covers; the TUI drops back the same way.
+    */
+   it('leaves the plan pane when its last item is removed', () => {
+     expect(
+       resolveMode('plan', {
+         hasSession: true,
+         hasDrafts: true,
+         hasPr: true,
+         hasPlan: false,
+       })
+     ).toBe('diff');
+   });
+ });
+ 
+ // ── diffIsPending ────────────────────────────────────────────────
+ 
+ describe('diffIsPending', () => {
+   it('is pending while the patch itself is in flight', () => {
+     expect(diffIsPending(true, undefined, undefined)).toBe(true);
+   });
+ 
+   /** The case the second clause exists for: the patch has landed and
+    *  the worker has not produced a parse for *this* patch yet. */
+   it('is pending when a patch has arrived but its parse has not', () => {
+     expect(diffIsPending(false, 'diff --git a/x b/x', undefined)).toBe(true);
+   });
+ 
+   /** And the case that stops it being "pending forever": a query that
+    *  is disabled/idle has no patch and no parse, and is not loading. */
+   it('is not pending when there is no patch and nothing is loading', () => {
+     expect(diffIsPending(false, undefined, undefined)).toBe(false);
+   });
+ 
+   it('is not pending once the parse matches the patch', () => {
+     expect(diffIsPending(false, 'patch', [])).toBe(false);
+   });
+ });
+ 
+ // ── drafts ───────────────────────────────────────────────────────
+ 
+ describe('unpostedDrafts', () => {
+   it('keeps drafts that are mid-post, and drops only posted ones', () => {
+     const all = [
+       draft({ id: 'a', status: 'draft' }),
+       draft({ id: 'b', status: 'posting' }),
+       draft({ id: 'c', status: 'posted' }),
+     ];
+     expect(unpostedDrafts(all).map((d) => d.id)).toEqual(['a', 'b']);
+   });
+ });
+ 
+ // ── grouping ─────────────────────────────────────────────────────
+ 
+ describe('groupThreadsByFile', () => {
+   it('drops general (file-less) threads instead of keying them', () => {
+     const map = groupThreadsByFile([
+       thread({ id: 'inline', file: 'src/a.ts' }),
+       thread({ id: 'general', file: null }),
+     ]);
+     expect([...map.keys()]).toEqual(['src/a.ts']);
+     expect(map.get('src/a.ts')!.map((t) => t.id)).toEqual(['inline']);
+   });
+ 
+   it('collects every thread on a file, in input order', () => {
+     const map = groupThreadsByFile([
+       thread({ id: '1', file: 'a' }),
+       thread({ id: '2', file: 'b' }),
+       thread({ id: '3', file: 'a' }),
+     ]);
+     expect(map.get('a')!.map((t) => t.id)).toEqual(['1', '3']);
+     expect(map.get('b')!.map((t) => t.id)).toEqual(['2']);
+   });
+ });
+ 
+ describe('groupDraftsByFile', () => {
+   it('collects every draft on a file, in input order', () => {
+     const map = groupDraftsByFile([
+       draft({ id: '1', file: 'a' }),
+       draft({ id: '2', file: 'b' }),
+       draft({ id: '3', file: 'a' }),
+     ]);
+     expect(map.get('a')!.map((d) => d.id)).toEqual(['1', '3']);
+     expect(map.get('b')!.map((d) => d.id)).toEqual(['2']);
+   });
+ });
+ 
+ // ── file entries ─────────────────────────────────────────────────
+ 
+ describe('buildFileEntries', () => {
+   const diffed: [string, DiffLine[]][] = [
+     ['src/a.ts', [line('add'), line('add'), line('remove'), line('context')]],
+     ['src/b.ts', [line('hunk-header'), line('context')]],
+   ];
+ 
+   it('counts only added and removed lines as churn', () => {
+     const [a, b] = buildFileEntries(diffed, new Map(), new Map());
+     expect(a).toMatchObject({ additions: 2, deletions: 1 });
+     expect(b).toMatchObject({ additions: 0, deletions: 0 });
+   });
+ 
+   it('counts open threads only, and every draft', () => {
+     const threads = groupThreadsByFile([
+       thread({ id: '1', file: 'src/a.ts', isResolved: false }),
+       thread({ id: '2', file: 'src/a.ts', isResolved: true }),
+     ]);
+     const drafts = groupDraftsByFile([
+       draft({ id: 'd1', file: 'src/a.ts' }),
+       draft({ id: 'd2', file: 'src/a.ts' }),
+     ]);
+     const [a, b] = buildFileEntries(diffed, threads, drafts);
+     expect(a).toMatchObject({ comments: 1, drafts: 2 });
+     expect(b).toMatchObject({ comments: 0, drafts: 0 });
+   });
+ 
+   it('keeps the diff’s file order', () => {
+     expect(
+       buildFileEntries(diffed, new Map(), new Map()).map((e) => e.path)
+     ).toEqual(['src/a.ts', 'src/b.ts']);
+   });
+ 
+   // `revision` is what the file tree's collapse rule compares two polls
+   // by (see lib/diff/file-tree-model.ts). A key that does not move when
+   // the file does means the folder never opens; a key that moves when
+   // the file has not means the tree reopens on every poll.
+   describe('revision', () => {
+     const of = (lines: DiffLine[]) =>
+       buildFileEntries([['f.ts', lines]], new Map(), new Map())[0].revision;
+     const text = (type: DiffLine['type'], content: string): DiffLine =>
+       ({ type, content, oldLine: 1, newLine: 1 } as DiffLine);
+ 
+     it('is stable for the same changed lines', () => {
+       expect(of([text('add', 'one'), text('remove', 'two')])).toBe(
+         of([text('add', 'one'), text('remove', 'two')])
+       );
+     });
+ 
+     it('moves when a changed line is swapped for another of the same shape', () => {
+       // The counts are identical here, which is exactly why churn
+       // counts alone are not enough to detect the edit.
+       expect(of([text('add', 'one')])).not.toBe(of([text('add', 'two')]));
+     });
+ 
+     it('moves when an addition becomes a removal', () => {
+       expect(of([text('add', 'one')])).not.toBe(of([text('remove', 'one')]));
+     });
+ 
+     it('ignores context, which with -U99999 is the rest of the file', () => {
+       expect(of([text('add', 'one'), text('context', 'noise')])).toBe(
+         of([text('add', 'one'), text('context', 'different noise')])
+       );
+     });
+   });
+ });
+ 
+ // ── the unified comment list ─────────────────────────────────────
+ 
+ describe('buildCommentRows ordering', () => {
+   /**
+    * File position, not the file name and not the line number: the diff
+    * lists zeta before alpha, and the comment on zeta is on a later line
+    * than the one on alpha. Only "rank in the diff" gets this order.
+    */
+   it('orders inline rows by the file’s position in the diff', () => {
+     const rows = buildCommentRows(
+       files('src/zeta.ts', 'src/alpha.ts'),
+       [],
+       [
+         thread({ id: 'alpha', file: 'src/alpha.ts', lineStart: 1 }),
+         thread({ id: 'zeta', file: 'src/zeta.ts', lineStart: 90 }),
+       ],
+       []
+     );
+     expect(rows.map((r) => r.id)).toEqual(['zeta', 'alpha']);
+   });
+ 
+   it('orders rows within a file by line', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [
+         thread({ id: 'late', lineStart: 40 }),
+         thread({ id: 'early', lineStart: 4 }),
+       ],
+       []
+     );
+     expect(rows.map((r) => r.id)).toEqual(['early', 'late']);
+   });
+ 
+   it('puts general comments ahead of every file comment', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [thread({ id: 'general', file: null })],
+       [thread({ id: 'inline', lineStart: 1 })],
+       [draft({ id: 'draft', lineStart: 1 })]
+     );
+     expect(rows[0].id).toBe('general');
+     expect(rows[0].file).toBeNull();
+   });
+ 
+   /** A comment on a file the diff does not contain has no rank; it goes
+    *  last rather than to the top, which `?? 0` would have done. */
+   it('sorts comments on files outside the diff after every diffed file', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [
+         thread({ id: 'ghost', file: 'src/gone.ts', lineStart: 1 }),
+         thread({ id: 'known', file: 'src/a.ts', lineStart: 999 }),
+       ],
+       []
+     );
+     expect(rows.map((r) => r.id)).toEqual(['known', 'ghost']);
+   });
+ 
+   /** Threads and drafts tie on (file, line); the sort is stable and the
+    *  rows are pushed threads-first, so the remote comment leads. */
+   it('keeps the remote thread ahead of a draft on the same line', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [thread({ id: 'remote', lineStart: 7 })],
+       [draft({ id: 'agent', lineStart: 7 })]
+     );
+     expect(rows.map((r) => r.id)).toEqual(['remote', 'agent']);
+   });
+ 
+   it('interleaves drafts and threads by line within a file', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [
+         thread({ id: 't5', lineStart: 5 }),
+         thread({ id: 't20', lineStart: 20 }),
+       ],
+       [draft({ id: 'd10', lineStart: 10 })]
+     );
+     expect(rows.map((r) => r.id)).toEqual(['t5', 'd10', 't20']);
+   });
+ });
+ 
+ describe('buildCommentRows row contents', () => {
+   it('labels a general comment Conversation and takes its root author', () => {
+     const [row] = buildCommentRows(
+       [],
+       [
+         thread({
+           id: 'g',
+           file: null,
+           comments: [
+             {
+               id: 'c',
+               author: 'grace',
+               body: 'ship it',
+               createdAt: '2024-01-01T00:00:00Z',
+             },
+             {
+               id: 'c2',
+               author: 'ada',
+               body: 'later',
+               createdAt: '2024-01-02T00:00:00Z',
+             },
+           ],
+         } as Partial<RemoteCommentThread>),
+       ],
+       [],
+       []
+     );
+     expect(row).toMatchObject({
+       kind: 'thread',
+       author: 'grace',
+       where: 'Conversation',
+       preview: 'ship it',
+       line: 0,
+       fileRank: -1,
+     });
+   });
+ 
+   /**
+    * The rail has one line to say what a comment is about. A
+    * Conventional Comments header is already drawn as a badge on the
+    * card, so repeating "issue (blocking):" here says nothing new and
+    * pushes out the part that identifies which comment this is; the
+    * signature goes for the same reason, since every agent comment ends
+    * with the same words.
+    */
+   it('previews the prose, not the header or the signature', () => {
+     const [row] = buildCommentRows(
+       [],
+       [
+         thread({
+           id: 'g',
+           file: null,
+           comments: [
+             {
+               id: 'c',
+               author: 'grace',
+               body:
+                 'issue (blocking): The undo stack is never bounded.\n\n' +
+                 'Nothing ever pops.\n\n---\n' +
+                 '_Posted via [n10](https://github.com/notaharness/n10) by an agent_',
+               createdAt: '2024-01-01T00:00:00Z',
+             },
+           ],
+         } as Partial<RemoteCommentThread>),
+       ],
+       [],
+       []
+     );
+     expect(row.preview).toBe(
+       'The undo stack is never bounded.\n\nNothing ever pops.'
+     );
+   });
+ 
+   /** Most comments on a pull request are people's, written however
+    *  they like, and must reach the rail exactly as typed. */
+   it('leaves an ordinary comment as its own preview', () => {
+     const [row] = buildCommentRows(
+       [],
+       [
+         thread({
+           id: 'g',
+           file: null,
+           comments: [
+             {
+               id: 'c',
+               author: 'grace',
+               body: 'note this: it looks fine',
+               createdAt: '2024-01-01T00:00:00Z',
+             },
+           ],
+         } as Partial<RemoteCommentThread>),
+       ],
+       [],
+       []
+     );
+     expect(row.preview).toBe('note this: it looks fine');
+   });
+ 
+   it('survives a thread with no comments at all', () => {
+     const [row] = buildCommentRows(
+       [],
+       [thread({ id: 'empty', file: null, comments: [] })],
+       [],
+       []
+     );
+     expect(row).toMatchObject({ author: '', preview: '' });
+   });
+ 
+   it('shows an inline thread as basename:line, not the full path', () => {
+     const [row] = buildCommentRows(
+       files('src/deep/nested/a.ts'),
+       [],
+       [thread({ file: 'src/deep/nested/a.ts', lineStart: 12 })],
+       []
+     );
+     expect(row.where).toBe('a.ts:12');
+     expect(row.line).toBe(12);
+   });
+ 
+   it('omits the line from a thread that has none, and ranks it at 0', () => {
+     const [row] = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [thread({ file: 'src/a.ts', lineStart: null })],
+       []
+     );
+     expect(row.where).toBe('a.ts');
+     expect(row.line).toBe(0);
+   });
+ 
+   it('carries a draft’s severity through, and never marks it resolved', () => {
+     const [row] = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [],
+       [draft({ file: 'src/a.ts', lineStart: 3, severity: 'critical' })]
+     );
+     expect(row).toMatchObject({
+       kind: 'draft',
+       author: 'Draft',
+       where: 'a.ts:3',
+       severity: 'critical',
+       resolved: false,
+     });
+   });
+ 
+   it('reports a thread’s resolved state', () => {
+     const rows = buildCommentRows(
+       files('src/a.ts'),
+       [],
+       [
+         thread({ id: 'open', lineStart: 1, isResolved: false }),
+         thread({ id: 'done', lineStart: 2, isResolved: true }),
+       ],
+       []
+     );
+     expect(rows.map((r) => r.resolved)).toEqual([false, true]);
+   });
+ });
+ 
+ // ── filtering and navigation ─────────────────────────────────────
+ 
+ function rows(...specs: [string, boolean][]): CommentRow[] {
+   return specs.map(([id, resolved], i) => ({
+     id,
+     kind: 'thread',
+     author: 'a',
+     where: 'w',
+     preview: 'p',
+     resolved,
+     file: 'src/a.ts',
+     line: i,
+     fileRank: 0,
+   }));
+ }
+ 
+ describe('compareCommentRows', () => {
+   /**
+    * Having no file is the primary key, ahead of the rank. Rows built by
+    * `buildCommentRows` never exercise this on their own — it gives
+    * general rows `fileRank: -1`, which already sorts them first — but
+    * the comparator is what any other caller gets, and "file-less first"
+    * is the rule it states.
+    */
+   it('puts a file-less row first even when it outranks nothing', () => {
+     const [general, filed] = rows(['g', false], ['f', false]);
+     const a: CommentRow = { ...general, file: null, fileRank: 9, line: 500 };
+     const b: CommentRow = { ...filed, file: 'src/a.ts', fileRank: 0, line: 1 };
+     expect(compareCommentRows(a, b)).toBeLessThan(0);
+     expect(compareCommentRows(b, a)).toBeGreaterThan(0);
+   });
+ 
+   it('ties rows that agree on file-ness, rank and line', () => {
+     const [a, b] = rows(['a', false], ['b', false]);
+     expect(compareCommentRows(a, { ...b, line: a.line })).toBe(0);
+   });
+ });
+ 
+ describe('visibleComments', () => {
+   it('returns the same array when nothing is hidden', () => {
+     const all = rows(['a', false], ['b', true]);
+     // Identity, not equality: the full list is memoized and its
+     // consumers are keyed on that identity.
+     expect(visibleComments(all, false)).toBe(all);
+   });
+ 
+   it('drops resolved rows and keeps the rest in order', () => {
+     const all = rows(['a', false], ['b', true], ['c', false]);
+     expect(visibleComments(all, true).map((r) => r.id)).toEqual(['a', 'c']);
+   });
+ });
+ 
++describe('firstUnresolvedThread', () => {
++  it('skips resolved threads and drafts, in document order', () => {
++    const [resolved, draft, open, later] = rows(
++      ['resolved', true],
++      ['draft', false],
++      ['open', false],
++      ['later', false]
++    );
++    const all = [resolved, { ...draft, kind: 'draft' as const }, open, later];
++    expect(firstUnresolvedThread(all)?.id).toBe('open');
++  });
++
++  it('is null when every thread is resolved', () => {
++    expect(firstUnresolvedThread(rows(['a', true]))).toBeNull();
++  });
++});
++
+ describe('navIndexOf', () => {
+   it('finds the focused row', () => {
+     expect(navIndexOf(rows(['a', false], ['b', false]), 'b')).toBe(1);
+   });
+ 
+   it('reports -1 for nothing focused, and for a row that is filtered out', () => {
+     const all = rows(['a', false], ['resolved', true]);
+     expect(navIndexOf(all, null)).toBe(-1);
+     expect(navIndexOf(visibleComments(all, true), 'resolved')).toBe(-1);
+   });
+ });
+ 
+ describe('stepComment', () => {
+   const three = rows(['a', false], ['b', false], ['c', false]);
+ 
+   it('has nowhere to go in an empty list', () => {
+     expect(stepComment([], -1, 1)).toBeNull();
+     expect(stepComment([], 0, 1)).toBeNull();
+   });
+ 
+   it('moves to the neighbour', () => {
+     expect(stepComment(three, 0, 1)!.id).toBe('b');
+     expect(stepComment(three, 2, -1)!.id).toBe('b');
+   });
+ 
+   it('wraps past the end and before the start', () => {
+     expect(stepComment(three, 2, 1)!.id).toBe('a');
+     expect(stepComment(three, 0, -1)!.id).toBe('c');
+   });
+ 
+   /**
+    * CURRENT BEHAVIOUR, pinned rather than endorsed. With nothing
+    * focused, *both* directions land on the first comment — "previous"
+    * does not open at the end of the list.
+    */
+   it('starts at the first comment in either direction when nothing is focused', () => {
+     expect(stepComment(three, -1, 1)!.id).toBe('a');
+     expect(stepComment(three, -1, -1)!.id).toBe('a');
+   });
+ 
+   /**
+    * CURRENT BEHAVIOUR, and the reason the case above matters. The user
+    * is on the second of three comments, that one is resolved, and they
+    * turn on hide-resolved: the focused row leaves the list, `navIndex`
+    * goes to -1, and the next "next" jumps back to the top instead of
+    * continuing to the comment after the one they were on.
+    */
+   it('restarts at the top after hide-resolved removes the focused row', () => {
+     const all = rows(['a', false], ['focused', true], ['c', false]);
+     const visible = visibleComments(all, true);
+     const index = navIndexOf(visible, 'focused');
+     expect(index).toBe(-1);
+     expect(stepComment(visible, index, 1)!.id).toBe('a');
+   });
+ });
+diff --git a/apps/desktop/src/renderer/lib/review/review-model.ts b/apps/desktop/src/renderer/lib/review/review-model.ts
+index 18ab1ff6..c754b0dd 100644
+--- a/apps/desktop/src/renderer/lib/review/review-model.ts
++++ b/apps/desktop/src/renderer/lib/review/review-model.ts
+@@ -1,330 +1,341 @@
+ import type { DiffLine } from '@n10/diff';
+ import { commentBodyParts } from '@n10/review-comments/conventional';
+ import type {
+   RemoteCommentThread,
+   ReviewComment,
+ } from '../../../host/contract.js';
+ import type { CommentListItem } from '../../components/review/comments/CommentsList.js';
+ import { contentKey } from '../content-key.js';
+ import type { FileEntry } from '../../components/review/diff/FileTree.js';
+ 
+ /**
+  * The decisions the PR review workspace makes about *what to show*,
+  * separated from the component that shows it. Everything here is a
+  * function of the queried data plus the pane's own state — no DOM, no
+  * hooks — so the ordering, the fallbacks and the comment navigator can
+  * be tested for the cases that have actually broken.
+  */
+ 
+ /** Which pane of the review workspace is showing. */
+ export type Mode = 'diff' | 'agent' | 'review' | 'overview' | 'plan';
+ 
+ /** What each mode needs in order to be showable at all. */
+ export interface ModeContext {
+   /** A PTY session exists for this branch (running or its last frame). */
+   hasSession: boolean;
+   /** At least one unposted agent draft. */
+   hasDrafts: boolean;
+   /** The tab is a pull request, not a bare worktree. */
+   hasPr: boolean;
+   /** At least one comment queued in this PR's plan. */
+   hasPlan: boolean;
+ }
+ 
+ /**
+  * The pane actually rendered. A mode is a *request*: the agent pane
+  * needs a session, the walkthrough needs drafts, the overview needs a
+  * PR and the plan needs something in it, and any of those can disappear
+  * underneath a mode that is already selected (the last draft gets
+  * posted, a session is stopped and removed, the last queued comment is
+  * dropped). Rather than reset the request, every mode falls back
+  * to the diff, which is the one pane that is always available — so
+  * when the precondition comes back, so does the pane.
+  */
+ export function resolveMode(mode: Mode, ctx: ModeContext): Mode {
+   if (mode === 'agent' && ctx.hasSession) return 'agent';
+   if (mode === 'review' && ctx.hasDrafts) return 'review';
+   if (mode === 'overview' && ctx.hasPr) return 'overview';
+   if (mode === 'plan' && ctx.hasPlan) return 'plan';
+   return 'diff';
+ }
+ 
+ /** What a tab's agent looks like from the pane's point of view. */
+ export interface AgentPresence {
+   /** A session exists for this tab — running, or retained with its
+    *  final frame. */
+   hasSession: boolean;
+   /** The host last reported that session's process as alive. */
+   running: boolean;
+   /** This tab is the one on screen. */
+   active: boolean;
+ }
+ 
+ /**
+  * Whether a change in the tab's agent hands the pane to the terminal.
+  *
+  * Two things do: an agent having been *launched*, and the user coming
+  * back to a tab whose agent is working. The first is the session
+  * appearing, not the session being reported as running — `running` is
+  * polled, and an agent that dies on startup (a command that is not on
+  * PATH) can be gone before a poll ever sees it alive. Keyed on
+  * `running` alone the pane then never leaves the diff, and the shell's
+  * complaint about the missing command is written into a terminal that
+  * was never put on screen: the launch fails silently. A session that
+  * appears already finished still owns the pane, because its retained
+  * last frame is the only account of what happened.
+  */
+ export function focusesAgent(
+   prev: AgentPresence,
+   next: AgentPresence
+ ): boolean {
+   if (next.hasSession && !prev.hasSession) return true;
+   if (next.running && !prev.running) return true;
+   return next.active && !prev.active && next.running;
+ }
+ 
+ /**
+  * Whether the viewer should show its loading state: either the patch
+  * itself is still in flight, or a patch has arrived and the worker has
+  * not finished parsing *that* patch yet. The parse query is keyed on
+  * the patch content, so while a newer patch is parsing there is no data
+  * for its key — without the second clause the viewer would report "no
+  * files" for the new patch instead of "still working".
+  */
+ export function diffIsPending(
+   isLoading: boolean,
+   patch: string | undefined,
+   parsed: [string, DiffLine[]][] | undefined
+ ): boolean {
+   return isLoading || (patch != null && parsed === undefined);
+ }
+ 
+ /** Drafts the agent has written but not yet posted. */
+ export function unpostedDrafts(
+   drafts: readonly ReviewComment[]
+ ): ReviewComment[] {
+   return drafts.filter((d) => d.status !== 'posted');
+ }
+ 
+ export function groupDraftsByFile(
+   drafts: readonly ReviewComment[]
+ ): Map<string, ReviewComment[]> {
+   const map = new Map<string, ReviewComment[]>();
+   for (const d of drafts)
+     (map.get(d.file) ?? map.set(d.file, []).get(d.file)!).push(d);
+   return map;
+ }
+ 
+ /** Inline threads keyed by file; general (file-less) threads drop out. */
+ export function groupThreadsByFile(
+   threads: readonly RemoteCommentThread[]
+ ): Map<string, RemoteCommentThread[]> {
+   const map = new Map<string, RemoteCommentThread[]>();
+   for (const t of threads) {
+     if (t.file == null) continue;
+     (map.get(t.file) ?? map.set(t.file, []).get(t.file)!).push(t);
+   }
+   return map;
+ }
+ 
+ /**
+  * A file's changed content, as a short key.
+  *
+  * The tree's collapse rule needs to know which files a refresh actually
+  * touched, and churn counts are not enough on their own — swapping one
+  * line for another leaves both of them where they were. Only the added
+  * and removed lines go in: with `-U99999` the rest of `lines` is the
+  * whole file as context, and hashing that on every two-second poll of a
+  * megabyte diff is work for nothing.
+  */
+ function fileRevision(lines: readonly DiffLine[]): string {
+   let changed = '';
+   for (const line of lines) {
+     if (line.type === 'add' || line.type === 'remove') {
+       changed += `${line.type}${line.content}\n`;
+     }
+   }
+   return contentKey(changed);
+ }
+ 
+ /** File-tree rows: per-file churn, open threads and draft counts. */
+ export function buildFileEntries(
+   files: readonly [string, DiffLine[]][],
+   threadsByFile: Map<string, RemoteCommentThread[]>,
+   draftsByFile: Map<string, ReviewComment[]>
+ ): FileEntry[] {
+   return files.map(([filename, lines]) => ({
+     path: filename,
+     revision: fileRevision(lines),
+     additions: lines.filter((l) => l.type === 'add').length,
+     deletions: lines.filter((l) => l.type === 'remove').length,
+     comments: (threadsByFile.get(filename) ?? []).filter((t) => !t.isResolved)
+       .length,
+     drafts: (draftsByFile.get(filename) ?? []).length,
+   }));
+ }
+ 
+ // ── The unified comment list ─────────────────────────────────────
+ 
+ /**
+  * A `CommentListItem` plus where it sits in the document, which is what
+  * orders the list and what the diff pane needs in order to scroll to
+  * it. The extra fields are carried on the same row rather than in a
+  * side table so a row can never be separated from its anchor.
+  */
+ export interface CommentRow extends CommentListItem {
+   /** null for general PR comments, which belong to no file. */
+   file: string | null;
+   line: number;
+   /** Position of `file` among the diffed files; files that are not in
+    *  the diff sort last. */
+   fileRank: number;
+ }
+ 
+ /**
+  * Every comment on the PR as one document-ordered list: general
+  * (Conversation) comments first, then per file the remote threads and
+  * the agent's drafts interleaved by line. Both the rail's Comments list
+  * and the diff toolbar's prev/next walk this list, which is why it has
+  * to be one list — they used to disagree about what "the next comment"
+  * meant.
+  *
+  * The sort is by (has-a-file, file position, line) and nothing else, so
+  * it is deliberately not a total order: a thread and a draft on the
+  * same line compare equal and `Array.sort`'s stability leaves them in
+  * insertion order — remote threads before drafts.
+  */
+ export function buildCommentRows(
+   files: readonly [string, DiffLine[]][],
+   general: readonly RemoteCommentThread[],
+   inlineThreads: readonly RemoteCommentThread[],
+   drafts: readonly ReviewComment[]
+ ): CommentRow[] {
+   const order = new Map(files.map(([f], i) => [f, i]));
+   const rows: CommentRow[] = [];
+   for (const t of general) rows.push(generalRow(t));
+   for (const t of inlineThreads) rows.push(inlineRow(t, order));
+   for (const d of drafts) rows.push(draftRow(d, order));
+   rows.sort(compareCommentRows);
+   return rows;
+ }
+ 
+ /**
+  * The one line the rail has to say what a comment is about.
+  *
+  * A Conventional Comments header is drawn as a badge on the card, so
+  * spending the rail's only line repeating "issue (blocking):" says
+  * nothing the reader cannot already see and pushes out the part that
+  * identifies which comment this is. The signature goes for the same
+  * reason: every agent comment ends with the same words.
+  */
+ function commentPreview(body: string): string {
+   return commentBodyParts(body).body;
+ }
+ 
+ /** A general PR comment: no file, and ahead of every inline row. */
+ function generalRow(t: RemoteCommentThread): CommentRow {
+   const root = t.comments[0];
+   return {
+     id: t.id,
+     kind: 'thread',
+     author: root?.author ?? '',
+     where: 'Conversation',
+     preview: commentPreview(root?.body ?? ''),
+     resolved: t.isResolved,
+     file: null,
+     line: 0,
+     fileRank: -1,
+   };
+ }
+ 
+ function inlineRow(
+   t: RemoteCommentThread,
+   order: Map<string, number>
+ ): CommentRow {
+   const root = t.comments[0];
+   return {
+     id: t.id,
+     kind: 'thread',
+     author: root?.author ?? '',
+     where: `${t.file?.split('/').pop() ?? ''}${
+       t.lineStart != null ? `:${t.lineStart}` : ''
+     }`,
+     preview: commentPreview(root?.body ?? ''),
+     resolved: t.isResolved,
+     file: t.file,
+     line: t.lineStart ?? 0,
+     fileRank: order.get(t.file ?? '') ?? Number.MAX_SAFE_INTEGER,
+   };
+ }
+ 
+ function draftRow(d: ReviewComment, order: Map<string, number>): CommentRow {
+   return {
+     id: d.id,
+     kind: 'draft',
+     author: 'Draft',
+     where: `${d.file.split('/').pop()}:${d.lineStart}`,
+     preview: commentPreview(d.body),
+     resolved: false,
+     severity: d.severity,
+     file: d.file,
+     line: d.lineStart,
+     fileRank: order.get(d.file) ?? Number.MAX_SAFE_INTEGER,
+   };
+ }
+ 
+ /**
+  * Document order: file-less (general) rows first, then by the file's
+  * position in the diff, then by line. Equal on all three — a thread and
+  * a draft on the same line — and `Array.sort`'s stability decides,
+  * which is why the rows are pushed threads-before-drafts.
+  */
+ export function compareCommentRows(a: CommentRow, b: CommentRow): number {
+   const ga = a.file == null ? 0 : 1;
+   const gb = b.file == null ? 0 : 1;
+   if (ga !== gb) return ga - gb;
+   if (a.fileRank !== b.fileRank) return a.fileRank - b.fileRank;
+   return a.line - b.line;
+ }
+ 
+ /**
+  * The one list everything that walks comments sees. Listing a resolved
+  * thread in the rail while the diff hides it — and letting prev/next
+  * jump to a row that is not rendered — was the inconsistency here, so
+  * the filter happens once and both readers take the result.
+  *
+  * Returns the input array unchanged when nothing is hidden, so the
+  * memoized identity of the full list survives.
+  */
+ export function visibleComments(
+   rows: CommentRow[],
+   hideResolved: boolean
+ ): CommentRow[] {
+   return hideResolved ? rows.filter((r) => !r.resolved) : rows;
+ }
+ 
++/**
++ * Where the header's "N unresolved" indicator lands: the first open
++ * remote thread in document order. Drafts are skipped — the count is
++ * the provider's, and an agent draft is not on the pull request yet.
++ */
++export function firstUnresolvedThread(
++  rows: readonly CommentRow[]
++): CommentRow | null {
++  return rows.find((r) => r.kind === 'thread' && !r.resolved) ?? null;
++}
++
+ /** Position of the focused comment in the visible list, or -1. */
+ export function navIndexOf(
+   rows: readonly CommentRow[],
+   focusId: string | null
+ ): number {
+   return rows.findIndex((r) => r.id === focusId);
+ }
+ 
+ /**
+  * The prev/next target, wrapping at both ends. `navIndex` of -1 means
+  * the focused comment is not in the visible list — nothing is focused
+  * yet, or the focused one has just been filtered out by hide-resolved —
+  * and in that case stepping in *either* direction lands on the first
+  * comment rather than on a neighbour of where the user was.
+  */
+ export function stepComment(
+   rows: readonly CommentRow[],
+   navIndex: number,
+   delta: number
+ ): CommentRow | null {
+   if (rows.length === 0) return null;
+   const next =
+     navIndex < 0 ? 0 : (navIndex + delta + rows.length) % rows.length;
+   return rows[next];
+ }
+diff --git a/apps/desktop/src/renderer/lib/review/use-review-rail.ts b/apps/desktop/src/renderer/lib/review/use-review-rail.ts
+new file mode 100644
+index 00000000..6bc907ef
+--- /dev/null
++++ b/apps/desktop/src/renderer/lib/review/use-review-rail.ts
+@@ -0,0 +1,74 @@
++import {
++  useCallback,
++  useEffect,
++  useRef,
++  useState,
++  type RefObject,
++} from 'react';
++import { firstUnresolvedThread, type CommentRow } from './review-model.js';
++
++/**
++ * The review rail's own visibility: hidden or shown, its Comments list
++ * collapsed or expanded, and the header's "N unresolved" count, which
++ * opens both and focuses the first open thread in the diff and the list.
++ */
++export function useReviewRail(
++  nav: {
++    items: readonly CommentRow[];
++    jumpToId: (id: string, file: string | null) => void;
++  },
++  threads: { isFetching: boolean; refetch: () => Promise<unknown> },
++  rootRef: RefObject<HTMLElement | null>
++) {
++  const [hidden, setHidden] = useState(false);
++  const [commentsOpen, setCommentsOpen] = useState(true);
++  const { items, jumpToId } = nav;
++  const { isFetching, refetch } = threads;
++
++  // The row is looked up after the click commits: the rail may have
++  // just been unhidden or the list expanded.
++  const reveal = useCallback(
++    (row: CommentRow) => {
++      jumpToId(row.id, row.file);
++      requestAnimationFrame(() =>
++        rootRef.current
++          ?.querySelector(`[data-comment-row="${CSS.escape(row.id)}"]`)
++          ?.scrollIntoView({ block: 'nearest' })
++      );
++    },
++    [jumpToId, rootRef]
++  );
++
++  // The count is the pull request list's and the threads are their own
++  // query, so a click can land before the threads load or while the
++  // cache is behind the count. Then the click is held, the threads are
++  // fetched, and it lands once they arrive; if the fresh list has no
++  // open thread either, it is dropped rather than firing later.
++  const pending = useRef(false);
++  useEffect(() => {
++    if (!pending.current) return;
++    const first = firstUnresolvedThread(items);
++    if (first) {
++      pending.current = false;
++      reveal(first);
++    } else if (!isFetching) {
++      pending.current = false;
++    }
++  }, [items, isFetching, reveal]);
++
++  const showUnresolved = useCallback(() => {
++    setHidden(false);
++    setCommentsOpen(true);
++    const first = firstUnresolvedThread(items);
++    pending.current = first == null;
++    if (first) {
++      reveal(first);
++      return;
++    }
++    refetch().catch(() => {
++      pending.current = false;
++    });
++  }, [items, reveal, refetch]);
++
++  return { hidden, setHidden, commentsOpen, setCommentsOpen, showUnresolved };
++}
