@@ -10,11 +10,11 @@ Open settings with `⌘,` (`Ctrl+,` on Linux and Windows) in n10 Desktop, or
 | --- | --- |
 | **AI Tool** | The agent n10 launches: Claude (the default), Codex, Gemini, Copilot or OpenCode. |
 | **Editor** | The editor **Open in editor** uses, globally or per project. |
-| **Worktree Path** | Where new worktrees go. `{session}` stands for the branch name. Takes effect after a restart. |
+| **Worktree Path** | Where new worktrees go. `{session}` stands for a filesystem-safe form of the branch name. Takes effect after a restart. |
 | **Sync Interval** | How often n10 checks for merged pull requests and conflicts. |
 | **Auto Rebase** | Rebase worktree branches onto the base branch after each sync. |
 | **Auto Delete on Merge** | Remove a worktree once its pull request is merged. |
-| Provider fields | The owner and repository (GitHub) or organization, project, repository and access token (Azure DevOps). |
+| Provider fields | The owner, repository and GitHub username (GitHub), or organization, project, repository and access token (Azure DevOps). |
 
 n10 fills in the provider fields from your Git remote when you open a
 repository, so you rarely set them by hand.
