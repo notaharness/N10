@@ -20,6 +20,7 @@ import {
 import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
 import type { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
+import { useSortableTab } from './TabStrip.js';
 
 type Closer = ReturnType<typeof useCloseTabs>;
 
@@ -165,23 +166,23 @@ async function runTabMenu(
 function tabClassName({
   active,
   unseen,
-  startsGroup,
+  dragging,
   flashing,
 }: {
   active: boolean;
   unseen: boolean;
-  startsGroup: boolean;
+  dragging: boolean;
   flashing: boolean;
 }): string {
   return cn(
     'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
+    // Lifted above the tabs it slides over, and opaque across them;
+    // the active tab's own background wins below.
+    dragging && 'z-10 bg-tab',
     active
       ? 'bg-tab-active text-foreground'
       : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
     unseen && 'text-foreground',
-    // A repository boundary: the gap plus the extra rule reads as a
-    // group edge rather than as one more tab.
-    startsGroup && 'ml-1.5 border-l border-border',
     // The agent finished a work streak and nobody has looked yet.
     flashing && !active && 'tab-attention'
   );
@@ -194,7 +195,6 @@ export function TabButton({
   closer,
   snapshot,
   foreignRepo,
-  startsGroup,
   running = false,
   unseen = false,
   machineLabel,
@@ -211,8 +211,6 @@ export function TabButton({
   /** The other repository this tab belongs to, or null when it is at
    *  home in the open one. */
   foreignRepo: string | null;
-  /** First tab of its repository's run — draw the group separator. */
-  startsGroup: boolean;
   /** The tab's machine, resolved by the caller — null for a local tab,
    *  or with only the local machine registered (ux-machines.md §6, D8). */
   machineLabel?: string | null;
@@ -223,31 +221,14 @@ export function TabButton({
   // A plan is built inside a tab and then navigated away from, so the
   // count has to be visible from wherever the user ends up.
   const planCount = usePlanCount(item?.pr?.id);
+  const { setNode, props, style, isDragging } = useSortableTab(tab.id, label);
 
   return (
     <div
-      role="tab"
+      ref={setNode}
+      {...props}
+      style={style}
       aria-selected={active}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/n10-tab', tab.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('text/n10-tab')) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-        }
-      }}
-      onDrop={(e) => {
-        const dragged = e.dataTransfer.getData('text/n10-tab');
-        if (!dragged || dragged === tab.id) return;
-        e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        const side =
-          e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-        tabs.moveTab(dragged, tab.id, side);
-      }}
       onMouseDown={(e) => {
         if (e.button === 1) {
           e.preventDefault();
@@ -262,16 +243,11 @@ export function TabButton({
       }}
       title={tabTitle(tab, foreignRepo)}
       data-face={face}
-      // A repository boundary, named rather than left to the Tailwind
-      // classes below — those are a styling detail free to change, and
-      // a test asserting on `border-l` would break on a purely visual
-      // restyle that changes nothing about which tab starts a group.
-      data-starts-group={startsGroup || undefined}
       data-unseen={unseen || undefined}
       className={tabClassName({
         active,
         unseen,
-        startsGroup,
+        dragging: isDragging,
         flashing: snapshot?.flashing ?? false,
       })}
     >

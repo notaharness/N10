@@ -92,38 +92,8 @@ export function tabRepo(tab: Tab): string | null {
   return tab.kind === 'settings' ? null : tab.repo;
 }
 
-/** The group a tab sits in on the strip: its repository, the repo-less
- *  group for a plain-folder terminal, or nothing for settings — which
- *  is transparent to grouping. The sentinel cannot collide with a
- *  repository path, which is always absolute. */
-const REPOLESS_GROUP = 'repo-less';
-function tabGroup(tab: Tab): string | null {
-  if (tab.kind === 'settings') return null;
-  return tab.repo ?? REPOLESS_GROUP;
-}
-
 /** The short name a repository goes by on screen: its directory name. */
 export function repoDisplayName(cwd: string): string {
   const parts = cwd.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? cwd;
-}
-
-/**
- * Which tabs start a new group, positionally.
- *
- * A tab starts a group when the nearest grouped tab to its left is in
- * a different one — so the leftmost group never draws a separator, and
- * the settings tab (which belongs to no group) neither starts one nor
- * breaks the one it sits in. Plain-folder terminals form a group of
- * their own, apart from every repository's.
- */
-export function repoGroupStarts(tabs: readonly Tab[]): boolean[] {
-  let previous: string | null = null;
-  return tabs.map((tab) => {
-    const group = tabGroup(tab);
-    if (group === null) return false;
-    const starts = previous !== null && previous !== group;
-    previous = group;
-    return starts;
-  });
 }

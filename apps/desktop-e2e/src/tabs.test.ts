@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import {
   createWorktree,
@@ -9,6 +9,44 @@ import {
   tabs,
 } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
+
+/** The strip's tab labels, left to right. */
+async function tabNames(page: Page): Promise<string[]> {
+  return (await tabs(page).allInnerTexts()).map((t) => t.split('\n')[0].trim());
+}
+
+/** Press `from` and carry it, in pointer steps, over `to`'s centre —
+ *  still held, so the test can look at the strip mid-drag. */
+async function carryOver(page: Page, from: Locator, to: Locator) {
+  const [a, b] = await Promise.all([from.boundingBox(), to.boundingBox()]);
+  if (!a || !b) throw new Error('tab is not laid out');
+  const y = a.y + a.height / 2;
+  await page.mouse.move(a.x + a.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, y, { steps: 10 });
+}
+
+/** Focus `name`'s tab, lift it with Space and step it right, until
+ *  `neighbour` has slid aside. The sensor starts listening for arrows
+ *  a task after the lift, so an early press can go unheard. */
+async function liftRightOver(page: Page, name: RegExp, neighbour: RegExp) {
+  await tab(page, name).focus();
+  await page.keyboard.press('Space');
+  await expect(async () => {
+    await page.keyboard.press('ArrowRight');
+    expect(await motion(tab(page, neighbour))).toMatchObject({
+      transform: expect.stringMatching(/^translate3d\(-\d/),
+    });
+  }).toPass();
+}
+
+/** The inline motion the sortable strip puts on a tab. */
+function motion(tab: Locator) {
+  return tab.evaluate((el: HTMLElement) => ({
+    transform: el.style.transform,
+    transition: el.style.transition,
+  }));
+}
 
 /** Close every open tab with its own X button. */
 async function closeAllTabs(page: Page): Promise<void> {
@@ -142,21 +180,69 @@ test.describe('Editor tabs', () => {
     await clickAppMenuItem(desktop.app, 'Settings…');
     await expect(tabs(page)).toHaveCount(2);
   });
+});
 
-  test('a tab can be dragged to a new position', async ({ desktop }) => {
+test.describe('Reordering tabs', () => {
+  test.beforeEach(async ({ desktop }) => {
+    await createWorktree(desktop.page, 'alpha');
+    await createWorktree(desktop.page, 'beta');
+    await expect.poll(() => tabNames(desktop.page)).toEqual(['alpha', 'beta']);
+  });
+
+  test('the others slide aside while a tab is dragged, and it drops into the gap', async ({
+    desktop,
+  }) => {
     const { page } = desktop;
-    await createWorktree(page, 'alpha');
-    await createWorktree(page, 'beta');
-    await expect(tabs(page)).toHaveCount(2);
+    const beta = tab(page, /beta/);
+    await carryOver(page, tab(page, /alpha/), beta);
 
-    const names = async () =>
-      (await tabs(page).allInnerTexts()).map((t) => t.split('\n')[0].trim());
-    expect(await names()).toEqual(['alpha', 'beta']);
+    // Mid-drag, beta has slid left into alpha's slot — animated — while
+    // the order itself is untouched until the drop.
+    await expect
+      .poll(() => motion(beta))
+      .toEqual({
+        transform: expect.stringMatching(/^translate3d\(-\d/),
+        transition: expect.stringContaining('transform'),
+      });
+    expect(await tabNames(page)).toEqual(['alpha', 'beta']);
 
-    // The strip carries its own dataTransfer payload and drop-side
-    // maths; the reducer's unit tests say nothing about whether the
-    // DOM half is wired up.
-    await tab(page, /alpha/).dragTo(tab(page, /beta/));
-    await expect.poll(names, { timeout: 10_000 }).toEqual(['beta', 'alpha']);
+    await page.mouse.up();
+    await expect.poll(() => tabNames(page)).toEqual(['beta', 'alpha']);
+    await expect.poll(() => motion(beta)).toMatchObject({ transform: '' });
+  });
+
+  test('with reduced motion the tabs move aside without sliding', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const beta = tab(page, /beta/);
+    await carryOver(page, tab(page, /alpha/), beta);
+
+    await expect
+      .poll(() => motion(beta))
+      .toEqual({
+        transform: expect.stringMatching(/^translate3d\(-\d/),
+        transition: '',
+      });
+    await page.mouse.up();
+    await expect.poll(() => tabNames(page)).toEqual(['beta', 'alpha']);
+  });
+
+  test('a tab can be reordered from the keyboard', async ({ desktop }) => {
+    const { page } = desktop;
+    await liftRightOver(page, /alpha/, /beta/);
+    await page.keyboard.press('Space');
+    await expect.poll(() => tabNames(page)).toEqual(['beta', 'alpha']);
+  });
+
+  test('Escape puts a keyboard-lifted tab back', async ({ desktop }) => {
+    const { page } = desktop;
+    await liftRightOver(page, /alpha/, /beta/);
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(() => motion(tab(page, /beta/)))
+      .toMatchObject({ transform: '' });
+    expect(await tabNames(page)).toEqual(['alpha', 'beta']);
   });
 });
