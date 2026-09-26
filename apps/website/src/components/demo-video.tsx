@@ -1,3 +1,19 @@
+'use client';
+
+import { useSyncExternalStore } from 'react';
+
+const REDUCED = '(prefers-reduced-motion: reduce)';
+
+function subscribeReduced(onChange: () => void) {
+  const query = window.matchMedia(REDUCED);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+/**
+ * A looping feature demo. Under prefers-reduced-motion it doesn't
+ * autoplay: the poster shows, with controls to play it.
+ */
 export function DemoVideo({
   name,
   alt,
@@ -7,10 +23,16 @@ export function DemoVideo({
   alt: string;
   className?: string;
 }) {
+  const reduced = useSyncExternalStore(
+    subscribeReduced,
+    () => window.matchMedia(REDUCED).matches,
+    () => false
+  );
   return (
     <video
       className={className}
-      autoPlay
+      autoPlay={!reduced}
+      controls={reduced}
       muted
       loop
       playsInline
