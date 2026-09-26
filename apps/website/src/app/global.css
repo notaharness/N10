@@ -815,3 +815,15 @@
 .dark .orchestra-panel-glow {
   opacity: 0.25;
 }
+
+/* Theme-specific images (see theme-image.tsx): follow the site's
+   `.dark` class, not prefers-color-scheme. */
+.n10-only-dark {
+  display: none;
+}
+.dark .n10-only-dark {
+  display: block;
+}
+.dark .n10-only-light {
+  display: none;
+}

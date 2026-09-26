@@ -1,3 +1,10 @@
+import { cn } from '@/lib/cn';
+
+/**
+ * A screenshot in the site's current theme. Both images render and CSS
+ * hides one by the `.dark` class next-themes sets, so the image follows
+ * the theme toggle rather than the OS setting.
+ */
 export function ThemeImage({
   name,
   alt,
@@ -8,16 +15,18 @@ export function ThemeImage({
   className?: string;
 }) {
   return (
-    <picture>
-      <source
-        media="(prefers-color-scheme: dark)"
-        srcSet={`/media/${name}.webp`}
+    <>
+      <img
+        src={`/media/${name}-light.webp`}
+        alt={alt}
+        className={cn(className, 'n10-only-light')}
       />
-      <source
-        media="(prefers-color-scheme: light)"
-        srcSet={`/media/${name}-light.webp`}
+      <img
+        src={`/media/${name}.webp`}
+        alt=""
+        aria-hidden
+        className={cn(className, 'n10-only-dark')}
       />
-      <img src={`/media/${name}.webp`} alt={alt} className={className} />
-    </picture>
+    </>
   );
 }
