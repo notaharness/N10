@@ -1,8 +1,8 @@
 /**
- * Real orchestrator replies from the scripted benchmark in
- * notaharness/plugins#8, quoted exactly: run #7 is the old guidance,
- * run #8 the new. Each side is a list because some replies are quoted
- * in parts. Add a pair by appending to `pairs`.
+ * Real orchestrator replies from the scripted benchmarks in
+ * notaharness/plugins#8 and #9, quoted exactly as those PRs record
+ * them, backticks included; backticked spans render as code. Each side
+ * is a list because some replies are quoted in parts.
  */
 const pairs = [
   {
@@ -25,7 +25,24 @@ const pairs = [
       "Decision: should I merge fix/parse-duration into main now so main's tests pass again? My default is yes.",
     ],
   },
+  {
+    moment: 'You come back after ignoring the updates',
+    before: [
+      'OK to merge `fix/parse-duration` and `feature/truncate` into main? Both are finished, tests pass, and they change different files.',
+    ],
+    after: [
+      '`truncate("hello world", 5)` returns "hell…"',
+      'should slugs be ASCII-only ("cafe-uber") or keep Unicode letters ("café-über")?',
+    ],
+  },
 ];
+
+/** Renders `backticked` spans as code, the rest as text. */
+function withCode(line: string) {
+  return line
+    .split('`')
+    .map((part, i) => (i % 2 === 1 ? <code key={part}>{part}</code> : part));
+}
 
 function Quotes({ label, lines }: { label: string; lines: string[] }) {
   return (
@@ -36,7 +53,7 @@ function Quotes({ label, lines }: { label: string; lines: string[] }) {
           key={line}
           className="border-fd-border mt-1.5 border-l-2 pl-3 text-sm"
         >
-          “{line}”
+          “{withCode(line)}”
         </blockquote>
       ))}
     </div>
@@ -61,14 +78,22 @@ export function OrchestraReplies() {
         ))}
       </div>
       <p className="text-fd-muted-foreground mt-3 text-xs text-pretty">
-        Replies from a small scripted benchmark in a toy repository, before and
+        Replies from small scripted benchmarks in a toy repository, before and
         after the guidance changed, quoted as written. One run of each, not a
-        statistical comparison. Details in{' '}
+        statistical comparison; the benchmark behind the last pair, where the
+        user ignored the updates, came out mixed. Details in{' '}
         <a
           href="https://github.com/notaharness/plugins/pull/8"
           className="hover:text-fd-foreground underline decoration-fd-border underline-offset-4 transition-colors"
         >
           notaharness/plugins#8
+        </a>{' '}
+        and{' '}
+        <a
+          href="https://github.com/notaharness/plugins/pull/9"
+          className="hover:text-fd-foreground underline decoration-fd-border underline-offset-4 transition-colors"
+        >
+          #9
         </a>
         .
       </p>
