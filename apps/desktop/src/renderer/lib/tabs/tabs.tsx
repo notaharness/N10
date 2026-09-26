@@ -31,6 +31,8 @@ export {
   foreignRepoOf,
   isForeignTab,
   itemTabId,
+  standsFor,
+  tabIdFor,
   terminalTabId,
 } from './tab-identity.js';
 

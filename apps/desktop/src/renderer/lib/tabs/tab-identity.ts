@@ -79,6 +79,46 @@ export function itemTabId(repo: string, itemKey: string): string {
   return `item:${repo.length}:${repo}:${itemKey}`;
 }
 
+/**
+ * Whether `tab` is the tab for `itemKey` in `repo`: it shows that item
+ * now, or it was opened on it (its id) and has since only been
+ * re-keyed — `branch:x` growing into `pr:n`. A tab that followed its
+ * worktree onto another branch no longer stands for the item it was
+ * opened on; that item, left behind in the sidebar, gets a tab of its
+ * own.
+ */
+export function standsFor(tab: Tab, repo: string, itemKey: string): boolean {
+  if (tab.kind !== 'item' || tab.repo !== repo) return false;
+  if (tab.itemKey === itemKey) return true;
+  const movedOff =
+    tab.originBranch !== undefined &&
+    tab.branch !== undefined &&
+    tab.branch !== tab.originBranch;
+  return !movedOff && tab.id === itemTabId(repo, itemKey);
+}
+
+/**
+ * The id opening `itemKey` in `repo` lands on: the tab already
+ * standing for it, or a new one. A new tab whose natural id is still
+ * held by a tab that moved off it takes a suffixed one — `~` cannot
+ * occur in a branch name or a PR key, so the suffix never collides with
+ * another item's id. The moved tab keeps its id: panes are keyed by it,
+ * and re-iding would remount its terminal.
+ */
+export function tabIdFor(
+  tabs: readonly Tab[],
+  repo: string,
+  itemKey: string
+): string {
+  const existing = tabs.find((t) => standsFor(t, repo, itemKey));
+  if (existing) return existing.id;
+  const base = itemTabId(repo, itemKey);
+  const taken = new Set(tabs.map((t) => t.id));
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}~${n}`;
+  return id;
+}
+
 /** The id of the tab for a terminal session. Session names are unique
  *  across directories and repositories, so the name alone is the key. */
 export function terminalTabId(name: string): string {

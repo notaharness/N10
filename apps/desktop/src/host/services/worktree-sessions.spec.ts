@@ -32,6 +32,7 @@ function tagged(
 }
 
 const key = (branch: string) => worktreeSessionKey(branch, REPO);
+const alive = () => true;
 
 describe('movedWorktreeSessions', () => {
   it('ties the session running in a switched worktree to its row by path', () => {
@@ -39,7 +40,8 @@ describe('movedWorktreeSessions', () => {
       [{ branch: 'other', path: WT }],
       REPO,
       [key('feature')],
-      () => [tagged('feature')]
+      () => [tagged('feature')],
+      alive
     );
     expect(moved.get(keyForWorktree({ branch: 'other', path: WT }, REPO)))
       .toEqual({ name: key('feature'), branch: 'feature' });
@@ -50,7 +52,8 @@ describe('movedWorktreeSessions', () => {
       [{ branch: 'other', path: WT }],
       REPO,
       [key('feature'), key('other')],
-      () => [tagged('feature'), tagged('other', WT, 2)]
+      () => [tagged('feature'), tagged('other', WT, 2)],
+      alive
     );
     expect(moved.size).toBe(0);
   });
@@ -60,7 +63,8 @@ describe('movedWorktreeSessions', () => {
       [{ branch: 'third', path: WT }],
       REPO,
       [key('feature'), key('other')],
-      () => [tagged('feature', WT, 1), tagged('other', WT, 5)]
+      () => [tagged('feature', WT, 1), tagged('other', WT, 5)],
+      alive
     );
     expect([...moved.values()]).toEqual([{ name: key('other'), branch: 'other' }]);
   });
@@ -70,7 +74,8 @@ describe('movedWorktreeSessions', () => {
       [{ branch: 'other', path: WT }],
       REPO,
       [key('elsewhere')],
-      () => [tagged('feature'), tagged('elsewhere', '/repo/.claude/worktrees/x')]
+      () => [tagged('feature'), tagged('elsewhere', '/repo/.claude/worktrees/x')],
+      alive
     );
     expect(moved.size).toBe(0);
   });
@@ -82,7 +87,21 @@ describe('movedWorktreeSessions', () => {
       [key('feature'), JSON.stringify(['terminal', 'repo-shell'])],
       () => {
         throw new Error('listed tmux');
-      }
+      },
+      alive
+    );
+    expect(moved.size).toBe(0);
+  });
+
+  it('does not ask tmux for a held session that has ended', () => {
+    const moved = movedWorktreeSessions(
+      [{ branch: 'other', path: WT }],
+      REPO,
+      [key('removed-worktree')],
+      () => {
+        throw new Error('listed tmux');
+      },
+      () => false
     );
     expect(moved.size).toBe(0);
   });

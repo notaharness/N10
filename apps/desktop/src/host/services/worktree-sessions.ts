@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs';
 import {
+  isSessionAlive,
   keyForWorktree,
   listOurSessions,
   registryNameOf,
@@ -37,6 +38,21 @@ function realPath(path: string): string {
   }
 }
 
+/** Held worktree sessions, grouped by the real path they run in. */
+function heldByPath(
+  sessions: readonly TaggedSession[],
+  held: ReadonlySet<string>
+): Map<string, TaggedSession[]> {
+  const byPath = new Map<string, TaggedSession[]>();
+  for (const s of sessions) {
+    if (s.type !== 'worktree' || !s.path) continue;
+    if (!held.has(registryNameOf(s))) continue;
+    const at = realPath(s.path);
+    byPath.set(at, [...(byPath.get(at) ?? []), s]);
+  }
+  return byPath;
+}
+
 /**
  * The held session in each worktree whose branch has moved on from the
  * one its session was created for, by the row's own key
@@ -45,29 +61,29 @@ function realPath(path: string): string {
  * one is the leftover from before the switch. Of several leftovers the
  * newest is the one last started there.
  *
- * tmux is only asked when a held session answers to no row's key —
- * the one sign a checkout has moved — so a sidebar poll with nothing
- * switched costs no fork.
+ * tmux is only asked when a live held session answers to no row's
+ * key — the one sign a checkout has moved — so a sidebar poll with
+ * nothing switched costs no fork. The registry keeps a session after it
+ * ends (its final frame stays viewable), and one whose worktree was
+ * removed would otherwise read as moved on every poll for the life of
+ * the app; an ended session runs in no worktree, so it is left out.
  */
 export function movedWorktreeSessions(
   worktrees: readonly Pick<WorktreeInfo, 'branch' | 'path'>[],
   repo: string,
   held: readonly string[],
-  sessions: () => readonly TaggedSession[] = listOurSessions
+  sessions: () => readonly TaggedSession[] = listOurSessions,
+  isAlive: (name: string) => boolean = isSessionAlive
 ): Map<string, MovedWorktreeSession> {
   const moved = new Map<string, MovedWorktreeSession>();
   const rowKeys = new Set(worktrees.map((wt) => keyForWorktree(wt, repo)));
   const heldNames = new Set(
-    held.filter((name) => sessionIdentity(name)?.kind === 'worktree')
+    held.filter(
+      (name) => sessionIdentity(name)?.kind === 'worktree' && isAlive(name)
+    )
   );
   if ([...heldNames].every((name) => rowKeys.has(name))) return moved;
-  const byPath = new Map<string, TaggedSession[]>();
-  for (const s of sessions()) {
-    if (s.type !== 'worktree' || !s.path) continue;
-    if (!heldNames.has(registryNameOf(s))) continue;
-    const at = realPath(s.path);
-    byPath.set(at, [...(byPath.get(at) ?? []), s]);
-  }
+  const byPath = heldByPath(sessions(), heldNames);
   for (const wt of worktrees) {
     const here = byPath.get(realPath(wt.path)) ?? [];
     if (here.length === 0 || here.some((s) => s.branch === wt.branch))

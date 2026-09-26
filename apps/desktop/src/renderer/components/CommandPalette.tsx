@@ -24,7 +24,7 @@ import {
   itemTitle,
 } from '../lib/sidebar/sidebar-model.js';
 import { requestLaunchMenu } from '../lib/sidebar/launch-menu-request.js';
-import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
+import { standsFor, tabIdFor, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
 import {
@@ -114,15 +114,10 @@ export function CommandPalette({
     // before opening it — `tabs.tabs` inside the callbacks below is the
     // array from this render, which does not include the tab we are
     // about to add.
-    const tabId = itemTabId(repo.cwd, key);
+    const tabId = tabIdFor(tabs.tabs, repo.cwd, key);
     const wasOpen =
       existing != null ||
-      tabs.tabs.some(
-        (t) =>
-          t.kind === 'item' &&
-          t.repo === repo.cwd &&
-          (t.itemKey === key || t.id === tabId)
-      );
+      tabs.tabs.some((t) => standsFor(t, repo.cwd, key));
     tabs.openItem(key);
     create.mutate(branch, {
       onSuccess: () => {
