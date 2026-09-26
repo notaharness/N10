@@ -1,0 +1,1058 @@
+diff --git a/apps/desktop/src/renderer/App.tsx b/apps/desktop/src/renderer/App.tsx
+index 155c6026..6b0d9b2a 100644
+--- a/apps/desktop/src/renderer/App.tsx
++++ b/apps/desktop/src/renderer/App.tsx
+@@ -1,128 +1,121 @@
+ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+-import { useCallback, type ReactNode } from 'react';
++import { useCallback } from 'react';
+ import { toast } from 'sonner';
+ import type { N10HostApi, RepoInfo } from '../host/contract.js';
+-import { FleetScreen } from './components/fleet/FleetScreen.js';
++import { RevokeMachineDialog } from './components/machines/RevokeMachineDialog.js';
+ import { Toaster } from './components/ui/sonner.js';
+ import { TooltipProvider } from './components/ui/tooltip.js';
+ import {
+   keys,
+   queryClient,
+   resetRepoScopedCache,
+ } from './lib/data/query-keys.js';
+ import { useRepoGate } from './lib/data/queries.js';
+ import { FleetProvider, useFleet } from './lib/fleet/fleet-context.js';
+ import { errorMessage } from './lib/utils.js';
+ import { RepoOpen } from './screens/RepoOpen.js';
+ import { Workspace } from './screens/Workspace.js';
+ import { TabsProvider } from './lib/tabs/tabs.js';
+ import { useRepoFollowsTabs } from './lib/tabs/use-repo-follows-tabs.js';
+ 
+ declare global {
+   interface Window {
+     n10: N10HostApi;
+   }
+ }
+ 
+ export function App() {
+   return (
+     <QueryClientProvider client={queryClient}>
+       <TooltipProvider>
+         {/* Above the gate on purpose: the tab strip spans repositories,
+             so switching repos must not unmount the tabs of the one being
+             left — their agents keep running and stay in the strip. */}
+         <TabsProvider>
+           <FleetProvider>
+-            <FleetOver>
+-              <Gate />
+-            </FleetOver>
++            <Gate />
++            <RevocationDialog />
+           </FleetProvider>
+         </TabsProvider>
+         <Toaster />
+       </TooltipProvider>
+     </QueryClientProvider>
+   );
+ }
+ 
+-/** Fleet over the screen underneath, which stays mounted but hidden
+- *  and inert: `visibility`, not unmounting, keeps its terminals sized. */
+-function FleetOver({ children }: { children: ReactNode }) {
+-  const { open } = useFleet();
+-  return (
+-    <>
+-      <div className={open ? 'invisible' : undefined} inert={open}>
+-        {children}
+-      </div>
+-      {open && <FleetScreen />}
+-    </>
+-  );
++/** The one fleet flow in a modal (beam-fleet-ux.md §1): above the
++ *  gate, so switching repositories or hiding the sidebar cannot drop a
++ *  revocation waiting on its passkey. */
++function RevocationDialog() {
++  const { target } = useFleet().revocation;
++  return target ? <RevokeMachineDialog machine={target} /> : null;
+ }
+ 
+ function Gate() {
+   const qc = useQueryClient();
+   const { data: repo, isPending } = useRepoGate();
+ 
+   /** Adopt a repository the host has already switched to. */
+   const adoptRepo = useCallback(
+     (r: RepoInfo) => {
+       resetRepoScopedCache(qc);
+       qc.setQueryData(keys.repo, r);
+     },
+     [qc]
+   );
+ 
+   /** Open a repository in place, reporting whether it worked. */
+   const openRepoAsync = useCallback(
+     async (cwd: string): Promise<boolean> => {
+       try {
+         adoptRepo(await window.n10.openRepo(cwd));
+         return true;
+       } catch (err: unknown) {
+         toast.error(errorMessage(err));
+         return false;
+       }
+     },
+     [adoptRepo]
+   );
+ 
+   const openRepo = useCallback(
+     (cwd: string) => void openRepoAsync(cwd),
+     [openRepoAsync]
+   );
+ 
+   // A tab from another repository is shown by opening that repository.
+   useRepoFollowsTabs(repo?.cwd ?? null, openRepoAsync);
+ 
+   const pickRepoFolder = useCallback(() => {
+     window.n10
+       .selectRepoDirectory()
+       .then((dir) => {
+         if (dir) openRepo(dir);
+       })
+       .catch((err: unknown) => toast.error(errorMessage(err)));
+   }, [openRepo]);
+ 
+   if (isPending) {
+     return (
+       <main className="flex h-screen items-center justify-center bg-background">
+         <p className="animate-pulse text-sm text-muted-foreground">
+           Connecting to host…
+         </p>
+       </main>
+     );
+   }
+ 
+   if (!repo) {
+     return <RepoOpen onOpened={adoptRepo} />;
+   }
+ 
+   return (
+     <Workspace
+       key={repo.cwd}
+       repo={repo}
+       onSwitchRepo={() => qc.setQueryData(keys.repo, null)}
+       onOpenRepo={openRepo}
+       onPickRepoFolder={pickRepoFolder}
+     />
+   );
+ }
+diff --git a/apps/desktop/src/renderer/components/StatusBar.tsx b/apps/desktop/src/renderer/components/StatusBar.tsx
+index 927c41b3..7ab1223b 100644
+--- a/apps/desktop/src/renderer/components/StatusBar.tsx
++++ b/apps/desktop/src/renderer/components/StatusBar.tsx
+@@ -1,233 +1,220 @@
+ import {
+   AlertCircleIcon,
+   CloudOffIcon,
+   GitBranchIcon,
+   Loader2Icon,
+   MonitorIcon,
+   RefreshCwIcon,
+   TerminalIcon,
+ } from 'lucide-react';
+ import { useEffect, useState } from 'react';
+ import type {
+   MachineView,
+   SidebarItem,
+   SyncState,
+ } from '../../host/contract.js';
+ import { useRepo } from '../lib/repo-context.js';
+ import { useMachines, useSyncState, useVersion } from '../lib/data/queries.js';
+ import { useFleet } from '../lib/fleet/fleet-context.js';
+ import { useRefreshRemote } from '../lib/data/mutations.js';
+-import {
+-  hasPeerMachines,
+-  isFleetMember,
+-} from '../lib/machines/machine-model.js';
++import { machinesSummary } from '../lib/machines/machine-model.js';
+ import { itemRunning } from '../lib/sidebar/sidebar-model.js';
+ import { basename, cn, relativeTime } from '../lib/utils.js';
+ import { Tip } from './ui/tooltip.js';
+ 
+ /**
+  * Bottom status strip: repo, provider sync state, running agent count,
+  * build stamp. Every segment is a quiet button; clicking sync refreshes.
+  */
+ export function StatusBar({
+   items,
+   onOpenSettings,
+ }: {
+   items: SidebarItem[];
+   onOpenSettings: () => void;
+ }) {
+   const { repo } = useRepo();
+   const sync = useSyncState(repo.cwd);
+   const refresh = useRefreshRemote(repo.cwd);
+   const version = useVersion();
+   const machines = useMachines();
+   const fleet = useFleet();
+   const running = items.filter(itemRunning).length;
+ 
+   // Re-render every 15s so "synced Xm ago" stays honest.
+   const [, tick] = useState(0);
+   useEffect(() => {
+     const id = setInterval(() => tick((t) => t + 1), 15_000);
+     return () => clearInterval(id);
+   }, []);
+ 
+   const s = sync.data;
+ 
+   return (
+     <footer className="flex h-[22px] shrink-0 select-none items-center border-t border-border bg-statusbar px-2 text-xs text-statusbar-foreground">
+       <Segment label={repo.cwd}>
+         <GitBranchIcon className="size-3" />
+         <span className="font-medium">{basename(repo.cwd)}</span>
+       </Segment>
+ 
+       {s && (
+         <ProviderSegment
+           sync={s}
+           refreshing={refresh.isPending}
+           onRefresh={() => refresh.mutate()}
+           onOpenSettings={onOpenSettings}
+         />
+       )}
+ 
+       <div className="flex-1" />
+ 
+-      <MachinesSegment machines={machines.data} onOpenFleet={fleet.show} />
++      <MachinesSegment
++        machines={machines.data}
++        onOpenFleet={fleet.section.reveal}
++      />
+ 
+       {running > 0 && (
+         <Segment label={`${running} agent${running === 1 ? '' : 's'} running`}>
+           <TerminalIcon className="size-3 text-success" />
+           {running} running
+         </Segment>
+       )}
+       <Segment label="n10 build">
+         <span className="text-muted-foreground">
+           v{version.data?.app ?? '…'}
+         </span>
+       </Segment>
+     </footer>
+   );
+ }
+ 
+ /**
+  * The provider's state, in three: none configured, one configured but
+  * missing credentials, or a working one reporting its last sync. Only
+  * the last is a refresh button — the other two open Settings, which is
+  * where the thing they're complaining about gets fixed.
+  */
+ function ProviderSegment({
+   sync: s,
+   refreshing,
+   onRefresh,
+   onOpenSettings,
+ }: {
+   sync: SyncState;
+   refreshing: boolean;
+   onRefresh: () => void;
+   onOpenSettings: () => void;
+ }) {
+   if (!s.providerId) {
+     return (
+       <Segment
+         label="No VCS provider configured — open Settings"
+         onClick={onOpenSettings}
+       >
+         <CloudOffIcon className="size-3" />
+         No provider
+       </Segment>
+     );
+   }
+   if (!s.providerConfigured) {
+     return (
+       <Segment
+         label={`${providerName(
+           s.providerId
+         )} needs credentials — open Settings`}
+         onClick={onOpenSettings}
+         className="text-warning"
+       >
+         <AlertCircleIcon className="size-3" />
+         {providerName(s.providerId)} not configured
+       </Segment>
+     );
+   }
+   const syncing = refreshing || s.remoteSyncing;
+   return (
+     <Segment
+       label={
+         s.remoteError
+           ? `Last sync failed: ${s.remoteError}`
+           : `Refresh pull requests (auto every ${Math.round(
+               s.remoteIntervalMs / 1000
+             )}s)`
+       }
+       onClick={onRefresh}
+       className={cn(s.remoteError && 'text-destructive')}
+     >
+       {syncing ? (
+         <Loader2Icon className="size-3 animate-spin" />
+       ) : s.remoteError ? (
+         <AlertCircleIcon className="size-3" />
+       ) : (
+         <RefreshCwIcon className="size-3" />
+       )}
+       {providerName(s.providerId)}
+       <span className="text-muted-foreground">
+         {syncing
+           ? 'syncing…'
+           : s.lastRemoteSyncAt
+           ? `synced ${relativeTime(s.lastRemoteSyncAt)}`
+           : 'not synced'}
+       </span>
+     </Segment>
+   );
+ }
+ 
+-/**
+- * `3 machines`, or `3 machines · 1 offline` / `3 machines · 2 queued`
+- * when something needs attention (offline takes priority over mail
+- * waiting). Hidden entirely with only this machine (D8): a user who
+- * never joins a fleet sees today's app.
+- */
++/** The fleet's size and what needs attention, hidden entirely with
++ *  only this machine (D8): a user who never joins a fleet sees
++ *  today's app. */
+ function MachinesSegment({
+   machines,
+   onOpenFleet,
+ }: {
+   machines: MachineView[] | undefined;
+   onOpenFleet: () => void;
+ }) {
+-  if (!hasPeerMachines(machines ?? [])) return null;
+-
+-  const members = (machines ?? []).filter(isFleetMember);
+-  const offline = members.filter((m) => m.state === 'offline').length;
+-  const queued = members.reduce((sum, m) => sum + m.queued, 0);
+-  const count = members.length + 1; // + this machine
+-
+-  let suffix = '';
+-  if (offline > 0) suffix = ` · ${offline} offline`;
+-  else if (queued > 0) suffix = ` · ${queued} queued`;
+-
++  const summary = machinesSummary(machines ?? []);
++  if (!summary) return null;
+   return (
+     <Segment
+-      label="Open Fleet"
++      label="Show Fleet"
+       onClick={onOpenFleet}
+-      className={offline > 0 ? 'text-warning' : undefined}
++      className={summary.offline ? 'text-warning' : undefined}
+     >
+       <MonitorIcon className="size-3" />
+-      {count} machine{count === 1 ? '' : 's'}
+-      {suffix}
++      {summary.text}
+     </Segment>
+   );
+ }
+ 
+ function providerName(id: string): string {
+   if (id === 'github') return 'GitHub';
+   if (id === 'azure-devops') return 'Azure DevOps';
+   return id;
+ }
+ 
+ function Segment({
+   label,
+   onClick,
+   className,
+   children,
+ }: {
+   label: string;
+   onClick?: () => void;
+   className?: string;
+   children: React.ReactNode;
+ }) {
+   const inner = (
+     <span
+       role={onClick ? 'button' : undefined}
+       onClick={onClick}
+       className={cn(
+         'flex h-full items-center gap-1.5 px-1.5 transition-colors',
+         onClick && 'cursor-pointer hover:bg-accent',
+         className
+       )}
+     >
+       {children}
+     </span>
+   );
+   return <Tip label={label}>{inner}</Tip>;
+ }
+diff --git a/apps/desktop/src/renderer/components/fleet/AddMachinePanel.tsx b/apps/desktop/src/renderer/components/fleet/AddMachinePanel.tsx
+new file mode 100644
+index 00000000..c6b750c2
+--- /dev/null
++++ b/apps/desktop/src/renderer/components/fleet/AddMachinePanel.tsx
+@@ -0,0 +1,74 @@
++import { CopyIcon } from 'lucide-react';
++import { copyText } from '../../lib/copy-text.js';
++import { useFocusOnMount } from '../../lib/fleet/use-focus-on-mount.js';
++import { Button } from '../ui/button.js';
++
++const JOIN_COMMAND = 'beam join --label buildbox';
++
++/**
++ * How another machine joins this fleet (beam-fleet-ux.md §2): from its
++ * own n10 Desktop, or with beam on a headless machine. Nothing runs
++ * here; this machine is already enrolled, so the instructions sit in
++ * the Fleet section beside the rows they will add to.
++ */
++export function AddMachinePanel({
++  fingerprint,
++  onClose,
++}: {
++  /** This fleet's fingerprint, grouped. */
++  fingerprint: string;
++  onClose: () => void;
++}) {
++  const heading = useFocusOnMount<HTMLHeadingElement>();
++  return (
++    <div className="space-y-3 text-sm">
++      <div>
++        <h3 ref={heading} tabIndex={-1} className="font-medium outline-none">
++          Add a machine
++        </h3>
++        <p className="text-muted-foreground">
++          Join it from that machine, with this fleet’s passkey.
++        </p>
++      </div>
++      <section className="space-y-1">
++        <h4 className="font-medium">Another desktop</h4>
++        <p>
++          Open n10 Desktop on the machine you want to add. In the sidebar’s
++          Fleet section choose Join an existing fleet, then use this fleet’s
++          passkey. Compare its fleet fingerprint with {fingerprint}.
++        </p>
++      </section>
++      <section className="space-y-2">
++        <h4 className="font-medium">Headless machine</h4>
++        <p>On the machine you want to add, run:</p>
++        <div className="flex items-center gap-1">
++          <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs select-all">
++            {JOIN_COMMAND}
++          </code>
++          <Button
++            size="icon-sm"
++            variant="ghost"
++            aria-label="Copy command"
++            onClick={() => copyText(JOIN_COMMAND, 'Command copied')}
++          >
++            <CopyIcon />
++          </Button>
++        </div>
++        <p>
++          Use your installed beam CLI. In an interactive terminal it draws a
++          braille QR code and prints the URL below it. Over SSH it does not open
++          a browser. Scan the QR with a compatible phone or open the printed URL
++          on a device with your fleet passkey.
++        </p>
++      </section>
++      <p className="text-muted-foreground">
++        Compare the page’s action, machine name and machine fingerprint with the
++        command you ran. After joining, run beam status on that machine and
++        compare its fleet fingerprint with {fingerprint}.
++      </p>
++      <Button size="sm" onClick={onClose}>
++        Done
++      </Button>
++    </div>
++  );
++}
+diff --git a/apps/desktop/src/renderer/components/fleet/FleetScreen.tsx b/apps/desktop/src/renderer/components/fleet/FleetScreen.tsx
+deleted file mode 100644
+index 2493b133..00000000
+--- a/apps/desktop/src/renderer/components/fleet/FleetScreen.tsx
++++ /dev/null
+@@ -1,37 +0,0 @@
+-import { ArrowLeftIcon } from 'lucide-react';
+-import { useFleet } from '../../lib/fleet/fleet-context.js';
+-import { useFocusOnMount } from '../../lib/fleet/use-focus-on-mount.js';
+-import { TitleBar } from '../TitleBar.js';
+-import { Button } from '../ui/button.js';
+-import { FleetOverview } from './FleetOverview.js';
+-
+-/** Fleet, full height over the screen underneath (`FleetOver`). */
+-export function FleetScreen() {
+-  const { close } = useFleet();
+-  const heading = useFocusOnMount<HTMLHeadingElement>();
+-  return (
+-    <div className="fixed inset-0 z-30 flex flex-col bg-background text-foreground">
+-      <TitleBar repo={null} onSwitchRepo={() => undefined} />
+-      <section aria-label="Fleet" className="min-h-0 flex-1 overflow-y-auto">
+-        <div className="mx-auto max-w-3xl px-8 py-6">
+-          <Button variant="ghost" size="sm" className="-ml-2" onClick={close}>
+-            <ArrowLeftIcon />
+-            Back to workspace
+-          </Button>
+-          <h1
+-            ref={heading}
+-            tabIndex={-1}
+-            className="mt-3 text-xl font-semibold outline-none"
+-          >
+-            Fleet
+-          </h1>
+-          <p className="mt-1 mb-6 text-sm text-muted-foreground">
+-            Connect your machines with beam. Run shells, commands and agent
+-            messages between them.
+-          </p>
+-          <FleetOverview />
+-        </div>
+-      </section>
+-    </div>
+-  );
+-}
+diff --git a/apps/desktop/src/renderer/components/fleet/FleetSection.tsx b/apps/desktop/src/renderer/components/fleet/FleetSection.tsx
+new file mode 100644
+index 00000000..b1a9128a
+--- /dev/null
++++ b/apps/desktop/src/renderer/components/fleet/FleetSection.tsx
+@@ -0,0 +1,96 @@
++import { ChevronRightIcon } from 'lucide-react';
++import { useEffect, useRef } from 'react';
++import { useBeamStatus, useMachines } from '../../lib/data/queries.js';
++import { useFleet } from '../../lib/fleet/fleet-context.js';
++import {
++  fleetSectionSummary,
++  type SummaryTone,
++} from '../../lib/fleet/section-summary.js';
++import { cn } from '../../lib/utils.js';
++import {
++  Collapsible,
++  CollapsibleContent,
++  CollapsibleTrigger,
++} from '../ui/collapsible.js';
++import { FleetPanel } from './FleetPanel.js';
++
++const TONE_CLASS: Record<SummaryTone, string> = {
++  muted: 'text-muted-foreground',
++  warning: 'text-warning',
++  active: 'text-primary',
++};
++
++/** Whether a ceremony is holding a passkey link for the owner. */
++function useAwaitingPasskey(): boolean {
++  const { enrolment, revocation } = useFleet();
++  return [enrolment.ceremony, revocation.ceremony].some(
++    (c) => c.running && !!c.view?.passkeyUrl
++  );
++}
++
++/**
++ * Fleet in the sidebar (beam-fleet-ux.md §1): a collapsible section
++ * whose header keeps the fleet's state in view, and whose body holds
++ * the machines, the first-run and pairing steps, and the recovery
++ * actions. Its state lives in `FleetProvider`, so the Workspace's
++ * sidebar and the repository picker's show the same section.
++ */
++export function FleetSection({ className }: { className?: string }) {
++  const { section } = useFleet();
++  const { expanded, setExpanded, revealSeq, takeRevealFocus } = section;
++  const beam = useBeamStatus().data;
++  const machines = useMachines().data;
++  const summary = fleetSectionSummary({
++    beam,
++    machines,
++    awaitingPasskey: useAwaitingPasskey(),
++  });
++  const trigger = useRef<HTMLButtonElement>(null);
++  useEffect(() => {
++    if (!takeRevealFocus()) return;
++    trigger.current?.scrollIntoView({ block: 'nearest' });
++    trigger.current?.focus();
++  }, [revealSeq, takeRevealFocus]);
++
++  return (
++    <Collapsible
++      open={expanded}
++      onOpenChange={setExpanded}
++      className={cn('flex min-h-0 flex-col', className)}
++    >
++      <CollapsibleTrigger asChild>
++        <button
++          ref={trigger}
++          type="button"
++          className="flex h-[22px] w-full shrink-0 items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
++        >
++          <ChevronRightIcon
++            className={cn(
++              'size-3.5 transition-transform',
++              expanded && 'rotate-90'
++            )}
++          />
++          <span>Fleet</span>
++          {summary && (
++            <span
++              className={cn(
++                'ml-auto mr-1 truncate font-medium normal-case tracking-normal',
++                TONE_CLASS[summary.tone]
++              )}
++            >
++              {summary.text}
++            </span>
++          )}
++        </button>
++      </CollapsibleTrigger>
++      <CollapsibleContent asChild>
++        <section
++          aria-label="Fleet"
++          className="min-h-0 overflow-y-auto px-3 pt-1 pb-3"
++        >
++          <FleetPanel />
++        </section>
++      </CollapsibleContent>
++    </Collapsible>
++  );
++}
+diff --git a/apps/desktop/src/renderer/components/fleet/ResetFleetPanel.tsx b/apps/desktop/src/renderer/components/fleet/ResetFleetPanel.tsx
+new file mode 100644
+index 00000000..bf1f5d7d
+--- /dev/null
++++ b/apps/desktop/src/renderer/components/fleet/ResetFleetPanel.tsx
+@@ -0,0 +1,88 @@
++import { failureCopy } from '../../lib/fleet/ceremony-errors.js';
++import { useFleet } from '../../lib/fleet/fleet-context.js';
++import { useFocusOnMount } from '../../lib/fleet/use-focus-on-mount.js';
++import { Button } from '../ui/button.js';
++import { Input } from '../ui/input.js';
++import { Label } from '../ui/label.js';
++
++/**
++ * Reset fleet on this machine (beam-fleet-ux.md §3): beam's
++ * `fleet.reset`, behind the word `reset` typed exactly. Inline in the
++ * Fleet section: it has no passkey step, and the typed word already
++ * asks for the owner's attention. A refusal keeps what was typed.
++ */
++export function ResetFleetPanel() {
++  const { typed, busy, outcome, close, setTyped, run } = useFleet().reset;
++  const heading = useFocusOnMount<HTMLHeadingElement>();
++  return (
++    <div className="space-y-3 text-sm">
++      <h3 ref={heading} tabIndex={-1} className="font-medium outline-none">
++        Reset fleet on this machine?
++      </h3>
++      <p className="text-muted-foreground">
++        Disconnect this machine and remove its local fleet membership, known
++        peers, revocations and pending directory writes. Queued messages to
++        those peers are removed. Its machine identity is kept. Other machines
++        and the fleet passkey are not reset or revoked.
++      </p>
++      {outcome?.ok ? (
++        <>
++          <p role="status">
++            Fleet reset on this machine. Create a fleet or join one to continue.
++          </p>
++          <Button size="sm" onClick={close}>
++            Close
++          </Button>
++        </>
++      ) : (
++        <form
++          className="grid gap-3"
++          onSubmit={(e) => {
++            e.preventDefault();
++            run();
++          }}
++        >
++          <p className="text-muted-foreground">
++            Existing connections may still work, but adding or revoking machines
++            needs the original passkey. Resetting here does not recover it.
++          </p>
++          <div className="grid gap-1.5">
++            <Label htmlFor="fleet-reset-confirm">Type reset to confirm</Label>
++            <Input
++              id="fleet-reset-confirm"
++              value={typed}
++              autoComplete="off"
++              disabled={busy}
++              onChange={(e) => setTyped(e.target.value)}
++            />
++          </div>
++          {outcome && (
++            <p role="alert" className="text-destructive">
++              Could not reset this machine’s fleet.{' '}
++              {outcome.detail ?? failureCopy(outcome.code).explanation}
++            </p>
++          )}
++          <div className="flex flex-wrap gap-2">
++            <Button
++              type="submit"
++              size="sm"
++              variant="destructive"
++              disabled={busy || typed !== 'reset'}
++            >
++              {busy ? 'Resetting fleet…' : 'Reset fleet'}
++            </Button>
++            <Button
++              type="button"
++              size="sm"
++              variant="ghost"
++              disabled={busy}
++              onClick={close}
++            >
++              Cancel
++            </Button>
++          </div>
++        </form>
++      )}
++    </div>
++  );
++}
+diff --git a/apps/desktop/src/renderer/components/sidebar/Sidebar.tsx b/apps/desktop/src/renderer/components/sidebar/Sidebar.tsx
+index 1515f89b..be6876ff 100644
+--- a/apps/desktop/src/renderer/components/sidebar/Sidebar.tsx
++++ b/apps/desktop/src/renderer/components/sidebar/Sidebar.tsx
+@@ -1,200 +1,193 @@
+ import {
+   ChevronRightIcon,
+-  NetworkIcon,
+   PanelLeftCloseIcon,
+   PlusIcon,
+   RefreshCwIcon,
+ } from 'lucide-react';
+ import { useState } from 'react';
+ import type { SidebarItem } from '../../../host/contract.js';
+ import { useRepo } from '../../lib/repo-context.js';
+ import { useRefreshRemote } from '../../lib/data/mutations.js';
+-import { useFleet } from '../../lib/fleet/fleet-context.js';
+ import {
+   groupSections,
+   itemKey,
+   type SectionKey,
+ } from '../../lib/sidebar/sidebar-model.js';
+ import { useRepoTabs } from '../../lib/tabs/tabs.js';
+ import { basename, cn } from '../../lib/utils.js';
++import { FleetSection } from '../fleet/FleetSection.js';
+ import { Button } from '../ui/button.js';
+ import {
+   Collapsible,
+   CollapsibleContent,
+   CollapsibleTrigger,
+ } from '../ui/collapsible.js';
+ import { ScrollArea } from '../ui/scroll-area.js';
+ import { Skeleton } from '../ui/skeleton.js';
+ import { Tip } from '../ui/tooltip.js';
+ import { SidebarRow } from './SidebarRow.js';
+ 
+ /**
+  * Explorer-style sidebar: the TUI's unified list (worktrees → PRs →
+- * review buckets) as collapsible sections. Single-click previews an
+- * item in the editor area, double-click pins it.
++ * review buckets) as collapsible sections, and below them the fleet.
++ * Single-click previews an item in the editor area, double-click pins
++ * it.
+  */
+ export function Sidebar({
+   items,
+   loading,
+   updatedAt,
+   error,
+   onNewWorktree,
+   onCollapse,
+ }: {
+   items: SidebarItem[];
+   loading: boolean;
+   /** When the rows last came back from the host — for a test to tell a
+    *  poll that landed from one that has not, since a poll answered
+    *  about another repository changes nothing else on screen. */
+   updatedAt?: number;
+   error: string | null;
+   onNewWorktree: () => void;
+   onCollapse: () => void;
+ }) {
+   const { repo } = useRepo();
+   const tabs = useRepoTabs();
+   const refresh = useRefreshRemote(repo.cwd);
+-  const fleet = useFleet();
+   const sections = groupSections(items);
+   const [collapsed, setCollapsed] = useState<
+     Partial<Record<SectionKey, boolean>>
+   >({});
+ 
+   // Only this repository's active tab highlights a row here. Another
+   // repo's tab can be the active one (the strip spans repos), and its
+   // key would light up a same-named row that has nothing to do with it.
+   const activeItemKey = (() => {
+     const t = tabs.tabs.find((x) => x.id === tabs.activeId);
+     return t?.kind === 'item' && t.repo === repo.cwd ? t.itemKey : null;
+   })();
+ 
+   return (
+     <aside
+       className="flex h-full min-w-0 flex-col bg-sidebar text-sidebar-foreground"
+       data-updated-at={updatedAt}
+     >
+       <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
+         <span className="truncate text-base font-semibold">
+           {basename(repo.cwd)}
+         </span>
+         <div className="flex items-center">
+           <Tip label="New worktree / check out branch">
+             <Button
+               variant="ghost"
+               size="icon-sm"
+               onClick={onNewWorktree}
+               aria-label="New worktree"
+             >
+               <PlusIcon />
+             </Button>
+           </Tip>
+           <Tip label="Refresh pull requests">
+             <Button
+               variant="ghost"
+               size="icon-sm"
+               onClick={() => refresh.mutate()}
+               aria-label="Refresh"
+             >
+               <RefreshCwIcon
+                 className={cn(refresh.isPending && 'animate-spin')}
+               />
+             </Button>
+           </Tip>
+           <Tip label="Hide sidebar (Ctrl B)">
+             <Button
+               variant="ghost"
+               size="icon-sm"
+               onClick={onCollapse}
+               aria-label="Hide sidebar"
+             >
+               <PanelLeftCloseIcon />
+             </Button>
+           </Tip>
+         </div>
+       </div>
+ 
+       <ScrollArea className="min-h-0 flex-1">
+         {loading && items.length === 0 && (
+           <div className="space-y-2 px-3 py-2">
+             <Skeleton className="h-3 w-24" />
+             <Skeleton className="h-6 w-full" />
+             <Skeleton className="h-6 w-5/6" />
+             <Skeleton className="h-6 w-4/6" />
+           </div>
+         )}
+         {!loading && items.length === 0 && !error && (
+           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+             <p>No worktrees or pull requests yet.</p>
+             <Button
+               variant="outline"
+               size="sm"
+               className="mt-3"
+               onClick={onNewWorktree}
+             >
+               <PlusIcon /> New worktree
+             </Button>
+           </div>
+         )}
+         {sections.map((section) => {
+           const isOpen = !collapsed[section.key];
+           return (
+             <Collapsible
+               key={section.key}
+               open={isOpen}
+               onOpenChange={(o) =>
+                 setCollapsed((c) => ({ ...c, [section.key]: !o }))
+               }
+             >
+               <CollapsibleTrigger asChild>
+                 <button
+                   type="button"
+                   className="flex h-[22px] w-full items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                 >
+                   <ChevronRightIcon
+                     className={cn(
+                       'size-3.5 transition-transform',
+                       isOpen && 'rotate-90'
+                     )}
+                   />
+                   <span className="truncate">{section.label}</span>
+                   <span className="ml-auto mr-1 rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                     {section.items.length}
+                   </span>
+                 </button>
+               </CollapsibleTrigger>
+               <CollapsibleContent>
+                 {section.items.map((item) => (
+                   <SidebarRow
+                     key={itemKey(item)}
+                     item={item}
+                     active={itemKey(item) === activeItemKey}
+                     onOpen={(preview) =>
+                       tabs.openItem(itemKey(item), { preview })
+                     }
+                   />
+                 ))}
+               </CollapsibleContent>
+             </Collapsible>
+           );
+         })}
+       </ScrollArea>
+ 
+       {error && (
+         <div className="border-t border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+           {error}
+         </div>
+       )}
+-      <div className="shrink-0 border-t border-border p-1">
+-        <Button
+-          variant="ghost"
+-          size="sm"
+-          className="w-full justify-start"
+-          onClick={fleet.show}
+-        >
+-          <NetworkIcon />
+-          Fleet
+-        </Button>
++      {/* Fleet takes what it needs up to most of the height, scrolling
++          past that, so a passkey step never pushes the rows away. */}
++      <div className="flex max-h-[70%] min-h-0 shrink-0 flex-col border-t border-border">
++        <FleetSection />
+       </div>
+     </aside>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/lib/fleet/section-summary.spec.ts b/apps/desktop/src/renderer/lib/fleet/section-summary.spec.ts
+new file mode 100644
+index 00000000..5415588e
+--- /dev/null
++++ b/apps/desktop/src/renderer/lib/fleet/section-summary.spec.ts
+@@ -0,0 +1,89 @@
++import { describe, expect, it } from 'vitest';
++import type { BeamStatus, MachineView } from '../../../host/contract.js';
++import { fleetSectionSummary } from './section-summary.js';
++
++const ready: BeamStatus = {
++  state: 'ready',
++  detail: null,
++  enrolled: true,
++  fleetId: 'f'.repeat(64),
++};
++
++function machine(over: Partial<MachineView>): MachineView {
++  return {
++    peerId: 'a'.repeat(32),
++    label: 'workbox',
++    isLocal: false,
++    state: 'connected',
++    path: 'direct',
++    lastSeenAt: null,
++    queued: 0,
++    grant: 'all',
++    inboundWaiting: [],
++    inboundRefused: [],
++    ...over,
++  };
++}
++
++const self = machine({ peerId: 'b'.repeat(32), isLocal: true });
++
++describe('fleetSectionSummary', () => {
++  it('puts a waiting passkey step first, whatever beam says', () => {
++    expect(
++      fleetSectionSummary({
++        beam: { ...ready, enrolled: false },
++        machines: [self],
++        awaitingPasskey: true,
++      })
++    ).toEqual({ text: 'Passkey step', tone: 'active' });
++  });
++
++  it('says nothing until beam can answer', () => {
++    for (const state of ['connecting', 'starting'] as const) {
++      expect(
++        fleetSectionSummary({
++          beam: { ...ready, state },
++          machines: undefined,
++          awaitingPasskey: false,
++        })
++      ).toBeNull();
++    }
++  });
++
++  it('tells an unenrolled machine from one alone in its fleet', () => {
++    expect(
++      fleetSectionSummary({
++        beam: { ...ready, enrolled: false, fleetId: null },
++        machines: [self],
++        awaitingPasskey: false,
++      })?.text
++    ).toBe('Not set up');
++    expect(
++      fleetSectionSummary({
++        beam: ready,
++        machines: [self],
++        awaitingPasskey: false,
++      })?.text
++    ).toBe('This machine');
++  });
++
++  it('warns when a member is offline', () => {
++    expect(
++      fleetSectionSummary({
++        beam: ready,
++        machines: [self, machine({ state: 'offline' })],
++        awaitingPasskey: false,
++      })
++    ).toEqual({ text: '2 machines · 1 offline', tone: 'warning' });
++  });
++
++  it('warns when beam is unavailable', () => {
++    expect(
++      fleetSectionSummary({
++        beam: { ...ready, state: 'unavailable' },
++        machines: undefined,
++        awaitingPasskey: false,
++      })?.tone
++    ).toBe('warning');
++  });
++});
+diff --git a/apps/desktop/src/renderer/lib/fleet/section-summary.ts b/apps/desktop/src/renderer/lib/fleet/section-summary.ts
+new file mode 100644
+index 00000000..1f629d3b
+--- /dev/null
++++ b/apps/desktop/src/renderer/lib/fleet/section-summary.ts
+@@ -0,0 +1,31 @@
++import type { BeamStatus, MachineView } from '../../../host/contract.js';
++import { machinesSummary } from '../machines/machine-model.js';
++
++export type SummaryTone = 'muted' | 'warning' | 'active';
++
++/**
++ * The Fleet section header's one-line state, readable while the
++ * section is collapsed: a passkey step waiting on the owner comes
++ * first, since nothing else on screen says a request is outstanding.
++ */
++export function fleetSectionSummary({
++  beam,
++  machines,
++  awaitingPasskey,
++}: {
++  beam: BeamStatus | undefined;
++  machines: readonly MachineView[] | undefined;
++  awaitingPasskey: boolean;
++}): { text: string; tone: SummaryTone } | null {
++  if (awaitingPasskey) return { text: 'Passkey step', tone: 'active' };
++  if (!beam || beam.state === 'connecting' || beam.state === 'starting') {
++    return null;
++  }
++  if (beam.state === 'unavailable') {
++    return { text: 'Unavailable', tone: 'warning' };
++  }
++  if (!beam.enrolled) return { text: 'Not set up', tone: 'muted' };
++  const summary = machinesSummary(machines ?? []);
++  if (!summary) return { text: 'This machine', tone: 'muted' };
++  return { text: summary.text, tone: summary.offline ? 'warning' : 'muted' };
++}

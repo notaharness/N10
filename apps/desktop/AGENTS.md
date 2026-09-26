@@ -57,9 +57,10 @@ Every rule below has its reasoning in `docs/decisions.md`.
 
 ## Renderer
 
-- Native OS elements where they exist: application menu (`main/menu.ts`),
-  context menus (`showContextMenu` → `Menu.popup`), native dialogs, optional
-  native frame. Web-rendered menus only for what the OS cannot express.
+- Native OS elements where they exist: application menu
+  (`host/menu-template.ts`, also built by the web demo), context menus
+  (`showContextMenu` → `Menu.popup`), native dialogs, optional native frame.
+  Web-rendered menus only for what the OS cannot express.
 - Tabs have exactly one reconciliation point: `Workspace` hands the item list
   to `sync-items` in `lib/tabs/tabs-model.ts`, a pure reducer that re-keys
   stale tabs, opens a tab per newly running agent (`autoOpened`,

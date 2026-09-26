@@ -74,6 +74,9 @@ out
 .wrangler
 next-env.d.ts
 apps/website/src/generated
+# The desktop renderer built for the landing demo (desktop:build-demo),
+# copied in by website:sync-demo.
+apps/website/public/desktop-demo
 
 # Intermediate recordings from the README capture script. The published
 # GIFs and stills in docs/media/ are committed; the multi-megabyte

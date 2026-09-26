@@ -124,6 +124,31 @@
           }
         }
       },
+      "build-demo": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": [
+          "production",
+          "^production",
+          {
+            "externalDependencies": [
+              "vite",
+              "@vitejs/plugin-react",
+              "@tailwindcss/vite"
+            ]
+          }
+        ],
+        "outputs": [
+          "{workspaceRoot}/apps/desktop/dist/demo"
+        ],
+        "options": {
+          "command": "npx vite build --config vite.demo.config.ts",
+          "cwd": "apps/desktop",
+          "env": {
+            "NODE_ENV": "production"
+          }
+        }
+      },
       "build": {
         "executor": "nx:noop",
         "dependsOn": [

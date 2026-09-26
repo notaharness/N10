@@ -22,6 +22,9 @@
       "type:app",
       "scope:website"
     ],
+    "implicitDependencies": [
+      "desktop"
+    ],
     "targets": {
       "sync-content": {
         "executor": "nx:run-commands",
@@ -52,7 +55,8 @@
         "executor": "nx:run-commands",
         "cache": true,
         "dependsOn": [
-          "sync-content"
+          "sync-content",
+          "sync-demo"
         ],
         "inputs": [
           "production",
@@ -67,6 +71,10 @@
               "react",
               "react-dom"
             ]
+          },
+          {
+            "dependentTasksOutputFiles": "**/*",
+            "transitive": true
           }
         ],
         "outputs": [
@@ -101,7 +109,8 @@
         "executor": "nx:run-commands",
         "continuous": true,
         "dependsOn": [
-          "sync-content"
+          "sync-content",
+          "sync-demo"
         ],
         "options": {
           "command": "next dev --port 3100",
@@ -150,6 +159,31 @@
       "lint": {
         "dependsOn": [
           "sync-content"
+        ]
+      },
+      "sync-demo": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build-demo"
+          }
+        ],
+        "options": {
+          "command": "rm -rf public/desktop-demo && cp -r ../desktop/dist/demo public/desktop-demo",
+          "cwd": "apps/website"
+        },
+        "cache": true,
+        "inputs": [
+          {
+            "dependentTasksOutputFiles": "**/*",
+            "transitive": true
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/public/desktop-demo"
         ]
       }
     }

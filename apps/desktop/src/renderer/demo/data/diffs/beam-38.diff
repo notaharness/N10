@@ -1,0 +1,736 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 63273a9..a6c17d2 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -1,105 +1,102 @@
+ name: Release
+ 
+ # A vX.Y.Z tag releases X.Y.Z. Run by hand from main with a version, it
+ # rehearses that release: everything but the GitHub release, and npm publish
+ # with --dry-run. CONTRIBUTING.md "Releasing" has the steps.
+ on:
+   push:
+     tags: ["v*"]
+   workflow_dispatch:
+     inputs:
+       version:
+         description: The tag to rehearse, vX.Y.Z
+         required: true
+ 
+ permissions: {}
+ 
+ jobs:
+   release:
+     runs-on: ubuntu-latest
+     permissions:
+       contents: write
+     outputs:
+       version: ${{ steps.tag.outputs.version }}
+       prerelease: ${{ steps.tag.outputs.prerelease }}
+     steps:
+       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+         with:
+           go-version-file: go.mod
+       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+         with:
+           node-version: 24
+       - id: tag
+         run: node npm/version.mjs "$TAG" >> "$GITHUB_OUTPUT"
+         env:
+           TAG: ${{ inputs.version || github.ref_name }}
+       - run: make dist VERSION="$VERSION"
+         env:
+           VERSION: ${{ steps.tag.outputs.version }}
+       - run: node npm/pack.mjs "$VERSION"
+         env:
+           VERSION: ${{ steps.tag.outputs.version }}
+       - name: npm would publish every package at the binary's version
+         run: |
+           built=$(dist/beam-linux-amd64 version)
+           for p in dist/npm/*/; do
+             name=$(jq -r .name "$p/package.json")
+             got=$(npm publish --dry-run --offline --json --tag "$DIST_TAG" "$p" | jq -r --arg n "$name" '(.[$n] // .).version')
+             if [ "$got" != "$built" ]; then echo "$p: npm has $got, the binary $built"; exit 1; fi
+           done
+         env:
+           DIST_TAG: ${{ steps.tag.outputs.prerelease == 'true' && 'next' || 'latest' }}
+       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+         with:
+           name: binaries
+           path: dist/beam-*
+       - name: the test kit's binaries join the release, with every binary's checksum
+         run: |
+           sleep 2 | dist/beamtest-linux-amd64 testkit --exit-with-parent | jq -e '.derpMap and .directory'
+           cd dist && sha256sum beam-* beamtest-* > SHA256SUMS
+       - if: github.event_name == 'push'
+         run: gh release create "$GITHUB_REF_NAME" dist/beam-* dist/beamtest-* dist/SHA256SUMS --verify-tag --generate-notes --prerelease="$PRERELEASE"
+         env:
+           GH_TOKEN: ${{ github.token }}
+           PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+ 
+   # Its own job, so that a publish that fails after the GitHub release exists
+   # can be re-run alone. It packs the binaries the release job built.
+   publish:
+     needs: release
+     runs-on: ubuntu-latest
+     permissions:
+       contents: read
+       id-token: write # trusted publishing and provenance
+     env:
+       VERSION: ${{ needs.release.outputs.version }}
+       DIST_TAG: ${{ needs.release.outputs.prerelease == 'true' && 'next' || 'latest' }}
+-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}
+     steps:
+       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+         with:
+           node-version: 24 # npm 11.5.1 or later publishes through trusted publishing
+-          registry-url: https://registry.npmjs.org
+       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         with:
+           name: binaries
+           path: dist
+       - run: node npm/pack.mjs "$VERSION"
+-      # npm tries trusted publishing (OIDC) first and falls back to the token,
+-      # so the NPM_TOKEN secret matters only while a package has no trusted
+-      # publisher: the first release.
+-      - name: the npm token, when NPM_TOKEN is set
++      # npm publish exchanges the job's OIDC token even in a dry run, and logs
++      # whether the package's trusted publisher took it. Every package must
++      # before any is published: a publish that stops part-way spends the version.
++      - name: npm takes this workflow as every package's trusted publisher
+         run: |
+-          if [ -z "$NODE_AUTH_TOKEN" ]; then echo "no NPM_TOKEN: publishing through trusted publishing"; exit 0; fi
+-          echo "NPM_TOKEN is $(npm whoami)'s"
+-        env:
+-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+-      - name: publish the platform packages, then the shim
++          for p in dist/npm/beam-*/ dist/npm/beam/; do
++            npm publish --dry-run --loglevel verbose --tag "$DIST_TAG" "$p" 2> npm.log || { cat npm.log; exit 1; }
++            grep -q 'oidc Successfully retrieved and set token' npm.log || { grep oidc npm.log; echo "$p: no trusted publisher took this workflow"; exit 1; }
++          done
++      - if: github.event_name == 'push'
++        name: publish the platform packages, then the shim
+         run: |
+           for p in dist/npm/beam-*/ dist/npm/beam/; do
+-            npm publish $DRY_RUN --provenance --access public --tag "$DIST_TAG" "$p"
++            npm publish --provenance --access public --tag "$DIST_TAG" "$p"
+           done
+-        env:
+-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index d2384e5..fe65415 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -1,91 +1,87 @@
+ # Contributing
+ 
+ The spec in `docs/` is the contract. Code follows it; where they drift, one of them is
+ fixed in the same PR, and the PR says which. A choice the spec is silent on is recorded
+ in `docs/11-decisions.md`.
+ 
++A security vulnerability is reported privately, as [SECURITY.md](SECURITY.md) says, not
++in an issue or a pull request.
++
+ ## No clutter
+ 
+ One way to do each thing. No flag nobody sets, no abstraction with one implementation,
+ no code kept "in case", no fallback behind a switch. When something is replaced, the old
+ thing is deleted in the same change. Delete rather than layer.
+ 
+ ## Milestones
+ 
+ Work lands in milestone branches (`impl/m1-…`, `impl/m2-…`) published as one GitHub
+ stack with `gh stack` (github/gh-stack): each milestone's PR is based on the previous
+ milestone's branch, so work never waits on a merge. No standalone PRs against `main`.
+ The owner reviews and merges the stack bottom-up.
+ 
+ ## Checks
+ 
+ `make lint`, `make crap` and `make dist` are what CI runs on every push, and a PR cannot
+ merge until they pass. Lint budgets: cyclomatic complexity 12 per function and 300
+ lines per file, tests excluded. A `//nolint` carries its reason. `make crap` fails any
+ function whose CRAP score (`complexity² × (1 − coverage)³ + complexity`) exceeds 30.
+ 
+ Test first, and prefer the failing integration scenario (the `docs/10` list: real daemons
+ on the dev DERP and the fake worker) over unit tests; keep table and property tests for
+ boundaries such as codecs and canonical JSON. No tautological tests: a test that
+ restates the implementation, asserts a constant, or passes with the behaviour broken is
+ deleted. Every table in the spec has a table test. When you add a test, break the
+ behaviour it covers, watch it fail, then restore it.
+ 
+ ## Commits
+ 
+ Conventional Commits with a scope: `feat(transport):`, `test(identity):`,
+ `chore(ci):`, `docs(spec):`. Small commits. Dependency additions are committed apart
+ from the code that uses them.
+ 
+ ## Releasing
+ 
+ Hermann tags; nothing else releases or publishes. `.github/workflows/release.yml` does
+ the work, and docs/09 describes it.
+ 
+ 1. Every PR of the stack is merged and `main` is green.
+ 2. Rehearse from `main`: `gh workflow run release.yml -f version=vX.Y.Z`, then
+-   `gh run watch`. The whole workflow runs without a GitHub release and with
+-   `npm publish --dry-run`, and its log says whose npm token would publish, if any.
++   `gh run watch`. The whole workflow runs without a GitHub release or an npm publish,
++   and checks that npm takes it as every package's trusted publisher.
+ 3. `git tag vX.Y.Z main && git push origin vX.Y.Z`. Job `release` checks the tag is
+    canonical semver, builds the four binaries and the four of the test kit, packs the five
+    npm packages, checks npm would publish each at the binary's version, and creates the
+    GitHub release with all eight and `SHA256SUMS`. Job
+    `publish` publishes the four platform packages, then `@notaharness/beam`, with
+    provenance.
+ 4. Check: `gh release view vX.Y.Z`; `npm view @notaharness/beam version`; and on a
+    machine without beam, `npx @notaharness/beam@X.Y.Z version` prints `X.Y.Z`.
+ 
+ A tag with a prerelease, `v0.2.0-rc.1`, makes a GitHub prerelease and publishes under
+ npm's `next` dist-tag, so `latest` stays on the last release:
+ `npm view @notaharness/beam dist-tags`, `npx @notaharness/beam@next version`.
+ 
+ When a job fails part-way:
+ 
+ - `release` failed: nothing is public but the tag. Fix the cause, delete the tag
+   (`git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`) and tag again.
+ - The GitHub release exists and `publish` failed before publishing anything: fix the
+   cause (npm authentication, say) and re-run the failed job,
+   `gh run rerun <run-id> --failed`. A re-run runs the workflow as it was at the tag, so a
+   fix to `release.yml` itself needs the next version.
+ - `publish` published some packages and not others: npm never takes a version twice, so
+   the version is spent. Delete its GitHub release (`gh release delete vX.Y.Z`) and
+   release the next patch.
+ 
+-### First release
+-
+-`v0.1.0` publishes packages that npm does not have yet, and a trusted publisher can
+-only be set on a package that exists, so that one release publishes with a token.
+-
+-1. The scope `@notaharness` is the npm organization `notaharness`; it must exist.
+-2. The repository secret `NPM_TOKEN` is a granular npm access token with read and write
+-   on the `@notaharness` scope. It exists for this release only.
+-3. Release `v0.1.0` as above; the `publish` job's log names the token's user.
+-4. On npmjs.com, for each of `@notaharness/beam`, `@notaharness/beam-darwin-arm64`,
+-   `@notaharness/beam-darwin-x64`, `@notaharness/beam-linux-x64` and
+-   `@notaharness/beam-linux-arm64`: Settings, Trusted Publisher, GitHub Actions, with
+-   organization `notaharness`, repository `beam`, workflow filename `release.yml` and
+-   no environment. Then set its publishing access to require two-factor authentication
+-   and disallow tokens.
+-5. Delete the token on npmjs.com, and the secret: `gh secret delete NPM_TOKEN`. Every
+-   later release publishes through trusted publishing, and the `publish` job's log says
+-   so.
++### npm trusted publishing
++
++The workflow holds no npm token. Each of `@notaharness/beam`,
++`@notaharness/beam-darwin-arm64`, `@notaharness/beam-darwin-x64`,
++`@notaharness/beam-linux-x64` and `@notaharness/beam-linux-arm64` has a trusted
++publisher on npmjs.com (the package's Settings, Trusted Publisher, GitHub Actions):
++organization `notaharness`, repository `beam`, workflow filename `release.yml`, no
++environment. Each package's publishing access requires two-factor authentication and
++disallows tokens. npm sets a trusted publisher only on a package that exists, so a new
++platform package is first published by hand at `0.0.0`, a version no release uses; then
++set its trusted publisher and publishing access.
+diff --git a/README.md b/README.md
+index 2d29729..dd6ecfb 100644
+--- a/README.md
++++ b/README.md
+@@ -1,122 +1,151 @@
+ # beam
+ 
+-beam is a simple utility built on [tailcat](https://github.com/tailscale/tailcat) that
+-lets you pool the machines you own. Open a shell, run a command, or send a durable
+-message from one machine to another. A single Go binary provides the daemon and CLI.
++beam connects the machines you own. From one machine you can open a shell on another,
++run a command there, or send it a message that waits until it can be delivered. One
++passkey decides which machines belong to your fleet; no account or server does.
+ 
+-It pairs naturally with tmux: keep an agent session running on another machine and
+-attach when you need it. beam handles reaching the machine; tmux keeps the session.
+-You can offload work from your laptop without moving the agent's working directory or
+-process back and forth.
++One Go binary is both the CLI and a daemon, which starts when a command needs it.
++Machines reach each other over encrypted [tailcat](https://github.com/tailscale/tailcat)
++tunnels, directly or through Tailscale's public tailcat relays, without a Tailscale
++account.
+ 
+-beam is part of [notaharness](https://github.com/notaharness), a project making small,
+-reusable components for working with agents. The
+-[orchestra plugin](https://github.com/notaharness/plugins/tree/main/orchestra) is one
+-way to use it: orchestra gives each agent a tmux session and a git worktree, with
+-conventions for reporting to a supervising conversation. beam mandates no agent,
+-orchestrator or program. Use it with those conventions, your own scripts, or an
+-interactive shell.
++beam is part of [notaharness](https://github.com/notaharness): the
++[orchestra plugin](https://github.com/notaharness/plugins/tree/main/orchestra) uses it
++to run coding agents in tmux sessions on other machines, but beam runs any program.
++beam is in beta: expect breaking changes between versions.
+ 
+-## Pairing and privacy
++## Install
+ 
+-The Cloudflare worker at [beam.n10.is](https://beam.n10.is) is free for anyone to use
+-for pairing their machines, for as long as its 10 GB D1 database has capacity. It serves
+-the passkey ceremony page and an encrypted, append-only directory.
+-
+-Your machines' directory entries are encrypted with keys derived from **your passkey**.
+-The worker stores ciphertext it cannot read. Shells, commands and messages travel
+-between your machines over encrypted tunnels; the directory worker does not carry
+-them. The [trust model](docs/01-model.md) describes what the service can see and what
+-you trust during a pairing ceremony.
+-
+-## Install and quick start
+-
+-The implementation is a prototype. Install the npm package on each machine (macOS or
+-Linux, arm64 or x64):
++On each machine (macOS or Linux, arm64 or x64):
+ 
+ ```sh
+ npm install -g @notaharness/beam
++beam version
+ ```
+ 
+-On the first machine, create your fleet and its passkey:
++You also need a passkey with the WebAuthn PRF extension, which the browser, operating
++system and passkey provider must all support, and a browser with X25519 in Web Crypto:
++for example Apple Passwords with Safari on iOS 18.4 or later, or Firefox 139 or later
++on the desktop. The approval page says when the browser lacks X25519. A passkey without
++PRF fails the command with `prf-unsupported`, which lists what vendors document.
++
++## Use
++
++### Create a fleet
++
++On the first machine:
+ 
+ ```sh
+ beam init --label laptop
+ ```
+ 
+-On the second, join using the same passkey:
++beam prints a QR code and a link to an approval page at `beam.n10.is`, and opens the
++page in a browser if the machine has one. Scan the code with your phone or use the
++browser, and create the passkey there. Then approve the second link it prints with the
++same passkey. It prints the fleet's fingerprint, `3f9a 0c4e 7d12 e805` here:
++
++```
++created fleet 3f9a 0c4e 7d12 e805  ·  this machine: laptop (b7f3 9a21 0c4e 55d1)
++```
++
++Keep the QR code to yourself: whoever answers it first decides the machine's fleet.
++Approve only a page that names the machine you ran the command on.
++
++### Add a machine
++
++On the new machine:
+ 
+ ```sh
+ beam join --label buildbox
+ ```
+ 
+-After joining, compare the `fleet xxxx xxxx xxxx xxxx` fingerprint in the output with
+-`beam status` on the first machine. They must match. If they differ, run
+-`beam fleet reset` on the joining machine.
++Approve with the same passkey, as for `init`. Then compare the fleet fingerprint it prints with
++`beam status` on the first machine. If they differ, this machine joined a different
++fleet: run `beam fleet reset` on it and join again.
+ 
+-The commands open a browser when the machine has one, and print the ceremony URL, with a
+-QR code above it on a terminal. On a headless machine, scan the code with your phone and
+-approve there; the result comes back through `beam.n10.is`, sealed to a key only the
+-daemon holds. Anyone who scans the code can answer it too, so show it only where you
+-alone can see it, and approve only a page that names the machine you are enrolling.
++`beam peers` lists the other machines and whether they are connected. A command takes a
++machine by its label, an alias you set with `beam peer alias`, or at least the first 8
++hex digits of its id.
+ 
+-The daemon starts when needed; `beam peers` shows whether the machines have connected.
++### Remove a machine
+ 
+-From the laptop:
++From any machine in the fleet:
++
++```sh
++beam revoke buildbox
++```
++
++This takes a passkey approval too. The machine you ran it on cuts buildbox off at once,
++connected machines within seconds, and offline ones when they next connect.
++
++### Limit a machine
++
++By default every machine can open a shell on every other. To limit what buildbox can do
++on this machine, run this here: `msg` allows only messages, `none` allows nothing, and
++`all` is the default.
++
++```sh
++beam peer grant buildbox msg
++```
++
++### Run commands and shells
+ 
+ ```sh
+-beam peers
+-beam connect buildbox
+ beam exec buildbox -- uname -a
+-beam msg send buildbox --topic jobs 'ready'
++beam exec buildbox --cwd '~/src/app' -- make test
++beam connect buildbox
++beam connect buildbox -- tmux new-session -A -s work
+ ```
+ 
+-On buildbox, `beam msg listen --topic jobs laptop` receives messages from the laptop.
+-Messages are queued durably when they cannot be delivered immediately.
++`exec` passes stdin through, streams stdout and stderr, and exits with the remote
++command's status. `connect` opens your login shell, or the command after `--`, in a
++terminal on the other machine. Run it again to reattach the tmux session after you
++detach or lose the connection.
+ 
+-With tmux installed on buildbox, start or reattach an agent's session there:
++### Send messages
+ 
+ ```sh
+-beam connect buildbox -- tmux new-session -A -s agents
++beam msg send buildbox --topic jobs 'build main'    # on laptop
++beam msg listen --topic jobs laptop                 # on buildbox, from laptop only
+ ```
+ 
+-Run your agent inside that session. Detach from tmux and reconnect with the same
+-command; the session stays on buildbox. See [the CLI](docs/07-cli.md) for grants,
+-revocation, queue inspection and the other commands.
+-
+-## Technical gist
+-
+-Each machine keeps a WireGuard node key; 128 bits of its hash form its `peerId`.
+-The fleet's passkey signs membership entries and revocations directly as WebAuthn
+-assertions. A `get` ceremony also evaluates the passkey's PRF, from which the daemon
+-derives the directory encryption key and read token. Entries go into the worker's
+-encrypted, append-only directory, read at join and daemon start. tailcat supplies NAT
+-traversal and DERP relay without Tailscale's control plane: each machine runs a Server
+-with its node key and dials through Clients with ephemeral keys. On first contact, the
+-receiver verifies the signed entry and proof of possession of the node key it names,
+-then admits and pins the peer. No directory request is needed per connection. TCP
+-streams inside the tunnels carry `pty`, `exec` and durable `msg` envelopes; a local
+-socket exposes them to the CLI and other programs. Revocations propagate over live
+-peer connections and through the directory to machines that were offline.
++A message to an offline machine is stored and delivered when it connects. `listen`
++prints one message per line and removes each from this machine's mailbox once printed.
++`beam msg queue` on the sender shows messages the recipient has not received yet.
++
++## How it works
++
++Each machine has a WireGuard node key, which is its identity. Your passkey signs an
++entry for each machine it admits, and a revocation for each it removes. Through PRF, the
++passkey also yields the key that encrypts your fleet's directory, an append-only log of
++those entries kept by the worker at [beam.n10.is](https://beam.n10.is), free to use
++while its database has room. The worker
++stores only ciphertext and never carries your shells, commands or messages. A machine
++reads the directory when it joins and when its daemon starts, then admits a peer only if
++the peer shows a signed entry and proves it holds the node key the entry names. The
++[trust model](docs/01-model.md) sets out what the worker and the approval page can and
++cannot do.
+ 
+ ## Documents
+ 
+ Read in order. Each file owns one concern and cross-references the others.
+ 
+ | # | File | Owns |
+ |---|------|------|
+ | 1 | [docs/01-model.md](docs/01-model.md) | The problem, the principles, the trust model and the threat model. What is out of scope. |
+ | 2 | [docs/02-identity.md](docs/02-identity.md) | The node key, what the passkey yields, `$BEAM_DIR`, signed membership entries and revocations, the encrypted directory, ceremonies, `init` / `join` / `revoke` / `reset`, sync. |
+ | 3 | [docs/03-transport.md](docs/03-transport.md) | Why one key means one stack, the Server plus ephemeral-key Clients topology, addresses, admission with the possession proof, lifecycle, DERP. |
+ | 4 | [docs/04-streams.md](docs/04-streams.md) | A stream is one TCP connection. Header, frames, `hello`, `sync`, `pty`, `exec`, `msg`. Grants. Injected environment. |
+ | 5 | [docs/05-mailbox.md](docs/05-mailbox.md) | The durable mailbox on SQLite: envelopes, sequence numbers, the transactions, outcomes, subscribers. |
+ | 6 | [docs/06-control-socket.md](docs/06-control-socket.md) | The daemon's local socket: NDJSON control requests, attach connections for byte streams, connect-or-spawn, the lock. |
+ | 7 | [docs/07-cli.md](docs/07-cli.md) | Every subcommand, its output, its exit codes. |
+ | 8 | [docs/08-desktop.md](docs/08-desktop.md) | What n10 desktop and n10 TUI do with the daemon, and what they stop doing. |
+ | 9 | [docs/09-build-and-distribution.md](docs/09-build-and-distribution.md) | Module layout, build flags, platform matrix, npm packages, the worker and its API, versioning, CI. |
+ | 10 | [docs/10-testing.md](docs/10-testing.md) | Unit tests, the in-process dev DERP, the software authenticator, the fake worker, and how n10's e2e suites drive a real daemon. |
+ | 11 | [docs/11-decisions.md](docs/11-decisions.md) | The decision register, the milestone gate, and the open questions. |
+ 
++Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
++
+ ## Licence
+ 
+ MIT, in [LICENSE](LICENSE).
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 0000000..0bf2013
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,65 @@
++# Security
++
++## Supported versions
++
++The newest release, prerelease or not, receives fixes. A fix ships as a new release.
++
++## Reporting a vulnerability
++
++Report privately through GitHub's private vulnerability reporting: the repository's
++Security tab, then "Report a vulnerability", or
++<https://github.com/notaharness/beam/security/advisories/new>. Do not open a public
++issue or pull request.
++
++Include the version (`beam version`), the operating system, what an attacker needs, and
++the steps that show it.
++
++## What to expect
++
++- An acknowledgement within 7 days.
++- An assessment: whether it is in scope, and how severe.
++- For a confirmed vulnerability, a fix in a new release and a published GitHub security
++  advisory, crediting you unless you ask otherwise. We agree the disclosure date with
++  you, and ask that you keep the report private until then.
++
++## Scope
++
++beam roots a fleet of machines in one passkey. The passkey signs every membership entry
++and revocation, and its PRF output yields the key that encrypts the fleet's directory.
++Each machine holds a node key, the directory key and a mailbox. The trust and threat
++model is [docs/01-model.md](docs/01-model.md).
++
++In scope, in this repository's code (the CLI and daemon, the worker at `beam.n10.is`
++with its ceremony page, and the npm packages and release binaries):
++
++- Adding a machine to a fleet, or removing one, without a passkey approval of that
++  operation.
++- A machine that is not a member getting past admission or opening a stream, or a
++  revoked machine admitted by one that holds its revocation.
++- A peer opening a shell or running a command on a machine that granted it only `msg` or
++  `none`.
++- Reading directory entries without the directory key, or a ceremony result without its
++  ceremony's key, or forging either.
++- A node key, the directory key, the mailbox or the control socket reachable by another
++  local user.
++- The ceremony page signing a statement other than the one it shows, or leaking the
++  passkey's PRF output.
++- The release workflow or the npm packages shipping something other than what this
++  repository builds.
++
++Out of scope, by design ([docs/01](docs/01-model.md#threat-model)):
++
++- A member machine stolen or compromised before it is revoked, and what it did
++  meanwhile. With the default grant, a member has a shell on every other member.
++- A hostile ceremony page, from whoever controls what `beam.n10.is` serves: it can
++  substitute the statement of the one approval it handles, and a machine's root at its
++  first enrolment.
++- Someone who scans a ceremony's QR code and answers before you, or a ceremony you did
++  not start and approve anyway.
++- Metadata visible to the DERP relays and the worker: sizes, timing, IP addresses, a
++  fleet identifier.
++- The availability of `beam.n10.is` or the DERP relays, and resource exhaustion by a
++  holder of a machine's address beyond what tailcat bounds.
++- A lost passkey with no synced copy.
++
++Vulnerabilities in tailcat, a browser or a passkey provider belong with that project.
+diff --git a/docs/09-build-and-distribution.md b/docs/09-build-and-distribution.md
+index 7e605d9..fc6e705 100644
+--- a/docs/09-build-and-distribution.md
++++ b/docs/09-build-and-distribution.md
+@@ -1,201 +1,201 @@
+ # 09 · Build and distribution
+ 
+ ## Layout
+ 
+ ```
+ beam/
+   go.mod                    module github.com/notaharness/beam; go 1.27.1
+   build-tags.txt            tailcat's release build tags
+   Makefile                  dist, test, crap, lint
+   cmd/beam/                 main; subcommand dispatch
+   internal/
+     identity/               peerId, canonical JSON, entry/revocation build and verify, fleet.json
+     transport/              tailcat Server/Client, addresses, admission (hello), possession MAC, liveness
+     stream/                 header, frames, pty and exec processes, msg framing
+     store/                  SQLite: peers, revocations, mailbox tables, pending appends
+     mailbox/                flusher, receiver, subscriber fan-out over store
+     directory/              worker HTTP client, blob encryption, append retry
+     ceremony/               key and slot, URL building, the slot wait, HPKE open, PRF derivation
+     control/                the daemon: dial loop, sync, stream dispatch; the socket: ops,
+                             events, attach pump, lock, connect-or-spawn
+     cli/                    subcommands; the QR code
+     devderp/                in-process DERP + STUN for tests
+     fakeworker/             in-process worker API for tests
+   worker/                   Cloudflare Worker: directory API + ceremony page (TypeScript)
+     src/index.ts            routes, WebAuthn assertion verification, D1
+     public/index.html       the ceremony page
+     schema.sql
+     test/                   vitest under miniflare
+   npm/                      shim and platform package templates
+   tools/crap/               the CRAP gate over the coverage profile
+   docs/
+ ```
+ 
+ `transport` is the only package importing tailcat. The QR code is drawn from
+ `github.com/boombuler/barcode`'s encoder (no dependencies of its own); the braille
+ rendering is beam's. In the daemon's own code `directory` and `ceremony` are the only
+ ones speaking HTTP; `transport.HomeKey` fetches the DERP map through tailcat, and
+ `fakeworker` serves HTTP in tests.
+ 
+ ## Build
+ 
+ ```
+ CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags "$(cat build-tags.txt)" \
+   -ldflags "-s -w -X main.version=$VERSION" -o dist/beam-$GOOS-$GOARCH ./cmd/beam
+ ```
+ 
+ `make dist` runs this for each target, and again with `beamtest` added to the tags into
+ `dist/beamtest-$GOOS-$GOARCH`, the test kit ([10](10-testing.md)). `build-tags.txt` is
+ copied from tailcat: one comma-separated line; tests and lint use the same tags. SQLite
+ via `modernc.org/sqlite` (pure Go). Targets in the first release: `darwin/arm64`,
+ `darwin/amd64`, `linux/amd64`, `linux/arm64`. Windows follows when a Windows runner
+ exists. 21.2–22.5 MB per binary stripped ([03](03-transport.md), Footprint).
+ 
+ ## Versioning
+ 
+ beam has its own semver from the git tag: tag `vX.Y.Z` releases `X.Y.Z`, which
+ `beam version`, `status.version` and the five npm packages carry without the `v`. The
+ version is canonical semver without build metadata (`npm/version.mjs`): no leading
+ zeros, no empty prerelease identifier, no `+build`, the spellings npm would publish
+ differently or not at all. One with a prerelease (`v1.2.3-rc.1`) is a prerelease.
+ `status.version` on the socket is how clients check; the peer stream header's `v` is the wire protocol version and is separate. n10
+ pins `@notaharness/beam` with a caret range.
+ 
+ ## npm
+ 
+ | Package | Contents |
+ |---|---|
+ | `@notaharness/beam` | `bin/beam.js`: resolves the platform package and runs the binary with `child_process.spawn(bin, argv, { stdio: "inherit" })`, forwards `SIGINT`/`SIGTERM`/`SIGWINCH`, handling them from before the binary starts, exits with the child's code or `128+signal`. `index.js` exports `binaryPath()`. The platform packages are its `optionalDependencies`, the one list of platforms. |
+ | `@notaharness/beam-{darwin-arm64,darwin-x64,linux-x64,linux-arm64}` | one binary each, named `beam`; `os`/`cpu` set |
+ 
+ `npm/beam/` is the shim and `npm/platform/package.json` the platform packages' template.
+ `node npm/pack.mjs X.Y.Z` writes all five into `dist/npm/` from the binaries `make dist`
+ left in `dist/`, each ready for `npm publish` as it is. Every package is MIT and carries
+ the repository's `LICENSE` and a README: the shim's says what beam is, the platform
+ packages' to install the shim instead.
+ 
+ ## The worker
+ 
+ At `https://beam.n10.is`, open source in `worker/`. It serves the ceremony page and
+ stores the directory. It verifies WebAuthn assertions on writes and reads by bearer
+ token. It never sees a plaintext entry.
+ 
+ ### Storage (D1)
+ 
+ ```sql
+ CREATE TABLE fleets (
+   fleet_id       TEXT PRIMARY KEY,   -- 64 hex, SHA-256(credential public key)
+   credential_id  TEXT NOT NULL,
+   credential_pk  BLOB NOT NULL,      -- COSE
+   read_hash      BLOB NOT NULL UNIQUE, -- SHA-256(T_read)
+   created_at     INTEGER NOT NULL
+ );
+ CREATE TABLE entries (
+   fleet_id       TEXT NOT NULL REFERENCES fleets,
+   seq            INTEGER NOT NULL,   -- dense per fleet
+   statement_hash BLOB NOT NULL,
+   blob           BLOB NOT NULL,      -- ≤ 8192 bytes
+   assertion      TEXT NOT NULL,      -- JSON
+   created_at     INTEGER NOT NULL,
+   PRIMARY KEY (fleet_id, seq),
+   UNIQUE (fleet_id, statement_hash)  -- appends are idempotent
+ );
+ CREATE TABLE slots (
+   slot_id        TEXT PRIMARY KEY,   -- 22 base64url, SHA-256(readKey)[0:16]
+   sealed         BLOB,               -- ≤ 8192 bytes; NULL once read
+   created_at     INTEGER NOT NULL    -- the write; the row lives five minutes from it
+ );
+ CREATE INDEX slots_created ON slots (created_at);
+ ```
+ 
+ Caps: 16 KiB per request body, counted as it arrives whatever `Content-Length` says; 8
+ KiB per blob; 5,000 entries per fleet, checked by the statement that allocates the seq;
+ 120 requests/min per fleet. No expiry for fleets and entries. A slot holds at most 8 KiB
+ of sealed result and lives five minutes from its write, the ceremony's timeout: a row
+ older than that is absent to every route, and each write deletes the expired ones. Slot
+ reads and slot writes are each limited to 120 requests/min per client address
+ (`CF-Connecting-IP`), through the same binding, counted apart so that reads cannot spend
+ the page's one write; a waiting daemon makes about three reads a minute. A waiting read
+ only reads the database; the one that takes the result writes once. The
+ client holds the worker to the same bounds: a response at most a full page of the
+ largest entries, at most 500 entries a page and 5,000 in all, a `next` only after a full
+ page and past `since`, a minute for a whole read. A worker outside them is unavailable.
+ 
+ ### Routes
+ 
+ | | Auth | |
+ |---|---|---|
+ | `GET /` | none | ceremony page |
+ | `POST /v1/fleets` | body | `{ credentialId, credentialPublicKey, readToken, first: { statementHash, blob, assertion } }`. Verifies `first.assertion` under `credentialPublicKey` with challenge `SHA-256("beam-member:v1" ‖ statementHash)`, creates the fleet with `read_hash = SHA-256(readToken)`, stores the entry. `409` if the fleet exists. |
+ | `GET /v1/entries?since=` | `Authorization: Bearer <T_read>`; the fleet is the one whose `read_hash` is `SHA-256(T_read)` | `{ fleetId, credentialId, credentialPublicKey, entries: [ { seq, statementHash, blob, assertion } ], next? }`, ≤ 500 per page, `seq > since`. Every token that opens no fleet, malformed or unknown, gets the same `401`. |
+ | `POST /v1/slots/:slot` | none: whoever has the ceremony URL | `{ sealed }`, the page's HPKE ciphertext, unpadded base64url, at most 8 KiB decoded. `201 {}`. `409` if the slot was written in the last five minutes, read or not: one write per slot. |
+ | `GET /v1/slots/:slot` | `Authorization: Bearer <readKey>`, which must hash to `:slot` | Holds the request up to 25 s for the write. `200 { sealed }`, and the ciphertext is deleted: one read. `204` if nothing arrived; the daemon asks again. `410` if it was read already. Every key that does not hash to the slot gets the same `401`. |
+ | `POST /v1/fleets/:id/entries` | the assertion in the body | `{ kind, statementHash, blob, assertion }`. Verifies the assertion with the domain of `kind` (`member` or `revoke`). `201 { seq }`; `200 { seq }` if `statementHash` already exists; `404` for an unknown fleet. |
+ 
+ Assertion verification (`@simplewebauthn/server`): origin `https://beam.n10.is`, RP ID
+ `beam.n10.is`, UV required, challenge as above, counter ignored, and the assertion's
+ credential id must be the fleet's. A refused append is `403`, a body or a blob over its
+ cap or a full fleet `413`, and a fleet over its rate `429`, through Workers' rate-limit
+ binding. A revoked machine holds `T_read` and can read; it cannot append. A slot is
+ `:slot` as 22 base64url characters encoding 16 bytes; any other is `404`. The worker can
+ open no slot's ciphertext; it never sees the key.
+ 
+ ### Ceremony page headers
+ 
+ ```
+ Content-Security-Policy: default-src 'none'; script-src 'sha256-…'; style-src 'sha256-…'; connect-src https://beam.n10.is/v1/slots/
+ Referrer-Policy: no-referrer
+ X-Frame-Options: DENY
+ Cache-Control: public, max-age=300
+ ```
+ 
+ The page is a static asset (`worker/public/`) and these headers live in its `_headers`;
+ a worker test recomputes the hashes, and the page's flows run in Chromium under them,
+ failing on any policy violation. `connect-src` names the slot route's path prefix,
+ not `'self'`: the page can write a slot and reach nothing else. A deploy that adds a
+ table runs `schema.sql` against the remote database first (`worker/README.md`). Deploy is `wrangler deploy` from `worker/` with
+ Hermann's Cloudflare account, `beam.n10.is` a custom domain of the worker;
+ `worker/README.md` has the commands.
+ 
+ ## Lint
+ 
+ `make lint`: `golangci-lint` (pinned in the `Makefile`), which runs `gofmt`, `go vet` and
+ `staticcheck` among its defaults, plus `gocyclo` at 12 and `revive`'s `file-length-limit`
+ at 300 lines, both excluding tests. Suppressions carry a reason.
+ 
+ `make crap`: runs `make test`, which writes `cover.out` over the whole module
+ (`-coverpkg=./...`), then scores every non-test function that build compiled (not, say,
+ another OS's) with Savoia's CRAP metric,
+ `complexity² × (1 − coverage)³ + complexity`, complexity counted as `gocyclo` counts it.
+ Any function above 30 (crap4j's threshold) fails the build. A complexity-12 function
+ therefore needs at least half its statements covered; an untested one must stay at
+ complexity 4 or below.
+ 
+ ## CI
+ 
+ Push (`.github/workflows/ci.yml`): job `ci`, required on `main`: the worker's vitest in
+ workerd (the CSP hashes included) and the ceremony page's flows in Chromium, `make
+ lint`, `make crap` (`go test -race` with coverage, the Playwright ceremony test among
+ them, then the CRAP gate), `make dist`
+ (cross-compile four targets), and the `directory` and `ceremony` packages' tests again
+ against the worker under `wrangler dev`, the Go directory client and the slot reader
+ held to the real routes. Job `darwin`: `make test` on macOS, where the process
+ lifetimes (kqueue, not waitid) and the in-process daemons run for real. The `ci` job also
+ runs the npm packages' node tests.
+ 
+ Tag (`.github/workflows/release.yml`, on `v*`), two jobs. `release`: `npm/version.mjs`
+ reads the tag, and the job stops at one that is not canonical. Then `make dist`,
+ `npm/pack.mjs`, and a check that `npm publish --dry-run` would publish every package at
+ the version the binary prints; only then a GitHub release with the four binaries, the
+ four `beamtest-*` binaries of the test kit and `SHA256SUMS` over all eight, marked a
+ prerelease for a prerelease tag. The test kit goes to the GitHub release alone, never to
+ npm. `publish`, its own job so that it can be re-run alone:
+ packs the same binaries, handed over as a workflow artifact, and publishes the platform
+ packages and last the shim, with provenance, under `next` for a prerelease. It
+ authenticates through npm's trusted publishing (OIDC: `id-token: write`, npm 11.5.1 or
+ later, which Node 24 has), each package naming `notaharness/beam` and `release.yml` as
+-its trusted publisher. A package with none yet, at the first release, is published with
+-the `NPM_TOKEN` secret, which npm falls back to while it is set. Run by hand from `main`
++its trusted publisher. Before it publishes any package, a dry run of each checks that npm
++took the job's OIDC token for it, so a missing trusted publisher stops the job before a
++version is spent. Run by hand from `main`
+ (`workflow_dispatch`) with a version, the workflow rehearses that release: no GitHub
+-release, whose the token is if there is one, and `npm publish --dry-run`. CONTRIBUTING.md
+-has the steps.
++release, and that check in place of the publish. CONTRIBUTING.md has the steps.

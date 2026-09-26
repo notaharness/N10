@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Re-encodes docs/media/*.gif into public/media/*.{mp4,webm} plus a WebP
-// poster frame, and the README hero PNGs into WebP. GIF is a 256-colour
-// palette format with no inter-frame compression worth mentioning; a real
-// video codec gets the same motion across in a fraction of the bytes
-// (typically 10-20x smaller here). Run once and commit the output —
-// see apps/website/README.md for why this isn't a build-time step.
+// poster frame. GIF is a 256-colour palette format with no inter-frame
+// compression worth mentioning; a real video codec gets the same motion
+// across in a fraction of the bytes (typically 10-20x smaller here). Run
+// once and commit the output — see apps/website/README.md for why this
+// isn't a build-time step.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -81,25 +81,10 @@ function convertGif(file) {
   ]);
 }
 
-function convertPng(file) {
-  const name = basename(file, '.png');
-  run([
-    '-i',
-    join(sourceDir, file),
-    '-c:v',
-    'libwebp',
-    '-quality',
-    '85',
-    join(outDir, `${name}.webp`),
-  ]);
-}
-
 for (const file of readdirSync(sourceDir)) {
   const full = join(sourceDir, file);
   if (!statSync(full).isFile()) continue;
-  const ext = extname(file).toLowerCase();
-  if (ext === '.gif') convertGif(file);
-  else if (ext === '.png') convertPng(file);
+  if (extname(file).toLowerCase() === '.gif') convertGif(file);
 }
 
 console.log(`Converted media written to ${outDir}`);

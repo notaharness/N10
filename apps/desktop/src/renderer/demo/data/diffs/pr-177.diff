@@ -1,0 +1,3362 @@
+diff --git a/apps/desktop-e2e/src/branch-switch.test.ts b/apps/desktop-e2e/src/branch-switch.test.ts
+new file mode 100644
+index 00000000..aea13782
+--- /dev/null
++++ b/apps/desktop-e2e/src/branch-switch.test.ts
+@@ -0,0 +1,102 @@
++import { execFileSync } from 'node:child_process';
++import { join } from 'node:path';
++import type { Page } from '@playwright/test';
++import { test, expect } from './fixtures/desktop.js';
++import {
++  createWorktree,
++  focusTerminal,
++  launchAgentFromRail,
++  tab,
++  tabs,
++  visibleText,
++} from './setup/app.js';
++
++/**
++ * A worktree is its directory, not its branch: `git switch` inside it
++ * keeps its tab, relabels it, and keeps the agent running there behind
++ * it. The tab warns while the worktree is off the branch it was opened
++ * for.
++ */
++
++const BRANCH = 'feature';
++const OTHER = 'other';
++
++function banner(page: Page) {
++  return page.getByRole('status', { name: 'Branch switched' });
++}
++
++function switchOutside(repoPath: string, ...args: string[]): void {
++  execFileSync('git', ['switch', ...args], {
++    cwd: join(repoPath, '.claude', 'worktrees', BRANCH),
++    stdio: 'ignore',
++  });
++}
++
++async function expectSwitched(page: Page): Promise<void> {
++  await expect(tab(page, new RegExp(OTHER))).toBeVisible({ timeout: 15_000 });
++  await expect(tabs(page)).toHaveCount(1);
++  await expect(banner(page)).toContainText(OTHER);
++  await expect(banner(page)).toContainText(BRANCH);
++}
++
++async function expectBack(page: Page): Promise<void> {
++  await expect(tab(page, new RegExp(BRANCH))).toBeVisible({ timeout: 15_000 });
++  await expect(tabs(page)).toHaveCount(1);
++  await expect(banner(page)).toHaveCount(0);
++}
++
++test.describe('Switching branch inside a worktree', () => {
++  test('from an outside shell keeps the tab and its agent, with a banner until switched back', async ({
++    desktop,
++  }) => {
++    const { page, repoPath } = desktop;
++    await createWorktree(page, BRANCH);
++    await launchAgentFromRail(page);
++    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
++      timeout: 30_000,
++    });
++    await expect(banner(page)).toHaveCount(0);
++
++    switchOutside(repoPath, '-c', OTHER);
++    await expectSwitched(page);
++    // The agent that was running in the worktree is still the one
++    // behind its tab.
++    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
++
++    // A rebuilt strip finds the tab again through the agent running in
++    // the worktree, still knowing the branch it was opened for.
++    await page.reload();
++    await expectSwitched(page);
++    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
++      timeout: 15_000,
++    });
++
++    switchOutside(repoPath, BRANCH);
++    await expectBack(page);
++  });
++
++  test.describe('from n10’s own terminal', () => {
++    // The worktree's agent is a plain shell, so the switch is typed
++    // into the terminal n10 runs in the worktree.
++    test.use({ n10Config: { aiCommand: 'sh' } });
++
++    test('keeps the tab, relabels it, and clears the banner on switching back', async ({
++      desktop,
++    }) => {
++      const { page } = desktop;
++      await createWorktree(page, BRANCH);
++      await launchAgentFromRail(page);
++      await expect(
++        page.locator('[data-terminal-pane]').getByText(/\S/).first()
++      ).toBeVisible({ timeout: 15_000 });
++
++      await focusTerminal(page);
++      await page.keyboard.type(`git switch -c ${OTHER}\n`, { delay: 10 });
++      await expectSwitched(page);
++
++      await focusTerminal(page);
++      await page.keyboard.type(`git switch ${BRANCH}\n`, { delay: 10 });
++      await expectBack(page);
++    });
++  });
++});
+diff --git a/apps/desktop/AGENTS.md b/apps/desktop/AGENTS.md
+index f4711f24..a3502b6f 100644
+--- a/apps/desktop/AGENTS.md
++++ b/apps/desktop/AGENTS.md
+@@ -1,113 +1,118 @@
+ # apps/desktop — the Electron shell
+ 
+ `src/main` owns the window and native menu; `src/preload` exposes a typed
+ `window.n10`; `src/host/contract.ts` is the single source of truth for the
+ bridge API and IPC names; `src/host/services` are main-process services;
+ `src/renderer` is Vite + React 19 + Tailwind v4 with no Node access, its
+ `lib/` grouped by subsystem (`data`, `diff`, `tabs`, `plan`, `review`,
+ `sidebar`). Dev: `scripts/dev.mjs`. Headless visual QA: `scripts/qa-shots.mjs`.
+ Every rule below has its reasoning in `docs/decisions.md`.
+ 
+ ## Host
+ 
+ - `services/repo.ts` `openRepo` does what the TUI's `useSessionManager` mount
+   does: detect project config and set the worktree resolver. `main.ts`
+   awaits the tmux probe and validates the requirement before opening a repo.
+   Missing tmux is a startup error with an installation hint. New tmux sessions
+   are prepared in `main/tmux-session-worker.ts`, an Electron utility process:
+   direct Node child-process spawning on Linux inherits Chromium descriptors
+   into the persistent server. The main process only attaches local clients.
+ - `main/beam/` is a client of the beam daemon's control socket (beam's
+   docs/06) and installs the three machine ports: `MachinesPort`,
+   `RemoteMachinePort` and `InboundMailPort`. Nothing above them knows beam.
+   Attach input stays within beam's four-frame window. The mail relay's
+   ack and defer rules are decisions.md D13/D14; it delivers into a
+   session only for a sender granted `all` (D17).
+ - Start the beam daemon only through `spawnOwnedDaemon`, which runs it
+   under `main/beam-daemon-worker.ts`, a utility process, for the same
+   descriptor reason as the tmux worker. Keep `@notaharness/beam` external
+   in both `build-main` and `scripts/dev.mjs`. Ownership rules: D15.
+ - `main/n10-shim.ts` is an entry point in both `build-main` and
+   `scripts/dev.mjs`. The shim gets no `beam` subcommand (D16).
+ - The host holds one repo (`requireRepo`, memoized root, the
+   `@orchestra-repo` every tmux session it creates is tagged with). The tab
+   strip spans repos: activating a foreign tab opens its repo
+   (`useRepoFollowsTabs`); nothing renders another repo's content in place.
+ - Sidebar answers are stamped with the repo they describe
+   (`getSidebarSnapshot`) and the renderer drops answers for a repo it is not
+   showing (`loadSidebarModel`). A switch is in flight for several awaits.
+ - The pull request list is fetched once per interval in core's cache
+   (`services/pull-requests.ts`); `services/sidebar.ts`, babysitters and the
+   sync loop all read it there. Do not call the provider from a second place.
+ - Babysitters (`services/babysit.ts`) live per repo in memory, sit out while
+   another repo is open, stop when their worktree is removed, and push only
+   `spawned` and `ended`; everything else rides on the sidebar poll.
+ - Terminal tabs have no state file; tmux is the record: the kind is the
+   `@orchestra-session-type` tag (`shell` | `agent`), the name is a label
+   (`<repo>-shell`, suffixed on collision) and the key, the directory is
+   `#{session_path}`. The tab group is derived at read time
+   (`services/terminal-home.ts`). Closing a terminal tab confirms and kills;
+   quitting only detaches. Agent panes remain available after exit for viewing
+   and restart; shell terminals close when their process exits.
+ - Pasted images are written under the OS temp dir
+   (`services/clipboard-image.ts`), suffix from the host's own MIME table, and
+   the path is typed into the PTY.
+ - Worktree removal shares core's sequence with the TUI. `stopSession` kills
+   one held target or one resolved persisted target, never both.
+ 
+ ## Renderer
+ 
+ - Native OS elements where they exist: application menu (`main/menu.ts`),
+   context menus (`showContextMenu` → `Menu.popup`), native dialogs, optional
+   native frame. Web-rendered menus only for what the OS cannot express.
+ - Tabs have exactly one reconciliation point: `Workspace` hands the item list
+   to `sync-items` in `lib/tabs/tabs-model.ts`, a pure reducer that re-keys
+   stale tabs, opens a tab per newly running agent (`autoOpened`,
+   repo-qualified), pins previews with a live agent, and adds foreign and
+   terminal tabs. Add nothing to that seam from an effect. A tab is identified
+   by PR id or `(repo, branch)`, `repo` being the real path
+-  (`canonicalRepoPath`). `TabsProvider` sits above the repo gate in `App.tsx`.
++  (`canonicalRepoPath`), and follows its worktree's path first: `git switch`
++  inside a worktree relabels the tab, which remembers `originBranch` for its
++  banner. The host ties a switched worktree's row to its agent by
++  `#{session_path}` (`services/worktree-sessions.ts`); session keys stay on
++  the branch they were created for. `TabsProvider` sits above the repo gate
++  in `App.tsx`.
+   `tabs.properties.spec.ts` holds the invariants.
+ - A PR tab is a review workspace (`components/review/PrWorkspace.tsx`): a
+   collapsible rail (Agent · Files · Comments) beside one content pane that
+   swaps between diff, agent terminal (kept mounted) and `ReviewStepper`. The
+   diff toolbar lives in `DiffPane`, not the tab header.
+ - Diffs are whole-file (`-U99999`), folded client-side
+   (`lib/diff/diff-model.ts`). A PR diffs commits; a bare worktree diffs its
+   working tree, polled at 2 s only while the agent runs. `FileTree` collapse
+   state is reconciled from the per-file `revision` delta during render
+   (`lib/diff/file-tree-model.ts`), never from the poll.
+ - The plan is a cart of value snapshots (`@n10/core/plan`). The prompt is
+   composed in the renderer so the preview is the delivery; `plan-model.spec.ts`
+   asserts numbering against `planRows`. Adopting a respawned session carries
+   the chunk `seq` forward.
+ - `SessionTerminal` sends `resizeSession` on every fit and refits on the
+   session's `spawnedAt` epoch. `paneTerminalGrid` measures a hidden `.wterm`
+   inside `[data-terminal-pane]` for the launch estimate.
+ - A terminal exit event carries `retained`: retained agent tabs stay open
+   for viewing and restart. `dropEnded` closes a terminal tab a defined
+   listing omits; `undefined` means not asked yet.
+ - PR row status circle (`lib/sidebar/sidebar-model.ts` `prStatusIndicator`):
+   colour is the worst blocker, glyph the more severe axis, filled means nothing
+   outstanding. CI escalates but never vouches. The 4×4 grid is asserted whole
+   in `sidebar-model.spec.ts`.
+ - `applyPendingRemovals` drops a session row but keeps a PR row with
+   `sessionName`/`running` cleared.
+ - Comment markdown paragraphs render as `<div>` (block images cannot nest in
+   `<p>`); images are host-fetched with provider auth. `ErrorBoundary` wraps
+   each tab.
+ - Components use design tokens from `styles.css` and the primitives in
+   `components/ui` only. Check visual work with `scripts/qa-shots.mjs`.
+ 
+ ## Dependencies and packaging
+ 
+ - `@wterm/dom`, `@wterm/react` here and `@wterm/dom` in `apps/cli-wterm-host`
+   are pinned to one exact version. Upgrade all together and check
+   `npm ls @wterm/dom @wterm/react @wterm/core` shows one copy each. Import the
+   stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.
+ - Ships inside `@notaharness/n10`: `apps/cli`'s `prepare-publish` copies
+   `dist/{main,preload,renderer}` under `desktop/`, and plain `n10` runs
+   Electron on the package. Nothing here is published on its own. See the
+   `publish-beta` skill. The private `productName` `n10-dev` keeps a dev
+   build's userData, and its single-instance lock, apart from the installed
+   app's `n10`.
+diff --git a/apps/desktop/src/host/services/sidebar.ts b/apps/desktop/src/host/services/sidebar.ts
+index a9d1a90f..a2e15f77 100644
+--- a/apps/desktop/src/host/services/sidebar.ts
++++ b/apps/desktop/src/host/services/sidebar.ts
+@@ -1,194 +1,199 @@
+ import { keyForWorktree } from '@n10/core';
+ import { listWorktrees } from '@n10/worktree-manager';
+ import {
+   buildSidebarItems,
+   buildSessionLookups,
+   categorizeReviews,
+   findOrphanPrs,
+   pullRequestPollIntervalMs,
+   sortSessionsByPrId,
+   type AgentSession,
+   type SidebarItem,
+ } from '@n10/core';
+ import { activeRepoIs, requireRepo } from './repo.js';
+ import { babysatStatuses } from './babysit.js';
+ import { isOwnSessionAlive } from './sessions.js';
++import { ownSessionNames } from './session-registry.js';
++import { movedWorktreeSessions, withMovedSessions } from './worktree-sessions.js';
+ import { getSyncDecorations } from './remote-sync.js';
+ import {
+   notifyRemoteUpdated,
+   pullRequests,
+   resolveProvider,
+ } from './pull-requests.js';
+ import type { SidebarModel, SyncState } from '../contract.js';
+ 
+ /**
+  * Assemble the unified, ordered sidebar model exactly like the TUI's
+  * SidebarProvider — worktrees, then draft PRs, then PRs, then the
+  * three review buckets — by reusing app-core's pure builders. Runs in
+  * the main process where git + provider access is available; the
+  * result is plain data streamed to the renderer.
+  *
+  * Local state (worktrees, alive PTYs) is cheap and re-read on every
+  * call; remote pull request data comes from the host's one instance
+  * of `@n10/core`'s per-repository cache (`services/pull-requests.ts`),
+  * so the renderer can poll the model frequently without hammering the
+  * provider API.
+  *
+  * **The model never waits for the network.** A cold start has no
+  * cached pull requests, and awaiting them here meant the sidebar — the
+  * whole left half of the window, including worktrees git could have
+  * listed in milliseconds — stayed empty until GitHub answered. So a
+  * call serves whatever remote data exists (possibly none), starts a
+  * fetch if one is due, and the fetch announces itself when it lands;
+  * the renderer refetches on that event rather than waiting out its
+  * poll interval. Only an explicit refresh, where the user is watching
+  * a spinner they asked for, still awaits.
+  *
+  * Merge/conflict decorations (mergedBranches, conflictCounts) come
+  * from the host's remote sync loop (services/remote-sync.ts); a
+  * babysat pull request's status from the babysit service, so a row
+  * wears its badge without a query of its own.
+  */
+ 
+ /** The rows alone. Exported for its tests; the bridge serves
+  *  `getSidebarSnapshot`, which says which repository they are of. */
+ export async function listSidebarItems(): Promise<SidebarItem[]> {
+   const cwd = requireRepo();
+   const { config, provider } = resolveProvider(cwd);
+ 
+   // Local git first and on its own: worktrees are the rows the user is
+   // most likely looking for, and they must not queue behind a provider
+   // call that may be a network round trip away.
+   pullRequests.refreshInBackground(cwd);
+   const worktrees = await listWorktrees();
+   const prMap = pullRequests.cached(cwd);
+   const sessions: AgentSession[] = worktrees.map((wt) => {
+     const name = keyForWorktree(wt, cwd);
+     return {
+       name,
+       label: wt.branch || wt.path.split('/').pop(),
++      path: wt.path,
+       running: isOwnSessionAlive(name),
+       ...(wt.state ? { state: wt.state } : {}),
+     };
+   });
+ 
+   const sessionNames = new Set(sessions.map((s) => s.name));
+   const orphanPrs = provider
+     ? findOrphanPrs(prMap, sessionNames, config, provider, cwd)
+     : [];
+   const categorizedReviews = provider
+     ? categorizeReviews(prMap, config, provider)
+     : { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
+   const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap, cwd);
+   // buildSessionLookups only knows branches that have a PR; worktrees
+   // without one would fall back to the sanitized session name for
+   // display. Seed the map with each worktree's real branch so rows
+   // show `feat/foo` rather than `feat-foo`.
+   for (const wt of worktrees) {
+     const name = keyForWorktree(wt, cwd);
+     if (wt.branch && !sessionBranchMap.has(name)) {
+       sessionBranchMap.set(name, wt.branch);
+     }
+   }
+   const sortedSessions = sortSessionsByPrId(sessions, sessionPrMap);
+ 
+   // Merged/conflict decorations come from the host's remote sync loop
+   // (same shared passes the TUI's hooks drive).
+   const sync = getSyncDecorations();
+-  return buildSidebarItems(
++  const moved = movedWorktreeSessions(worktrees, cwd, ownSessionNames());
++  const items = buildSidebarItems(
+     sortedSessions,
+     orphanPrs,
+     categorizedReviews,
+     sessionBranchMap,
+     sessionPrMap,
+     sync.merged,
+     sync.conflicts,
+     babysatStatuses(cwd)
+   );
++  return withMovedSessions(items, moved, isOwnSessionAlive);
+ }
+ 
+ /**
+  * The sidebar stamped with the repository it describes — what the
+  * renderer is handed.
+  *
+  * `listSidebarItems` reads the open repository more than once over its
+  * awaits (the worktree list, then which sessions are this repo's), so a
+  * switch landing in between yields rows of one repository with the
+  * live state of another. Rather than stamp that, it is computed again
+  * for the repository the host is on now, and stamped with that one; the
+  * renderer then knows exactly which workspace the answer is for. Bounded,
+  * because a host that keeps switching under the call has a bigger
+  * problem than a stale sidebar.
+  */
+ export async function getSidebarSnapshot(): Promise<SidebarModel> {
+   for (let attempt = 0; attempt < 3; attempt++) {
+     const cwd = requireRepo();
+     const items = await listSidebarItems();
+     if (activeRepoIs(cwd)) return { cwd, items };
+   }
+   throw new Error('The open repository kept changing while listing it');
+ }
+ 
+ export function getSyncState(): SyncState {
+   const cwd = requireRepo();
+   const { config, provider, configured } = resolveProvider(cwd);
+   const remote = pullRequests.getState(cwd);
+   return {
+     providerId: provider?.id ?? null,
+     providerConfigured: configured,
+     lastRemoteSyncAt: remote.fetchedAt,
+     lastGitSyncAt: getSyncDecorations().lastGitSyncAt,
+     remoteError: remote.error,
+     remoteSyncing: remote.inflight,
+     remoteIntervalMs: pullRequestPollIntervalMs(config.prPollInterval),
+     remoteFetches: remote.fetchCount,
+   };
+ }
+ 
+ /**
+  * The user pressed refresh.
+  *
+  * Deeper than a poll on purpose: a provider may hold per-row answers
+  * well beyond one response — Azure remembers a settled CI verdict for
+  * ten minutes — and answering a button from memory is what makes the
+  * button look broken. Pressing it says "I think something has changed".
+  */
+ export async function refreshRemote(): Promise<void> {
+   const cwd = requireRepo();
+   const { config, provider } = resolveProvider(cwd);
+   provider?.forgetPullRequestCache?.(config.vendorProject);
+   await pullRequests.readPullRequests(cwd, { force: true });
+ }
+ 
+ /**
+  * Re-read the pull request list now, without telling the provider to
+  * forget anything.
+  *
+  * For the places the app itself knows something changed and knows what:
+  * submitting a review verdict changes the reviewer votes, which come
+  * from the list, and nothing a provider caches per row carries them.
+  */
+ export async function refreshPrList(): Promise<void> {
+   await pullRequests.readPullRequests(requireRepo(), { force: true });
+ }
+ 
+ /**
+  * The credentials changed: drop what the old ones fetched and go and
+  * find out whether the new ones work.
+  *
+  * The error is cleared before the attempt rather than after it,
+  * because it describes a state that no longer exists — leaving
+  * "Azure DevOps rejected the access token" on screen after the token
+  * has been replaced is what made a correct fix look like it had not
+  * taken. If the new credentials are wrong too, the fetch says so
+  * within a round trip.
+  */
+ export function onCredentialsChanged(): void {
+   pullRequests.forgetCredentials(requireRepo());
+   notifyRemoteUpdated();
+ }
+ 
+ /** Test hook: forget cached remote data. */
+ export function resetRemoteCache(): void {
+   pullRequests.reset();
+ }
+diff --git a/apps/desktop/src/host/services/worktree-sessions.spec.ts b/apps/desktop/src/host/services/worktree-sessions.spec.ts
+new file mode 100644
+index 00000000..4b6a643d
+--- /dev/null
++++ b/apps/desktop/src/host/services/worktree-sessions.spec.ts
+@@ -0,0 +1,136 @@
++import {
++  keyForWorktree,
++  worktreeSessionKey,
++  type SidebarItem,
++  type TaggedSession,
++} from '@n10/core';
++import { describe, expect, it } from 'vitest';
++import {
++  movedWorktreeSessions,
++  withMovedSessions,
++} from './worktree-sessions.js';
++
++const REPO = '/repo';
++const WT = '/repo/.claude/worktrees/feature';
++
++function tagged(
++  branch: string,
++  path = WT,
++  created = 1
++): TaggedSession {
++  return {
++    name: `repo-${branch}`,
++    created,
++    paneDead: false,
++    path,
++    spawner: 'n10',
++    repo: REPO,
++    type: 'worktree',
++    branch,
++    machine: 'local',
++  };
++}
++
++const key = (branch: string) => worktreeSessionKey(branch, REPO);
++const alive = () => true;
++
++describe('movedWorktreeSessions', () => {
++  it('ties the session running in a switched worktree to its row by path', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'other', path: WT }],
++      REPO,
++      [key('feature')],
++      () => [tagged('feature')],
++      alive
++    );
++    expect(moved.get(keyForWorktree({ branch: 'other', path: WT }, REPO)))
++      .toEqual({ name: key('feature'), branch: 'feature' });
++  });
++
++  it('prefers a session created for the branch checked out now', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'other', path: WT }],
++      REPO,
++      [key('feature'), key('other')],
++      () => [tagged('feature'), tagged('other', WT, 2)],
++      alive
++    );
++    expect(moved.size).toBe(0);
++  });
++
++  it('takes the newest of several leftovers in one directory', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'third', path: WT }],
++      REPO,
++      [key('feature'), key('other')],
++      () => [tagged('feature', WT, 1), tagged('other', WT, 5)],
++      alive
++    );
++    expect([...moved.values()]).toEqual([{ name: key('other'), branch: 'other' }]);
++  });
++
++  it('ignores sessions this host does not hold, and ones elsewhere', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'other', path: WT }],
++      REPO,
++      [key('elsewhere')],
++      () => [tagged('feature'), tagged('elsewhere', '/repo/.claude/worktrees/x')],
++      alive
++    );
++    expect(moved.size).toBe(0);
++  });
++
++  it('does not ask tmux when every held session answers to a row', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'feature', path: WT }],
++      REPO,
++      [key('feature'), JSON.stringify(['terminal', 'repo-shell'])],
++      () => {
++        throw new Error('listed tmux');
++      },
++      alive
++    );
++    expect(moved.size).toBe(0);
++  });
++
++  it('does not ask tmux for a held session that has ended', () => {
++    const moved = movedWorktreeSessions(
++      [{ branch: 'other', path: WT }],
++      REPO,
++      [key('removed-worktree')],
++      () => {
++        throw new Error('listed tmux');
++      },
++      () => false
++    );
++    expect(moved.size).toBe(0);
++  });
++});
++
++describe('withMovedSessions', () => {
++  const row = (name: string): SidebarItem => ({
++    kind: 'session',
++    session: { name, running: false, path: WT },
++    branch: 'other',
++    isMerged: false,
++  });
++
++  it('points the row at the moved session and says which branch it was for', () => {
++    const [item] = withMovedSessions(
++      [row(key('other'))],
++      new Map([[key('other'), { name: key('feature'), branch: 'feature' }]]),
++      (name) => name === key('feature')
++    );
++    expect(item.kind === 'session' && item.session).toEqual({
++      name: key('feature'),
++      running: true,
++      path: WT,
++      sessionBranch: 'feature',
++    });
++  });
++
++  it('leaves rows with nothing moved as they are', () => {
++    const items = [row(key('other'))];
++    expect(withMovedSessions(items, new Map(), () => true)).toBe(items);
++  });
++});
+diff --git a/apps/desktop/src/host/services/worktree-sessions.ts b/apps/desktop/src/host/services/worktree-sessions.ts
+new file mode 100644
+index 00000000..a143d2f4
+--- /dev/null
++++ b/apps/desktop/src/host/services/worktree-sessions.ts
+@@ -0,0 +1,126 @@
++import { realpathSync } from 'node:fs';
++import {
++  isSessionAlive,
++  keyForWorktree,
++  listOurSessions,
++  registryNameOf,
++  sessionIdentity,
++  type SidebarItem,
++  type TaggedSession,
++} from '@n10/core';
++import type { WorktreeInfo } from '@n10/worktree-manager';
++
++/**
++ * Which agent session runs in each worktree, found by the directory it
++ * runs in rather than by the branch it was started on.
++ *
++ * A session is keyed by the branch it was created for
++ * (`@orchestra-branch`), and a worktree row by the branch checked out
++ * in it now. The two part the moment someone runs `git switch` inside
++ * the worktree: the row moves to the new branch's key, and the agent
++ * still running there is left under a key no row names — the sidebar
++ * reads it as not running and the tab strip has nothing to follow it
++ * by. tmux still knows where the session runs (`#{session_path}`), and
++ * that is what ties it back to its worktree.
++ */
++export interface MovedWorktreeSession {
++  /** Registry name of the session running in the worktree. */
++  name: string;
++  /** The branch it was created for — no longer the one checked out. */
++  branch: string;
++}
++
++function realPath(path: string): string {
++  try {
++    return realpathSync(path);
++  } catch {
++    return path;
++  }
++}
++
++/** Held worktree sessions, grouped by the real path they run in. */
++function heldByPath(
++  sessions: readonly TaggedSession[],
++  held: ReadonlySet<string>
++): Map<string, TaggedSession[]> {
++  const byPath = new Map<string, TaggedSession[]>();
++  for (const s of sessions) {
++    if (s.type !== 'worktree' || !s.path) continue;
++    if (!held.has(registryNameOf(s))) continue;
++    const at = realPath(s.path);
++    byPath.set(at, [...(byPath.get(at) ?? []), s]);
++  }
++  return byPath;
++}
++
++/**
++ * The held session in each worktree whose branch has moved on from the
++ * one its session was created for, by the row's own key
++ * (`keyForWorktree`). A worktree still on its session's branch needs no
++ * entry, and wins over any other session in the same directory: that
++ * one is the leftover from before the switch. Of several leftovers the
++ * newest is the one last started there.
++ *
++ * tmux is only asked when a live held session answers to no row's
++ * key — the one sign a checkout has moved — so a sidebar poll with
++ * nothing switched costs no fork. The registry keeps a session after it
++ * ends (its final frame stays viewable), and one whose worktree was
++ * removed would otherwise read as moved on every poll for the life of
++ * the app; an ended session runs in no worktree, so it is left out.
++ */
++export function movedWorktreeSessions(
++  worktrees: readonly Pick<WorktreeInfo, 'branch' | 'path'>[],
++  repo: string,
++  held: readonly string[],
++  sessions: () => readonly TaggedSession[] = listOurSessions,
++  isAlive: (name: string) => boolean = isSessionAlive
++): Map<string, MovedWorktreeSession> {
++  const moved = new Map<string, MovedWorktreeSession>();
++  const rowKeys = new Set(worktrees.map((wt) => keyForWorktree(wt, repo)));
++  const heldNames = new Set(
++    held.filter(
++      (name) => sessionIdentity(name)?.kind === 'worktree' && isAlive(name)
++    )
++  );
++  if ([...heldNames].every((name) => rowKeys.has(name))) return moved;
++  const byPath = heldByPath(sessions(), heldNames);
++  for (const wt of worktrees) {
++    const here = byPath.get(realPath(wt.path)) ?? [];
++    if (here.length === 0 || here.some((s) => s.branch === wt.branch))
++      continue;
++    const newest = here.reduce((a, b) => (b.created > a.created ? b : a));
++    moved.set(keyForWorktree(wt, repo), {
++      name: registryNameOf(newest),
++      branch: newest.branch,
++    });
++  }
++  return moved;
++}
++
++/**
++ * Point each moved worktree's row at the session that actually runs in
++ * it. Applied after the rows are built, because every other lookup —
++ * the row's pull request, which pull requests are orphans — is by the
++ * branch checked out now, and must stay so.
++ */
++export function withMovedSessions(
++  items: SidebarItem[],
++  moved: ReadonlyMap<string, MovedWorktreeSession>,
++  isAlive: (name: string) => boolean
++): SidebarItem[] {
++  if (moved.size === 0) return items;
++  return items.map((item) => {
++    if (item.kind !== 'session') return item;
++    const session = moved.get(item.session.name);
++    if (!session) return item;
++    return {
++      ...item,
++      session: {
++        ...item.session,
++        name: session.name,
++        running: isAlive(session.name),
++        sessionBranch: session.branch,
++      },
++    };
++  });
++}
+diff --git a/apps/desktop/src/renderer/components/CommandPalette.tsx b/apps/desktop/src/renderer/components/CommandPalette.tsx
+index 23ff058f..7ac9a0b7 100644
+--- a/apps/desktop/src/renderer/components/CommandPalette.tsx
++++ b/apps/desktop/src/renderer/components/CommandPalette.tsx
+@@ -1,312 +1,307 @@
+ import {
+   FolderOpenIcon,
+   GitBranchIcon,
+   GitBranchPlusIcon,
+   GitPullRequestIcon,
+   MoonIcon,
+   PanelLeftIcon,
+   RefreshCwIcon,
+   SettingsIcon,
+   SunIcon,
+   TerminalIcon,
+ } from 'lucide-react';
+ import { useMemo, useState } from 'react';
+ import { toast } from 'sonner';
+ import type { MachineView, SidebarItem } from '../../host/contract.js';
+ import { useAllBranches, useMachines } from '../lib/data/queries.js';
+ import { useCreateWorktree, useRefreshRemote } from '../lib/data/mutations.js';
+ import { isMachineSelectable } from '../lib/machines/machine-model.js';
+ import { OpenTerminalOnMachineItems } from './machines/OpenTerminalOnMachineItems.js';
+ import { useRepo } from '../lib/repo-context.js';
+ import {
+   itemBranch,
+   itemKey,
+   itemTitle,
+ } from '../lib/sidebar/sidebar-model.js';
+ import { requestLaunchMenu } from '../lib/sidebar/launch-menu-request.js';
+-import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
++import { standsFor, tabIdFor, useRepoTabs } from '../lib/tabs/tabs.js';
+ import { useTheme } from '../lib/theme.js';
+ import { errorMessage, MOD } from '../lib/utils.js';
+ import {
+   CommandDialog,
+   CommandEmpty,
+   CommandGroup,
+   CommandInput,
+   CommandItem,
+   CommandList,
+   CommandSeparator,
+   CommandShortcut,
+ } from './ui/command.js';
+ 
+ /**
+  * ⌘K palette. Three jobs in one box, mirroring the TUI branch picker:
+  *   • jump to an open worktree / PR
+  *   • check out any branch as a new worktree (or create a branch)
+  *   • run app commands (settings, refresh, theme, sidebar)
+  */
+ export function CommandPalette({
+   open,
+   onOpenChange,
+   items,
+   onToggleSidebar,
+   onSwitchRepo,
+   onNewTerminal,
+   onOpenTerminalOnMachine,
+ }: {
+   open: boolean;
+   onOpenChange: (open: boolean) => void;
+   items: SidebarItem[];
+   onToggleSidebar: () => void;
+   onSwitchRepo: () => void;
+   onNewTerminal: () => void;
+   /** Open a shell on a fleet member directly, skipping the dialog —
+    *  the palette is how a keyboard user reaches this. Only connected
+    *  members are offered, never disabled ones. */
+   onOpenTerminalOnMachine: (peerId: string) => void;
+ }) {
+   const { repo } = useRepo();
+   const tabs = useRepoTabs();
+   const { resolved, setPreference } = useTheme();
+   const branches = useAllBranches(repo.cwd, open);
+   const create = useCreateWorktree(repo.cwd);
+   const refresh = useRefreshRemote(repo.cwd);
+   const machines = useMachines();
+   const [query, setQuery] = useState('');
+ 
+   // D8: only a connected peer — one offline is not something to offer
+   // "Open terminal on" for from the palette.
+   const launchableMachines = launchablePeers(machines.data);
+ 
+   const worktreeBranches = useMemo(
+     () =>
+       new Set(
+         items.filter((i) => i.kind === 'session').map((i) => itemBranch(i))
+       ),
+     [items]
+   );
+   const plainWorktrees = useMemo(() => items.filter((i) => !i.pr), [items]);
+   const prItems = useMemo(() => items.filter((i) => Boolean(i.pr)), [items]);
+ 
+   const openItem = (item: SidebarItem) => {
+     close();
+     tabs.openItem(itemKey(item));
+   };
+ 
+   const q = query.trim();
+   const exact = (branches.data ?? []).some((b) => b === q);
+   const canCreate = q.length > 0 && !exact && !/\s/.test(q);
+ 
+   const close = () => {
+     onOpenChange(false);
+     setQuery('');
+   };
+ 
+   const checkout = (branch: string) => {
+     close();
+     const id = toast.loading(`Checking out ${branch}…`);
+     // Open the tab optimistically: worktree tabs are keyed by branch
+     // (PR-backed ones by PR id — those already exist as sidebar items
+     // and go through tabs.openItem above). The pane shows its loading
+     // state until the sidebar model catches up.
+     const existing = items.find((i) => itemBranch(i) === branch);
+     const key = existing ? itemKey(existing) : `branch:${branch}`;
+     // Whether this checkout is what put the tab on screen, decided
+     // before opening it — `tabs.tabs` inside the callbacks below is the
+     // array from this render, which does not include the tab we are
+     // about to add.
+-    const tabId = itemTabId(repo.cwd, key);
++    const tabId = tabIdFor(tabs.tabs, repo.cwd, key);
+     const wasOpen =
+       existing != null ||
+-      tabs.tabs.some(
+-        (t) =>
+-          t.kind === 'item' &&
+-          t.repo === repo.cwd &&
+-          (t.itemKey === key || t.id === tabId)
+-      );
++      tabs.tabs.some((t) => standsFor(t, repo.cwd, key));
+     tabs.openItem(key);
+     create.mutate(branch, {
+       onSuccess: () => {
+         toast.success(`Worktree ready: ${branch}`, { id });
+         // Land in the new worktree's session menu — asked for only once
+         // the checkout is done, so the menu's own "check out first"
+         // path cannot race this one on the same branch.
+         requestLaunchMenu(branch);
+       },
+       onError: (err) => {
+         toast.error(errorMessage(err), { id });
+         // Take the optimistic tab back down with the error: its item is
+         // never arriving, so it would otherwise sit on "Preparing…" for
+         // the rest of the session. A tab that was already open is the
+         // user's, not ours to close.
+         if (!wasOpen) tabs.close(tabId);
+       },
+     });
+   };
+ 
+   return (
+     <CommandDialog
+       open={open}
+       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
+       title="Command palette"
+       description="Jump to a worktree or pull request, check out a branch, or run a command"
+     >
+       <CommandInput
+         placeholder="Branch name, pull request, or command…"
+         value={query}
+         onValueChange={setQuery}
+       />
+       <CommandList>
+         <CommandEmpty>No matches.</CommandEmpty>
+ 
+         {canCreate && (
+           <CommandGroup heading="Create">
+             <CommandItem value={`create ${q}`} onSelect={() => checkout(q)}>
+               <GitBranchPlusIcon />
+               Create branch <span className="font-mono">{q}</span> and open a
+               worktree
+             </CommandItem>
+           </CommandGroup>
+         )}
+ 
+         <CommandGroup heading="Commands">
+           <CommandItem
+             value="command settings preferences"
+             onSelect={() => {
+               close();
+               tabs.openSettings();
+             }}
+           >
+             <SettingsIcon />
+             Open settings
+             <CommandShortcut>{MOD} ,</CommandShortcut>
+           </CommandItem>
+           <CommandItem
+             value="command new terminal shell"
+             onSelect={() => {
+               close();
+               onNewTerminal();
+             }}
+           >
+             <TerminalIcon />
+             New terminal…
+             <CommandShortcut>{MOD} ⇧ T</CommandShortcut>
+           </CommandItem>
+           <OpenTerminalOnMachineItems
+             machines={launchableMachines}
+             onSelect={(peerId) => {
+               close();
+               onOpenTerminalOnMachine(peerId);
+             }}
+           />
+           <CommandItem
+             value="command refresh pull requests sync"
+             onSelect={() => {
+               close();
+               refresh.mutate(undefined, {
+                 onError: (err) => toast.error(errorMessage(err)),
+               });
+             }}
+           >
+             <RefreshCwIcon />
+             Refresh pull requests
+           </CommandItem>
+           <CommandItem
+             value="command toggle sidebar"
+             onSelect={() => {
+               close();
+               onToggleSidebar();
+             }}
+           >
+             <PanelLeftIcon />
+             Toggle sidebar
+             <CommandShortcut>{MOD} B</CommandShortcut>
+           </CommandItem>
+           <CommandItem
+             value="command toggle theme dark light"
+             onSelect={() => {
+               close();
+               setPreference(resolved === 'dark' ? 'light' : 'dark');
+             }}
+           >
+             {resolved === 'dark' ? <SunIcon /> : <MoonIcon />}
+             Switch to {resolved === 'dark' ? 'light' : 'dark'} theme
+           </CommandItem>
+           <CommandItem
+             value="command switch open repository"
+             onSelect={() => {
+               close();
+               onSwitchRepo();
+             }}
+           >
+             <FolderOpenIcon />
+             Open another repository…
+           </CommandItem>
+         </CommandGroup>
+ 
+         <CommandSeparator />
+         {plainWorktrees.length > 0 && (
+           <CommandGroup heading="Worktrees">
+             {plainWorktrees.map((item) => (
+               <OpenItem key={itemKey(item)} item={item} onOpen={openItem} />
+             ))}
+           </CommandGroup>
+         )}
+         {prItems.length > 0 && (
+           <CommandGroup heading="Worktrees w/ pull request">
+             {prItems.map((item) => (
+               <OpenItem key={itemKey(item)} item={item} onOpen={openItem} />
+             ))}
+           </CommandGroup>
+         )}
+ 
+         <CommandGroup heading="Check out branch">
+           {branches.isLoading && (
+             <CommandItem disabled value="__loading">
+               Loading branches…
+             </CommandItem>
+           )}
+           {(branches.data ?? [])
+             .filter((b) => !worktreeBranches.has(b))
+             .slice(0, 200)
+             .map((b) => (
+               <CommandItem
+                 key={b}
+                 value={`branch ${b}`}
+                 onSelect={() => checkout(b)}
+               >
+                 <GitBranchIcon />
+                 <span className="truncate font-mono">{b}</span>
+               </CommandItem>
+             ))}
+         </CommandGroup>
+       </CommandList>
+     </CommandDialog>
+   );
+ }
+ 
+ /** Fleet members the palette's "Open terminal on" offers — D8: only
+  *  connected ones, never local or disabled. */
+ function launchablePeers(machines: MachineView[] | undefined): MachineView[] {
+   return (machines ?? []).filter((m) => !m.isLocal && isMachineSelectable(m));
+ }
+ 
+ function OpenItem({
+   item,
+   onOpen,
+ }: {
+   item: SidebarItem;
+   onOpen: (item: SidebarItem) => void;
+ }) {
+   return (
+     <CommandItem
+       value={`open ${itemTitle(item)} ${itemBranch(item)} ${
+         item.pr ? `#${item.pr.id}` : ''
+       }`}
+       onSelect={() => onOpen(item)}
+     >
+       {item.pr ? <GitPullRequestIcon /> : <GitBranchIcon />}
+       <span className="truncate">{itemTitle(item)}</span>
+       {item.pr && <span className="text-muted-foreground">#{item.pr.id}</span>}
+     </CommandItem>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/components/editor/BranchSwitchBanner.tsx b/apps/desktop/src/renderer/components/editor/BranchSwitchBanner.tsx
+new file mode 100644
+index 00000000..e75f11b3
+--- /dev/null
++++ b/apps/desktop/src/renderer/components/editor/BranchSwitchBanner.tsx
+@@ -0,0 +1,31 @@
++import { AlertTriangleIcon } from 'lucide-react';
++
++/**
++ * Shown at the top of a tab whose worktree is on a different branch
++ * from the one the tab was opened for — someone ran `git switch` in
++ * it. Informational only: the tab follows the worktree, but its pull
++ * request context is the new branch's, which may not be what the
++ * agent in it was started to work on.
++ */
++export function BranchSwitchBanner({
++  current,
++  original,
++}: {
++  current: string;
++  original: string;
++}) {
++  return (
++    <div
++      role="status"
++      aria-label="Branch switched"
++      className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-sm text-warning"
++    >
++      <AlertTriangleIcon className="size-4 shrink-0" />
++      <span className="min-w-0 flex-1 truncate">
++        This worktree is on <code className="font-mono">{current}</code>, not{' '}
++        <code className="font-mono">{original}</code>, the branch this tab was
++        opened for.
++      </span>
++    </div>
++  );
++}
+diff --git a/apps/desktop/src/renderer/components/editor/EditorArea.tsx b/apps/desktop/src/renderer/components/editor/EditorArea.tsx
+index ccb90499..08fcfa92 100644
+--- a/apps/desktop/src/renderer/components/editor/EditorArea.tsx
++++ b/apps/desktop/src/renderer/components/editor/EditorArea.tsx
+@@ -1,257 +1,283 @@
+ import { useDeferredValue, useMemo } from 'react';
+ import type { SidebarItem } from '../../../host/contract.js';
+ import { useRepo } from '../../lib/repo-context.js';
+ import {
+   useMachines,
+   useSessionActivity,
+   useSessions,
+   useTerminals,
+ } from '../../lib/data/queries.js';
+ import {
+   hasPeerMachines,
+   resolveMachineLabel,
+ } from '../../lib/machines/machine-model.js';
+ import {
+   itemBranch,
+   itemKey,
+   itemSessionName,
++  itemWorktree,
+ } from '../../lib/sidebar/sidebar-model.js';
+ import { foreignRepoOf, useTabs, type Tab } from '../../lib/tabs/tabs.js';
+ import { repoGroupStarts } from '../../lib/tabs/tab-presentation.js';
+ import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
+ import { cn } from '../../lib/utils.js';
+ import { ErrorBoundary } from '../ErrorBoundary.js';
++import { BranchSwitchBanner } from './BranchSwitchBanner.js';
+ import { EmptyState } from './EmptyState.js';
+ import { SettingsView } from './lazy-panes.js';
+ import { ItemView } from './ItemView.js';
+ import { ForeignRepoPane } from './ForeignRepoPane.js';
+ import { TabButton } from './TabButton.js';
+ import { TerminalView } from './TerminalView.js';
+ 
+ /** The pane body for a tab. Each kind renders its own placeholder
+  *  while its module lands; nothing here suspends. */
+ function PaneBody({
+   tab,
+   item,
+   items,
+   active,
+   menuActive,
+   onPin,
+ }: {
+   tab: Tab;
+   item: SidebarItem | undefined;
+   items: SidebarItem[];
+   active: boolean;
+   menuActive: boolean;
+   onPin: () => void;
+ }) {
+   if (tab.kind === 'settings') return <SettingsView />;
+   if (tab.kind === 'terminal')
+     return <TerminalView tab={tab} active={active} />;
+   return (
+     <ItemView
+       item={item}
+       items={items}
+       itemKey={tab.itemKey}
+       active={active}
+       menuActive={menuActive}
+       onPin={onPin}
+     />
+   );
+ }
+ 
+ /**
+  * Tab strip + stacked panes. Every open tab stays mounted (panes are
+  * absolutely positioned and hidden with `visibility`, not unmounted)
+  * so running terminals keep their scrollback and PR views keep their
+  * scroll position when you switch away and back.
+  */
+ export function EditorArea({
+   items,
+   onOpenPalette,
+ }: {
+   items: SidebarItem[];
+   onOpenPalette: () => void;
+ }) {
+   const { repo } = useRepo();
+   const tabs = useTabs();
+   const closer = useCloseTabs(items);
+   const activity = useSessionActivity(repo.cwd);
+   const terminals = useTerminals();
+   const sessions = useSessions(repo.cwd);
+   const machines = useMachines();
+   const showMachines = hasPeerMachines(machines.data ?? []);
+   const terminalRunning = useMemo(
+     () =>
+       new Set(
+         (terminals.data ?? []).filter((t) => t.running).map((t) => t.name)
+       ),
+     [terminals.data]
+   );
+   const byKey = useMemo(
+     () => new Map(items.map((i) => [itemKey(i), i])),
+     [items]
+   );
+   const byBranch = useMemo(
+     () => new Map(items.map((i) => [itemBranch(i), i])),
+     [items]
+   );
++  const byWorktree = useMemo(
++    () =>
++      new Map(
++        items.flatMap((i) => {
++          const worktree = itemWorktree(i);
++          return worktree ? [[worktree, i] as const] : [];
++        })
++      ),
++    [items]
++  );
+ 
+   /**
+    * The sidebar item a tab is showing.
+    *
+    * Falls back to the tab's stamped branch when its key doesn't resolve:
+    * an item re-keys the moment a PR appears (`branch:x` → `pr:42`), and
+    * `sync-items` only catches up in an effect — one render happens
+    * first. Looking up by key alone would make that render treat the tab
+    * as itemless, which unmounts the pane and destroys a live agent's
+    * terminal (its scrollback only partly recoverable from the host's
+-   * ring buffer) twice over a PR's life.
++   * ring buffer) twice over a PR's life. The worktree is asked first,
++   * for the same reason: `git switch` inside it moves its item to
++   * another key, and can leave its old PR behind under the old one.
+    */
+   const itemFor = (tab: Tab): SidebarItem | undefined => {
+     // A tab from another repository resolves to nothing here on
+     // purpose: `items` describes the open repo, and a shared branch
+     // name would otherwise hand that tab this repo's worktree, its
+     // agent and its diff.
+     if (tab.kind !== 'item' || tab.repo !== repo.cwd) return undefined;
+     return (
++      (tab.worktree ? byWorktree.get(tab.worktree) : undefined) ??
+       byKey.get(tab.itemKey) ??
+       (tab.branch ? byBranch.get(tab.branch) : undefined)
+     );
+   };
+ 
+   const sessionNameFor = (tab: Tab): string | undefined => {
+     // A terminal's session is the tab itself — always mounted, so its
+     // scrollback survives switching away.
+     if (tab.kind === 'terminal') return tab.name;
+     const item = itemFor(tab);
+     if (!item) return undefined;
+     const branch = itemBranch(item);
+     for (const i of items) {
+       const name = itemSessionName(i);
+       if (name && itemBranch(i) === branch) return name;
+     }
+     return undefined;
+   };
+ 
+   // The tab title's machine prefix (ux-machines.md §6) — D8-gated on
+   // whether a peer is registered at all, on top of resolveMachineLabel
+   // already returning null for a local session.
+   const machineLabelFor = (tab: Tab): string | null => {
+     if (!showMachines) return null;
+     const name = sessionNameFor(tab);
+     if (!name) return null;
+     const machineId =
+       tab.kind === 'terminal'
+         ? terminals.data?.find((t) => t.name === name)?.machine
+         : sessions.data?.find((s) => s.name === name)?.machine;
+     return resolveMachineLabel(machineId, machines.data);
+   };
+ 
+   // The tab strip tracks the live state so clicks feel instant; the
+   // panes below follow a *deferred* copy, so mounting/unmounting a
+   // pane runs as an interruptible background render instead of
+   // blocking the click. No blanket overlay: the virtualized diff and
+   // the rail each show their own skeletons, and the terminal renders
+   // in the first frame.
+   const paneTabs = useDeferredValue(tabs.tabs);
+   const paneActiveId = useDeferredValue(tabs.activeId);
+   const groupStarts = useMemo(() => repoGroupStarts(tabs.tabs), [tabs.tabs]);
+ 
+   // The active tab's repository, when it is not the open one. Its pane
+   // cannot be rendered from here — every query and every host call is
+   // scoped to the open repo — so the notice stands in until the repo
+   // switch that activating it kicked off lands.
+   const activePane = paneTabs.find((t) => t.id === paneActiveId);
+   const foreignCwd = activePane ? foreignRepoOf(activePane, repo.cwd) : null;
+ 
+   // Mount policy: the active tab plus any tab whose branch has a PTY
+   // session (its terminal must stay mounted to keep scrollback). Other
+   // panes unmount while inactive — a diff pane can hold tens of
+   // thousands of nodes, and keeping several alive made every
+   // interaction (typing, closing tabs) pay for all of them.
+   const hasSession = (tab: Tab): boolean => sessionNameFor(tab) != null;
+ 
+   if (tabs.tabs.length === 0) {
+     return (
+       <EmptyState onOpenPalette={onOpenPalette} hasItems={items.length > 0} />
+     );
+   }
+ 
+   const confirmDialog = closer.confirmDialog;
+ 
+   return (
+     <div className="flex h-full min-w-0 flex-col bg-background">
+       <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-tab [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+         {tabs.tabs.map((tab, i) => {
+           const sessionName = sessionNameFor(tab);
+           return (
+             <TabButton
+               key={tab.id}
+               tab={tab}
+               item={itemFor(tab)}
+               active={tab.id === tabs.activeId}
+               closer={closer}
+               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
+               foreignRepo={foreignRepoOf(tab, repo.cwd)}
+               startsGroup={groupStarts[i]}
+               running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
+               machineLabel={machineLabelFor(tab)}
+             />
+           );
+         })}
+         <div className="flex-1" />
+       </div>
+       <div className="relative min-h-0 flex-1" data-editor-panes>
+         {paneTabs.map((tab) => {
+           // A foreign tab has no pane here: its data lives in a
+           // repository this window is not pointing at.
+           if (foreignRepoOf(tab, repo.cwd) !== null) return null;
+           const active = tab.id === paneActiveId;
+           if (!active && !hasSession(tab)) return null;
++          const item = itemFor(tab);
++          const switched =
++            tab.kind === 'item' &&
++            tab.originBranch &&
++            item &&
++            itemBranch(item) !== tab.originBranch
++              ? { current: itemBranch(item), original: tab.originBranch }
++              : null;
+           return (
+             <div
+               key={tab.id}
+               aria-hidden={!active}
+               className={cn(
+                 'absolute inset-0 flex min-h-0 flex-col',
+                 !active && 'invisible'
+               )}
+             >
+-              <ErrorBoundary resetKey={tab.id}>
+-                {/* The pane bodies are code-split (see lazy-panes), but
+-                    none suspends — each renders its own placeholder
+-                    until its module lands, so there is no Suspense
+-                    boundary here to throttle the swap. */}
+-                <PaneBody
+-                  tab={tab}
+-                  item={itemFor(tab)}
+-                  items={items}
+-                  active={active}
+-                  menuActive={tab.id === tabs.activeId}
+-                  onPin={() => tabs.pin(tab.id)}
+-                />
+-              </ErrorBoundary>
++              {switched && <BranchSwitchBanner {...switched} />}
++              <div className="flex min-h-0 flex-1 flex-col">
++                <ErrorBoundary resetKey={tab.id}>
++                  {/* The pane bodies are code-split (see lazy-panes), but
++                      none suspends — each renders its own placeholder
++                      until its module lands, so there is no Suspense
++                      boundary here to throttle the swap. */}
++                  <PaneBody
++                    tab={tab}
++                    item={item}
++                    items={items}
++                    active={active}
++                    menuActive={tab.id === tabs.activeId}
++                    onPin={() => tabs.pin(tab.id)}
++                  />
++                </ErrorBoundary>
++              </div>
+             </div>
+           );
+         })}
+         {foreignCwd && (
+           <div className="absolute inset-0 flex min-h-0 flex-col">
+             <ForeignRepoPane cwd={foreignCwd} />
+           </div>
+         )}
+         {paneActiveId === null && (
+           // Tabs on the strip, but none of them this repository's — it
+           // was just opened and has nothing of its own open yet.
+           <div className="absolute inset-0 flex min-h-0 flex-col">
+             <EmptyState
+               onOpenPalette={onOpenPalette}
+               hasItems={items.length > 0}
+             />
+           </div>
+         )}
+       </div>
+       {confirmDialog}
+     </div>
+   );
+ }
+diff --git a/apps/desktop/src/renderer/lib/sidebar/sidebar-model.ts b/apps/desktop/src/renderer/lib/sidebar/sidebar-model.ts
+index 1ec2cc24..4792c303 100644
+--- a/apps/desktop/src/renderer/lib/sidebar/sidebar-model.ts
++++ b/apps/desktop/src/renderer/lib/sidebar/sidebar-model.ts
+@@ -1,337 +1,343 @@
+ import type { ReviewDecision } from '@n10/vcs-core/types';
+ import type { SidebarItem } from '../../../host/contract.js';
+ 
+ export type SectionKey =
+   | 'worktrees'
+   | 'draft-pull-requests'
+   | 'pull-requests'
+   | 'needs-review'
+   | 'waiting'
+   | 'approved';
+ 
+ export const SECTION_ORDER: SectionKey[] = [
+   'worktrees',
+   'draft-pull-requests',
+   'pull-requests',
+   'needs-review',
+   'waiting',
+   'approved',
+ ];
+ 
+ export const SECTION_LABEL: Record<SectionKey, string> = {
+   worktrees: 'Worktrees',
+   'draft-pull-requests': 'Draft Pull Requests',
+   'pull-requests': 'Pull Requests',
+   'needs-review': 'Needs Your Review',
+   waiting: 'Waiting for Author',
+   approved: 'Approved by You',
+ };
+ 
+ /**
+  * Stable identity for an editor tab / selection. A single PR keeps the
+  * same key as it moves between sidebar kinds — launching an agent turns
+  * an orphan/review PR into a session-backed row, and it must not orphan
+  * the open tab — so any PR-bearing item is keyed by its PR id, and a
+  * plain worktree by its branch.
+  */
+ export function itemKey(item: SidebarItem): string {
+   const pr = item.pr;
+   if (pr) return `pr:${pr.id}`;
+   if (item.kind === 'session')
+     return `branch:${item.branch ?? item.session.label ?? item.session.name}`;
+   return `pr:${item.pr.id}`;
+ }
+ 
+ export function sectionKey(item: SidebarItem): SectionKey {
+   if (item.kind === 'session') {
+     if (!item.pr) return 'worktrees';
+     return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
+   }
+   if (item.kind === 'orphan-pr') {
+     return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
+   }
+   if (item.category === 'needs-review') return 'needs-review';
+   if (item.category === 'waiting') return 'waiting';
+   return 'approved';
+ }
+ 
+ export function itemRunning(item: SidebarItem): boolean {
+   if (item.kind === 'session') return item.session.running;
+   return item.running === true;
+ }
+ 
+ /**
+  * What an item is called on screen: its pull request's title when it
+  * has one, its branch otherwise. A branch name is a slug the author
+  * typed once; the title is what the work is about, and it is what a
+  * reader scanning a sidebar or a tab strip is looking for.
+  */
+ export function itemTitle(item: SidebarItem): string {
+   if (item.kind !== 'session') return item.pr.title;
+   return (
+     item.pr?.title ?? item.branch ?? item.session.label ?? item.session.name
+   );
+ }
+ 
+ /** The git branch an item corresponds to. */
+ export function itemBranch(item: SidebarItem): string {
+   if (item.kind === 'session')
+     return item.branch ?? item.session.label ?? item.session.name;
+   return item.pr.sourceBranch;
+ }
+ 
++/** The worktree checkout an item lives in — only a worktree row knows
++ *  it. */
++export function itemWorktree(item: SidebarItem): string | undefined {
++  return item.kind === 'session' ? item.session.path : undefined;
++}
++
+ /** PTY session name for an item — the worktree session, or (for PR
+  *  items) the alive review session the host attached to it. */
+ export function itemSessionName(item: SidebarItem): string | undefined {
+   if (item.kind === 'session') return item.session.name;
+   return item.sessionName;
+ }
+ 
+ export function itemHasWorktree(item: SidebarItem): boolean {
+   if (item.kind === 'session') return true;
+   return Boolean(item.sessionName);
+ }
+ 
+ /**
+  * Reflect worktree removals that have been confirmed but not yet
+  * finished, so the whole window reacts when the user clicks Remove
+  * rather than when git and the session teardown are done.
+  *
+  * The two row kinds want opposite treatment, which is the part that is
+  * easy to get wrong: a plain worktree row *is* the worktree and goes,
+  * but a PR row outlives its checkout — the pull request is still open
+  * and still belongs in its review section. Dropping it would blank a
+  * row the refetch then puts straight back. So the PR row stays and only
+  * the parts that describe a worktree are cleared, which is also what
+  * takes "Stop agent" and "Remove worktree…" out of its context menu and
+  * stops its running indicator.
+  *
+  * Nothing here needs rolling back: a failed removal stops being
+  * pending, and the rows return exactly as they were.
+  */
+ export function applyPendingRemovals(
+   items: SidebarItem[],
+   removing: ReadonlySet<string>
+ ): SidebarItem[] {
+   if (removing.size === 0) return items;
+   return items.flatMap((item) => {
+     if (!removing.has(itemBranch(item))) return [item];
+     if (item.kind === 'session') return [];
+     return [{ ...item, sessionName: undefined, running: undefined }];
+   });
+ }
+ 
+ export interface SidebarSection {
+   key: SectionKey;
+   label: string;
+   items: SidebarItem[];
+ }
+ 
+ /** Group the ordered flat list into its sections (TUI order preserved). */
+ export function groupSections(items: SidebarItem[]): SidebarSection[] {
+   const map = new Map<SectionKey, SidebarItem[]>();
+   for (const item of items) {
+     const k = sectionKey(item);
+     const arr = map.get(k);
+     if (arr) arr.push(item);
+     else map.set(k, [item]);
+   }
+   return SECTION_ORDER.filter((k) => map.has(k)).map((k) => ({
+     key: k,
+     label: SECTION_LABEL[k],
+     items: map.get(k) ?? [],
+   }));
+ }
+ 
+ // ── Pull request status cluster ──────────────────────────────────
+ 
+ /**
+  * A pull request row shows one circle standing for two independent
+  * facts, so what each visual channel means has to be decided rather
+  * than left to fall out of the code:
+  *
+  *   colour — the worst thing standing in the way
+  *   glyph  — which of the two axes that thing is
+  *   filled — nothing outstanding on either
+  *
+  * Colour is deliberately asymmetric. CI can only ever make a row more
+  * urgent, never less: a passing build does not lift a request that
+  * nobody has approved, while a failing one is red however many
+  * approvals it has. Green therefore means people have signed off, which
+  * makes it rare enough to be worth noticing in a long list.
+  */
+ export type ApprovalState = 'rejected' | 'blocked' | 'approved' | 'partial';
+ export type CiState = 'passed' | 'failed' | 'running' | 'absent';
+ export type StatusTone = 'red' | 'yellow' | 'green' | 'muted';
+ export type StatusGlyph =
+   | 'rejected'
+   | 'waiting'
+   | 'approved'
+   | 'partial'
+   | 'ci-failed'
+   | 'ci-running'
+   | 'ci-absent'
+   | 'ci-passed';
+ 
+ export interface PrStatusIndicator {
+   approval: ApprovalState;
+   /** `absent` covers both "never ran" and "withdrew" — Azure checks
+    *  that end `notApplicable` land here. */
+   ci: CiState;
+   tone: StatusTone;
+   glyph: StatusGlyph;
+   label: string;
+   filled: boolean;
+   approved: number;
+   total: number;
+ }
+ 
+ /**
+  * How much each state demands attention. The glyph shows whichever axis
+  * scores higher, so the circle depicts the thing actually holding the
+  * request up rather than always depicting CI — which is what produced a
+  * green tick sitting inside a red circle on a rejected request.
+  *
+  * Approvals win a tie: they are somebody's decision, and CI is still
+  * spelled out in the tooltip either way.
+  */
+ const APPROVAL_SEVERITY: Record<ApprovalState, number> = {
+   rejected: 3,
+   blocked: 2,
+   partial: 1,
+   approved: 0,
+ };
+ const CI_SEVERITY: Record<CiState, number> = {
+   failed: 3,
+   running: 2,
+   absent: 1,
+   passed: 0,
+ };
+ 
+ const APPROVAL_GLYPH: Record<ApprovalState, StatusGlyph> = {
+   rejected: 'rejected',
+   blocked: 'waiting',
+   partial: 'partial',
+   approved: 'approved',
+ };
+ const CI_GLYPH: Record<CiState, StatusGlyph> = {
+   failed: 'ci-failed',
+   running: 'ci-running',
+   absent: 'ci-absent',
+   passed: 'ci-passed',
+ };
+ 
+ function plural(n: number, word: string): string {
+   return `${n} ${word}${n === 1 ? '' : 's'}`;
+ }
+ 
+ function ciPhrase(ci: CiState): string {
+   if (ci === 'passed') return 'CI passed';
+   if (ci === 'failed') return 'CI failed';
+   if (ci === 'running') return 'CI running';
+   return 'No CI result';
+ }
+ 
+ function approvalPhrase(
+   approval: ApprovalState,
+   approved: number,
+   total: number
+ ): string {
+   const of = `${approved} of ${plural(total, 'reviewer')} approved`;
+   if (approval === 'rejected') return `changes rejected (${of})`;
+   if (approval === 'blocked') return `waiting for the author (${of})`;
+   if (approval === 'approved') {
+     return `all ${plural(total, 'reviewer')} approved`;
+   }
+   if (total === 0) return 'no reviewers yet';
+   return `waiting on ${plural(total - approved, 'approval')} (${of})`;
+ }
+ 
+ function ciState(buildStatus: string | undefined): CiState {
+   if (buildStatus === 'succeeded') return 'passed';
+   if (buildStatus === 'failed') return 'failed';
+   if (buildStatus === 'pending') return 'running';
+   return 'absent';
+ }
+ 
+ function toneFor(approval: ApprovalState, ci: CiState): StatusTone {
+   if (ci === 'failed' || approval === 'rejected') return 'red';
+   if (ci === 'running' || approval === 'blocked') return 'yellow';
+   // Only approvals earn green. A passing build on a request nobody has
+   // approved is not progress anyone can act on.
+   if (approval === 'approved') return 'green';
+   return 'muted';
+ }
+ 
+ /**
+  * Both axes of a pull request's state, how to draw them, and the
+  * sentence describing them.
+  *
+  * The one cell with its own wording is the one a reader acts on:
+  * approvals in and CI green means the request can be merged, and saying
+  * so beats making them read two clauses and draw the conclusion.
+  */
+ export function prStatusIndicator(
+   reviewers: { decision: ReviewDecision }[],
+   buildStatus: string | undefined,
+   isBlocking: (decision: ReviewDecision) => boolean
+ ): PrStatusIndicator {
+   const total = reviewers.length;
+   const approved = reviewers.filter((r) => r.decision === 'approved').length;
+   const ci = ciState(buildStatus);
+ 
+   const approval: ApprovalState = reviewers.some(
+     (r) => r.decision === 'rejected'
+   )
+     ? 'rejected'
+     : reviewers.some((r) => isBlocking(r.decision))
+     ? 'blocked'
+     : total > 0 && approved === total
+     ? 'approved'
+     : 'partial';
+ 
+   const glyph =
+     CI_SEVERITY[ci] > APPROVAL_SEVERITY[approval]
+       ? CI_GLYPH[ci]
+       : APPROVAL_GLYPH[approval];
+ 
+   const ready = approval === 'approved' && ci === 'passed';
+   const label = ready
+     ? `Ready to merge — CI passed, all ${plural(total, 'reviewer')} approved`
+     : `${ciPhrase(ci)} — ${approvalPhrase(approval, approved, total)}`;
+ 
+   return {
+     approval,
+     ci,
+     tone: toneFor(approval, ci),
+     glyph,
+     label,
+     filled: ready,
+     approved,
+     total,
+   };
+ }
+ 
+ /** Tooltip for the comment count. */
+ export function unresolvedCommentsLabel(count: number): string {
+   return `${plural(count, 'unresolved comment')}`;
+ }
+ 
+ /**
+  * The session name a row can actually be driven through, or undefined.
+  *
+  * The sidebar names a would-be session for every worktree, launched or
+  * not — the name is derived from the branch. Only a name the host has
+  * really launched has a PTY behind it, so reading the row's name as
+  * "a session exists" offered to *re*launch an agent that had never run
+  * and mounted a terminal pane with nothing in it.
+  */
+ export function liveSessionName(
+   rowSessionName: string | undefined,
+   sessions: readonly { name: string }[]
+ ): string | undefined {
+   if (rowSessionName == null) return undefined;
+   return sessions.some((s) => s.name === rowSessionName)
+     ? rowSessionName
+     : undefined;
+ }
+diff --git a/apps/desktop/src/renderer/lib/tabs/tab-identity.ts b/apps/desktop/src/renderer/lib/tabs/tab-identity.ts
+index ef2d6dde..5d95a8c8 100644
+--- a/apps/desktop/src/renderer/lib/tabs/tab-identity.ts
++++ b/apps/desktop/src/renderer/lib/tabs/tab-identity.ts
+@@ -1,105 +1,155 @@
+ /**
+  * What a tab *is*: its shape, and the identities derived from it.
+  *
+  * Split from the reducer because these are the answers the rest of
+  * the app asks about a tab — which repository it belongs to, whether
+  * that is the open one — and none of them involve a transition.
+  */
+ import type { TerminalKind } from '../../../host/contract.js';
+ 
+ export type Tab =
+   | {
+       id: string;
+       kind: 'item';
+       /** Absolute path of the repository this tab belongs to. Half of
+        *  the tab's identity: `branch:main` means a different thing in
+        *  each open repo. */
+       repo: string;
+       itemKey: string;
+       preview: boolean;
+       /** Last-known git branch, stamped by `sync-items`. The stable
+        *  identity a tab falls back on when its itemKey goes stale —
+        *  a worktree's key changes from `branch:x` to `pr:n` the moment
+        *  a PR appears (and back when it closes). */
+       branch?: string;
++      /** The worktree checkout the tab's item lives in, stamped by
++       *  `sync-items`. A worktree's identity: `git switch` inside it
++       *  moves its item to another branch's key, and the tab follows
++       *  it here before anything else. */
++      worktree?: string;
++      /** The branch the tab was opened for, stamped once by
++       *  `sync-items` — the branch the worktree's agent session was
++       *  created for when it has one. The tab warns while its worktree
++       *  is on any other. */
++      originBranch?: string;
+       /** Last-known display title, stamped by `sync-items`. What the
+        *  strip shows once the item is out of reach — its repository is
+        *  not the open one, so the sidebar cannot describe it — rather
+        *  than falling back to a key. */
+       title?: string;
+     }
+   | { id: 'settings'; kind: 'settings'; preview: false }
+   | {
+       id: string;
+       kind: 'terminal';
+       /** Qualified session key — the terminal's identity. */
+       name: string;
+       terminalKind: TerminalKind;
+       cwd: string;
+       /** `cwd` with home written as `~`, as the host renders it. */
+       displayPath: string;
+       /** The repository this terminal's directory is the root of, or
+        *  `null` for a plain folder — which belongs to nobody, sits in
+        *  the repo-less group, and is never foreign. */
+       repo: string | null;
+       /** Terminals are always pinned: a preview tab gets replaced by
+        *  the next click, and a shell is not something to lose that way. */
+       preview: false;
+       /** Whether a host listing has named this terminal yet. A tab
+        *  opened on the launch's own answer starts out unlisted, and a
+        *  listing fetched before the terminal existed says nothing about
+        *  it — only a listing that has named it, and then stops, has
+        *  seen it end. */
+       listed: boolean;
+     };
+ 
+ /** A tab that shows a sidebar item, and so belongs to a repository. */
+ export type ItemTab = Extract<Tab, { kind: 'item' }>;
+ export type TerminalTab = Extract<Tab, { kind: 'terminal' }>;
+ 
+ /**
+  * The id of the tab for `itemKey` in `repo`.
+  *
+  * Length-prefixed rather than joined on a separator: repository paths
+  * and branch names can both contain any punctuation a separator might
+  * use, and a collision here is two repos' tabs rendering each other's
+  * pane (panes are keyed by tab id).
+  */
+ export function itemTabId(repo: string, itemKey: string): string {
+   return `item:${repo.length}:${repo}:${itemKey}`;
+ }
+ 
++/**
++ * Whether `tab` is the tab for `itemKey` in `repo`: it shows that item
++ * now, or it was opened on it (its id) and has since only been
++ * re-keyed — `branch:x` growing into `pr:n`. A tab that followed its
++ * worktree onto another branch no longer stands for the item it was
++ * opened on; that item, left behind in the sidebar, gets a tab of its
++ * own.
++ */
++export function standsFor(tab: Tab, repo: string, itemKey: string): boolean {
++  if (tab.kind !== 'item' || tab.repo !== repo) return false;
++  if (tab.itemKey === itemKey) return true;
++  const movedOff =
++    tab.originBranch !== undefined &&
++    tab.branch !== undefined &&
++    tab.branch !== tab.originBranch;
++  return !movedOff && tab.id === itemTabId(repo, itemKey);
++}
++
++/**
++ * The id opening `itemKey` in `repo` lands on: the tab already
++ * standing for it, or a new one. A new tab whose natural id is still
++ * held by a tab that moved off it takes a suffixed one — `~` cannot
++ * occur in a branch name or a PR key, so the suffix never collides with
++ * another item's id. The moved tab keeps its id: panes are keyed by it,
++ * and re-iding would remount its terminal.
++ */
++export function tabIdFor(
++  tabs: readonly Tab[],
++  repo: string,
++  itemKey: string
++): string {
++  const existing = tabs.find((t) => standsFor(t, repo, itemKey));
++  if (existing) return existing.id;
++  const base = itemTabId(repo, itemKey);
++  const taken = new Set(tabs.map((t) => t.id));
++  let id = base;
++  for (let n = 2; taken.has(id); n++) id = `${base}~${n}`;
++  return id;
++}
++
+ /** The id of the tab for a terminal session. Session names are unique
+  *  across directories and repositories, so the name alone is the key. */
+ export function terminalTabId(name: string): string {
+   return `terminal:${name}`;
+ }
+ 
+ /** The repository a tab is at home in, or null for one that belongs to
+  *  nobody — settings, and a terminal in a plain folder. */
+ export function tabHome(tab: Tab): string | null {
+   return tab.kind === 'settings' ? null : tab.repo;
+ }
+ 
+ /** Identity of an item tab as a map key — the same pair, unambiguous. */
+ export function pairKey(tab: Tab): string {
+   return tab.kind === 'item' ? itemTabId(tab.repo, tab.itemKey) : tab.id;
+ }
+ 
+ /** Whether `tab` belongs to a repository other than the open one.
+  *  Settings belongs to none, so it is never foreign. */
+ export function isForeignTab(tab: Tab, repo: string): boolean {
+   return foreignRepoOf(tab, repo) !== null;
+ }
+ 
+ /** The other repository `tab` belongs to, or null when it is at home
+  *  — or belongs to nobody, which counts as at home everywhere. */
+ export function foreignRepoOf(tab: Tab, repo: string): string | null {
+   const home = tabHome(tab);
+   return home !== null && home !== repo ? home : null;
+ }
+ 
+ /** Identity of an auto-opened session, unique across repositories. */
+ export function autoOpenKey(repo: string, sessionName: string): string {
+   return `${repo.length}:${repo}:${sessionName}`;
+ }
+diff --git a/apps/desktop/src/renderer/lib/tabs/tab-sync.ts b/apps/desktop/src/renderer/lib/tabs/tab-sync.ts
+index b3300632..19511571 100644
+--- a/apps/desktop/src/renderer/lib/tabs/tab-sync.ts
++++ b/apps/desktop/src/renderer/lib/tabs/tab-sync.ts
+@@ -1,140 +1,169 @@
+ import { pairKey } from './tab-identity.js';
+ import type { ItemEntry, ItemTab, Tab, TabsState } from './tabs-model.js';
+ 
+ /**
+  * The passes `sync-items` runs over tabs that already exist:
+  * following an item whose key changed identity, collapsing the
+  * duplicate that can produce, and pinning a preview that turned out
+  * to have a live agent behind it.
+  *
+  * Each is scoped to the repository being synced — another repo's
+  * tabs are not described by these entries, and a same-named branch
+  * over there is a different branch. Opening a tab per newly running
+  * agent stays with the reducer, since it is the one pass that
+  * dispatches rather than rewrites.
+  */
+ 
+ /**
+  * Follow items whose key changed identity, and collapse any duplicate
+  * the change produced.
+  */
+ export function rekey(
+   state: TabsState,
+   repo: string,
+   entries: ItemEntry[]
+ ): TabsState {
+   // Reconcile open tabs with the current sidebar items. An item's
+   // key changes identity over its life (worktree `branch:x` grows a
+-  // PR and becomes `pr:n`; a closed PR reverts) — follow it by
+-  // branch so the tab never strands on a key no item carries.
++  // PR and becomes `pr:n`; a closed PR reverts; `git switch` in the
++  // worktree moves it to another branch) — follow it by worktree,
++  // then by branch, so the tab never strands on a key no item carries.
+   const branchOf = new Map<string, string>();
++  const worktreeOf = new Map<string, string>();
+   const keys = new Set<string>();
+   for (const e of entries) {
+     keys.add(e.itemKey);
++    if (e.worktree) worktreeOf.set(e.worktree, e.itemKey);
+     // On a branch collision prefer the PR-bearing key — it is the
+     // newer identity (the sidebar keys any PR-bearing item by PR).
+     const prev = branchOf.get(e.branch);
+     if (!prev || (prev.startsWith('branch:') && e.itemKey.startsWith('pr:')))
+       branchOf.set(e.branch, e.itemKey);
+   }
+   const entryByKey = new Map(entries.map((e) => [e.itemKey, e]));
++  const index = { keys, branchOf, worktreeOf };
+   let changed = false;
+   const remapped = state.tabs.map((t): Tab => {
+     // Another repository's tabs are none of this sync's business: its
+     // items are not in `entries`, so every one of them would read as a
+     // stale key and get followed onto a same-named branch over here.
+     if (t.kind !== 'item' || t.repo !== repo) return t;
+-    if (keys.has(t.itemKey)) {
+-      const stamped = stamp(t, entryByKey.get(t.itemKey));
+-      if (stamped !== t) changed = true;
+-      return stamped;
+-    }
+-    // Stale key. `branch:`-shaped keys carry their branch; older
+-    // tabs may have a stamped one from a previous sync.
+-    const branch =
+-      t.branch ??
+-      (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
+-    const nextKey = branch ? branchOf.get(branch) : undefined;
+-    if (!nextKey || nextKey === t.itemKey) return t;
+-    changed = true;
+-    return stamp({ ...t, itemKey: nextKey, branch }, entryByKey.get(nextKey));
++    const itemKey = followedKey(t, index);
++    const stamped = stamp(
++      itemKey === t.itemKey ? t : { ...t, itemKey },
++      entryByKey.get(itemKey)
++    );
++    if (stamped !== t) changed = true;
++    return stamped;
+   });
+   if (!changed) return state;
+   return { ...state, ...collapseDuplicateKeys(remapped, state.activeId) };
+ }
+ 
++/** Where an item tab's item is now. */
++function followedKey(
++  t: ItemTab,
++  index: {
++    keys: ReadonlySet<string>;
++    branchOf: ReadonlyMap<string, string>;
++    worktreeOf: ReadonlyMap<string, string>;
++  }
++): string {
++  // The worktree comes first, even over a key that still exists: a
++  // worktree with a PR that switches branch leaves the PR behind as a
++  // row of its own, and the tab belongs with the checkout.
++  const moved = t.worktree ? index.worktreeOf.get(t.worktree) : undefined;
++  if (moved) return moved;
++  if (index.keys.has(t.itemKey)) return t.itemKey;
++  // Stale key. `branch:`-shaped keys carry their branch; older tabs
++  // may have a stamped one from a previous sync.
++  const branch =
++    t.branch ??
++    (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
++  return (branch ? index.branchOf.get(branch) : undefined) ?? t.itemKey;
++}
++
+ /**
+- * Remember on the tab what its item says about itself — branch and
+- * title — so the strip can still describe the tab once the item is out
+- * of reach. Returns the same tab when nothing changed, so a quiet poll
+- * does not re-render the strip.
++ * Remember on the tab what its item says about itself — branch,
++ * worktree and title — so the strip can still describe the tab once
++ * the item is out of reach, and the branch it was opened for, once.
++ * Returns the same tab when nothing changed, so a quiet poll does not
++ * re-render the strip.
+  */
+ function stamp(tab: ItemTab, entry: ItemEntry | undefined): ItemTab {
+   if (!entry) return tab;
+-  const branch = entry.branch || tab.branch;
+-  const title = entry.title ?? tab.title;
+-  if (branch === tab.branch && title === tab.title) return tab;
+-  return { ...tab, branch, title };
++  const next: ItemTab = {
++    ...tab,
++    branch: entry.branch || tab.branch,
++    worktree: entry.worktree ?? tab.worktree,
++    originBranch:
++      tab.originBranch ?? (entry.sessionBranch || entry.branch || undefined),
++    title: entry.title ?? tab.title,
++  };
++  const same = (['branch', 'worktree', 'originBranch', 'title'] as const).every(
++    (k) => next[k] === tab[k]
++  );
++  return same ? tab : next;
+ }
+ 
+ /**
+  * Re-keying can land two tabs on the same key — the user opened the PR
+  * by hand while the worktree tab was stranded on `branch:x`. Keep the
+  * leftmost, let the survivor inherit pinned state (a pin is a
+  * deliberate act and must not be lost to bookkeeping), and follow the
+  * active tab to the survivor so focus does not fall off the strip.
+  */
+ function collapseDuplicateKeys(
+   remapped: readonly Tab[],
+   startingActiveId: string | null
+ ): { tabs: Tab[]; activeId: string | null } {
+   const seen = new Map<string, Tab>();
+   const tabs: Tab[] = [];
+   let activeId = startingActiveId;
+   for (const t of remapped) {
+     const key = pairKey(t);
+     const survivor = seen.get(key);
+     if (!survivor) {
+       seen.set(key, t);
+       tabs.push(t);
+       continue;
+     }
+     if (survivor.kind === 'item' && !t.preview && survivor.preview) {
+       const idx = tabs.indexOf(survivor);
+       const pinned: Tab = { ...survivor, preview: false };
+       tabs[idx] = pinned;
+       seen.set(key, pinned);
+     }
+     if (activeId === t.id) activeId = survivor.id;
+   }
+   return { tabs, activeId };
+ }
+ 
+ /**
+  * A preview tab whose branch has a live agent is active work, not idle
+  * browsing: pin it so preview replacement (clicking another sidebar
+  * item) can never swallow the tab out from under the agent.
+  *
+  * Liveness is `running`, not the presence of a session *name*: every
+  * worktree item carries a name whether or not an agent was ever
+  * started, so keying off the name pinned every preview tab the moment
+  * it opened and preview replacement never happened.
+  */
+ export function pinLive(
+   state: TabsState,
+   repo: string,
+   entries: ItemEntry[]
+ ): TabsState {
+   const branchOf = new Map(entries.map((e) => [e.itemKey, e.branch]));
+   const live = new Set(entries.filter((e) => e.running).map((e) => e.branch));
+   if (live.size === 0) return state;
+   let changed = false;
+   const tabs = state.tabs.map((t): Tab => {
+     if (t.kind !== 'item' || t.repo !== repo || !t.preview) return t;
+     const branch = branchOf.get(t.itemKey);
+     if (!branch || !live.has(branch)) return t;
+     changed = true;
+     return { ...t, preview: false };
+   });
+   return changed ? { ...state, tabs } : state;
+ }
+diff --git a/apps/desktop/src/renderer/lib/tabs/tab-worktree.spec.ts b/apps/desktop/src/renderer/lib/tabs/tab-worktree.spec.ts
+new file mode 100644
+index 00000000..6311eef1
+--- /dev/null
++++ b/apps/desktop/src/renderer/lib/tabs/tab-worktree.spec.ts
+@@ -0,0 +1,131 @@
++import { describe, expect, it } from 'vitest';
++import { itemTabId } from './tab-identity.js';
++import {
++  EMPTY_TABS,
++  reduce,
++  type ItemEntry,
++  type TabsState,
++} from './tabs-model.js';
++
++/**
++ * A worktree tab is its checkout, not its branch: `git switch` inside
++ * the worktree moves the tab with it, and the tab remembers the branch
++ * it was opened for.
++ */
++
++const REPO = '/repos/alpha';
++const WT = '/repos/alpha/.claude/worktrees/feature';
++
++const open = (state: TabsState, itemKey: string) =>
++  reduce(state, { type: 'open-item', repo: REPO, itemKey, preview: false });
++
++const sync = (state: TabsState, entries: ItemEntry[]) =>
++  reduce(state, { type: 'sync-items', repo: REPO, entries });
++
++const worktree = (branch: string, extra: Partial<ItemEntry> = {}) => ({
++  itemKey: `branch:${branch}`,
++  branch,
++  title: branch,
++  worktree: WT,
++  ...extra,
++});
++
++describe('a worktree that switches branch', () => {
++  it('keeps its tab, which follows the checkout onto the new branch', () => {
++    let s = open(EMPTY_TABS, 'branch:feature');
++    s = sync(s, [worktree('feature')]);
++    s = sync(s, [worktree('other')]);
++    expect(s.tabs).toEqual([
++      expect.objectContaining({
++        id: itemTabId(REPO, 'branch:feature'),
++        itemKey: 'branch:other',
++        branch: 'other',
++        title: 'other',
++        worktree: WT,
++        originBranch: 'feature',
++      }),
++    ]);
++    expect(s.activeId).toBe(itemTabId(REPO, 'branch:feature'));
++  });
++
++  it('follows the checkout even when its pull request row stays behind', () => {
++    let s = open(EMPTY_TABS, 'pr:12');
++    s = sync(s, [worktree('feature', { itemKey: 'pr:12' })]);
++    s = sync(s, [
++      { itemKey: 'pr:12', branch: 'feature', title: 'Add undo' },
++      worktree('other'),
++    ]);
++    expect(s.tabs).toEqual([
++      expect.objectContaining({ itemKey: 'branch:other', originBranch: 'feature' }),
++    ]);
++  });
++
++  it('keeps the branch it was opened for through a switch back', () => {
++    let s = open(EMPTY_TABS, 'branch:feature');
++    s = sync(s, [worktree('feature')]);
++    s = sync(s, [worktree('other')]);
++    s = sync(s, [worktree('feature')]);
++    expect(s.tabs).toEqual([
++      expect.objectContaining({
++        itemKey: 'branch:feature',
++        branch: 'feature',
++        originBranch: 'feature',
++      }),
++    ]);
++  });
++
++  it('takes its original branch from the agent session when reopened for one', () => {
++    const entry = worktree('other', {
++      running: true,
++      sessionName: 'feature-session',
++      sessionBranch: 'feature',
++    });
++    let s = sync(EMPTY_TABS, [entry]);
++    s = sync(s, [entry]);
++    expect(s.tabs).toEqual([
++      expect.objectContaining({ itemKey: 'branch:other', originBranch: 'feature' }),
++    ]);
++  });
++
++  it('leaves the pull request row it left behind free to open in a tab of its own', () => {
++    let s = open(EMPTY_TABS, 'pr:12');
++    s = sync(s, [worktree('feature', { itemKey: 'pr:12' })]);
++    s = sync(s, [
++      { itemKey: 'pr:12', branch: 'feature', title: 'Add undo' },
++      worktree('other'),
++    ]);
++    s = open(s, 'pr:12');
++    expect(s.tabs.map((t) => t.kind === 'item' && t.itemKey)).toEqual([
++      'branch:other',
++      'pr:12',
++    ]);
++    expect(new Set(s.tabs.map((t) => t.id)).size).toBe(2);
++    const opened = s.tabs[1];
++    expect(s.activeId).toBe(opened.id);
++    // Opening it again finds that tab, not the worktree's.
++    s = open(s, 'branch:other');
++    s = open(s, 'pr:12');
++    expect(s.tabs).toHaveLength(2);
++    expect(s.activeId).toBe(opened.id);
++  });
++
++  it('opens its old branch in a new tab rather than the switched one', () => {
++    let s = open(EMPTY_TABS, 'branch:feature');
++    s = sync(s, [worktree('feature')]);
++    s = sync(s, [worktree('other')]);
++    s = open(s, 'branch:feature');
++    expect(s.tabs.map((t) => t.kind === 'item' && t.itemKey)).toEqual([
++      'branch:other',
++      'branch:feature',
++    ]);
++    expect(s.tabs[1].id).toBe(`${itemTabId(REPO, 'branch:feature')}~2`);
++  });
++
++  it('is found by the id it was opened with again once back on its branch', () => {
++    let s = open(EMPTY_TABS, 'branch:feature');
++    s = sync(s, [worktree('feature')]);
++    s = sync(s, [worktree('feature', { itemKey: 'pr:12' })]);
++    s = open(s, 'branch:feature');
++    expect(s.tabs).toHaveLength(1);
++  });
++});
+diff --git a/apps/desktop/src/renderer/lib/tabs/tabs-model.ts b/apps/desktop/src/renderer/lib/tabs/tabs-model.ts
+index d119662e..55e482b6 100644
+--- a/apps/desktop/src/renderer/lib/tabs/tabs-model.ts
++++ b/apps/desktop/src/renderer/lib/tabs/tabs-model.ts
+@@ -1,435 +1,436 @@
+ /**
+  * Editor-area tab model (VS Code semantics, simplified):
+  *   • `item` tabs are keyed by *repository plus* sidebar item key; one
+  *     tab per item.
+  *   • A single-click opens a *preview* tab (italic title) that gets
+  *     replaced by the next preview in the same repository;
+  *     double-click or any interaction pins it.
+  *   • `settings` is a singleton tab, and belongs to no repository.
+  *
+  * The strip outlives the open repository: opening another repo leaves
+  * the previous one's tabs in place so their agents stay in sight. Every
+  * action that names a repository therefore carries it explicitly, and
+  * `sync-items` only ever reconciles the tabs of the repo it was given —
+  * two repos routinely share branch names and so share item keys.
+  */
+ 
+ import {
+   autoOpenKey,
+   isForeignTab,
+-  itemTabId,
++  standsFor,
+   tabHome,
++  tabIdFor,
+   terminalTabId,
+   type Tab,
+ } from './tab-identity.js';
+ 
+ export type { ItemTab, Tab, TerminalTab } from './tab-identity.js';
+ export type { TerminalEntry } from './tab-terminals.js';
+ export type { ForeignSessionEntry } from './tab-foreign.js';
+ import { closeTab } from './tab-close.js';
+ import { openForeign, type ForeignSessionEntry } from './tab-foreign.js';
+ import { pinLive, rekey } from './tab-sync.js';
+ import {
+   openTerminal,
+   syncTerminals,
+   type TerminalEntry,
+ } from './tab-terminals.js';
+ 
+ /** One sidebar item as the tab model needs it. */
+ export interface ItemEntry {
+   itemKey: string;
+   branch: string;
+   /** What the item is called on screen; remembered on the tab. */
+   title?: string;
+   /** Whether an agent is live on this item right now. */
+   running?: boolean;
+   /** PTY session name, when the item has one. Present on every
+    *  worktree row whether or not an agent was ever started, so it says
+    *  nothing about liveness on its own — `running` does. */
+   sessionName?: string;
++  /** The worktree checkout the item lives in, when it has one. */
++  worktree?: string;
++  /** The branch the item's agent session was created for, when the
++   *  worktree has since switched to another. */
++  sessionBranch?: string;
+ }
+ 
+ export interface TabsState {
+   tabs: Tab[];
+   activeId: string | null;
+   /** Sessions already auto-opened once by `sync-items`, as
+    *  `autoOpenKey(repo, sessionName)`. History, not derivable from
+    *  `tabs`: a tab the user closed and one that was never opened look
+    *  identical, and only this tells them apart. Repo-qualified for the
+    *  same reason tab ids are — the PTY registry keys sessions by bare
+    *  branch name, so two repos' agents share a name. */
+   autoOpened: readonly string[];
+   /** The tab each repository was last looked at on, by repo root. Lets
+    *  opening a repository again land where it was left rather than on
+    *  whichever of its tabs happens to be rightmost. */
+   lastActiveByRepo: Readonly<Record<string, string>>;
+ }
+ 
+ /** The repository the active tab belongs to, if it belongs to one. A
+  *  plain-folder terminal belongs to none, so activating it switches
+  *  nothing. */
+ export function activeTabRepo(state: TabsState): string | null {
+   const active = state.tabs.find((t) => t.id === state.activeId);
+   return active ? tabHome(active) : null;
+ }
+ 
+ export const EMPTY_TABS: TabsState = {
+   tabs: [],
+   activeId: null,
+   autoOpened: [],
+   lastActiveByRepo: {},
+ };
+ 
+ export type TabsAction =
+   | { type: 'open-item'; repo: string; itemKey: string; preview: boolean }
+   | { type: 'open-settings' }
+   | { type: 'pin'; id: string }
+   | { type: 'activate'; id: string }
+   | { type: 'close'; id: string; repo?: string }
+   | { type: 'close-others'; id: string }
+   | { type: 'close-all' }
+   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
+   /** The one reconciliation dispatched from Workspace's effect: the
+    *  repo's sidebar items *and* the host's terminal listing, applied as
+    *  one pure step. Terminals ride along on every sync rather than
+    *  getting a dispatch of their own — carrying an empty `entries` still
+    *  reconciles the terminal strip on its own, since an empty list is a
+    *  no-op for the item passes.
+    *
+    *  `terminals` is the host's answer, and `undefined` is no answer
+    *  yet — not an empty one. The listing is authoritative when it is
+    *  there: a terminal tab it does not name has ended and closes. With
+    *  no listing the terminal tabs are left exactly as they are, so a
+    *  tick before the first answer cannot close every one of them.
+    *
+    *  `foreign` is the host's other listing: agents alive in *other*
+    *  repositories, each of which gets a tab in its own group once
+    *  (see `tab-foreign.ts`). Also `undefined` before the first
+    *  answer. */
+   | {
+       type: 'sync-items';
+       repo: string;
+       entries: ItemEntry[];
+       terminals?: TerminalEntry[];
+       foreign?: ForeignSessionEntry[];
+     }
+   /** Open (or activate) the tab for a terminal the host just started. */
+   | { type: 'open-terminal'; terminal: TerminalEntry }
+   /** The host says the process behind a terminal ended, by name — the
+    *  shell exited, the agent quit, tmux ended the session. Its tab
+    *  closes on that word alone, whether or not a listing ever named it:
+    *  a process that died between the launch answer and the first
+    *  listing would otherwise leave a tab whose close asks to end a
+    *  session that is already gone. Focus follows the close rules for
+    *  `repo`, the one in view. A name with no terminal tab is nothing. */
+   | { type: 'terminal-ended'; name: string; repo?: string }
+   /** A repository was opened. Dispatched for every open, tab-driven or
+    *  not; it only does something when the tab in front of the user
+    *  belongs to somewhere else. */
+   | { type: 'repo-opened'; repo: string }
+   /** A close asked its session to be killed and the kill failed. The
+    *  tab already closed synchronously — the strip must not wait on a
+    *  round trip to feel responsive — so the session is still running
+    *  behind no tab at all unless the next sync is told it has not
+    *  been seen. Forgetting these keys is what lets it: the same
+    *  session or terminal reopens on the next sidebar poll or terminal
+    *  listing instead of staying invisible for the life of the strip. */
+   | { type: 'forget-auto-opened'; keys: string[] };
+ 
+ function pinTab(tabs: Tab[], id: string): Tab[] {
+   return tabs.map((t): Tab => {
+     if (t.id !== id || t.kind !== 'item') return t;
+     return { ...t, preview: false };
+   });
+ }
+ 
+ /** Activate a tab, ignoring an id that is no longer on the strip. */
+ function activateTab(state: TabsState, id: string): TabsState {
+   return state.tabs.some((t) => t.id === id)
+     ? { ...state, activeId: id }
+     : state;
+ }
+ 
+ /** Keep only `id`; whatever survives becomes active. */
+ function closeOtherTabs(state: TabsState, id: string): TabsState {
+   const tabs = state.tabs.filter((t) => t.id === id);
+   return { ...state, tabs, activeId: tabs[0]?.id ?? null };
+ }
+ 
+ export function reduce(state: TabsState, action: TabsAction): TabsState {
+   return remember(apply(state, action));
+ }
+ 
+ /**
+  * Note which tab the active repository was left on.
+  *
+  * Derived rather than dispatched, so no action can forget to do it —
+  * every path that moves `activeId` passes through here.
+  */
+ function remember(state: TabsState): TabsState {
+   const active = state.tabs.find((t) => t.id === state.activeId);
+   const home = active ? tabHome(active) : null;
+   if (!active || home === null) return state;
+   if (state.lastActiveByRepo[home] === active.id) return state;
+   return {
+     ...state,
+     lastActiveByRepo: { ...state.lastActiveByRepo, [home]: active.id },
+   };
+ }
+ 
+ /**
+  * Show the repository that was just opened rather than the tab the user
+  * was on before, when that tab belongs to somewhere else.
+  *
+  * Without this, switching repositories leaves the previous repo's tab
+  * active — so the workspace you asked for opens onto a pane explaining
+  * that it belongs to the one you left. A repo with no tabs of its own
+  * goes to no active tab at all, which is the editor's empty state, with
+  * the other repositories' tabs still on the strip.
+  *
+  * The settings tab is nobody's, so it survives a repo change.
+  */
+ function focusRepo(state: TabsState, repo: string): TabsState {
+   const active = state.tabs.find((t) => t.id === state.activeId);
+   if (active && !isForeignTab(active, repo)) return state;
+   const remembered = state.tabs.find(
+     (t) => t.id === state.lastActiveByRepo[repo]
+   );
+   const own =
+     remembered ?? [...state.tabs].reverse().find((t) => tabHome(t) === repo);
+   const activeId = own?.id ?? null;
+   return activeId === state.activeId ? state : { ...state, activeId };
+ }
+ 
+ /** The actions that take tabs off the strip. */
+ type CloseAction = Extract<
+   TabsAction,
+   { type: 'close' | 'close-others' | 'close-all' | 'terminal-ended' }
+ >;
+ 
+ const CLOSE_ACTIONS: ReadonlySet<TabsAction['type']> = new Set<
+   CloseAction['type']
+ >(['close', 'close-others', 'close-all', 'terminal-ended']);
+ 
+ function isCloseAction(action: TabsAction): action is CloseAction {
+   return CLOSE_ACTIONS.has(action.type);
+ }
+ 
+ function applyClose(state: TabsState, action: CloseAction): TabsState {
+   switch (action.type) {
+     case 'close':
+       return closeTab(state, action.id, action.repo);
+     case 'terminal-ended':
+       return closeTab(state, terminalTabId(action.name), action.repo);
+     case 'close-others':
+       return closeOtherTabs(state, action.id);
+     case 'close-all':
+       // `autoOpened` survives on purpose: closing every tab is a manual
+       // act, and re-opening the running agents on the next sidebar poll
+       // would undo it.
+       return { ...state, tabs: [], activeId: null };
+   }
+ }
+ 
+ /** The actions about item and settings tabs — the strip as it was
+  *  before terminals joined it, minus the closes. `sync-items` stays in
+  *  this union: its item passes (`applyStrip`'s case below) read only
+  *  `repo`/`entries`, and the `terminals` field rides along for
+  *  {@link apply} to hand to `syncTerminals` once the item passes have
+  *  settled. */
+ type StripAction = Exclude<TabsAction, { type: 'open-terminal' } | CloseAction>;
+ 
+ function apply(state: TabsState, action: TabsAction): TabsState {
+   if (action.type === 'open-terminal') {
+     return openTerminal(state, action.terminal);
+   }
+   if (isCloseAction(action)) {
+     return applyClose(state, action);
+   }
+   if (action.type === 'sync-items') {
+     // One dispatch, one pure step: the repo's items and the host's
+     // terminal listing are reconciled together rather than from two
+     // effects racing into the reducer separately.
+     const strip = applyStrip(state, action);
+     const withTerminals = action.terminals
+       ? syncTerminals(strip, action.repo, action.terminals)
+       : strip;
+     return action.foreign
+       ? openForeign(withTerminals, action.repo, action.foreign)
+       : withTerminals;
+   }
+   return applyStrip(state, action);
+ }
+ 
+ function applyStrip(state: TabsState, action: StripAction): TabsState {
+   switch (action.type) {
+     case 'open-item':
+       return openItem(state, action.repo, action.itemKey, action.preview);
+     case 'open-settings':
+       return openSettings(state);
+     case 'pin':
+       return { ...state, tabs: pinTab(state.tabs, action.id) };
+     case 'activate':
+       return activateTab(state, action.id);
+     case 'move':
+       return moveTab(state, action.id, action.targetId, action.side);
+     case 'sync-items':
+       return pinLive(
+         autoOpenRunning(
+           rekey(state, action.repo, action.entries),
+           action.repo,
+           action.entries,
+           // The strip as the user last saw it. Auto-open's already-open
+           // guard is a question about history, and re-keying is not
+           // part of the history it asks about — see `autoOpenRunning`.
+           state.tabs
+         ),
+         action.repo,
+         action.entries
+       );
+     case 'repo-opened':
+       return focusRepo(state, action.repo);
+     case 'forget-auto-opened':
+       return forgetAutoOpened(state, action.keys);
+   }
+ }
+ 
+ /** Drop the given keys from `autoOpened`, so a session or terminal a
+  *  failed kill left running is offered again on the next sync rather
+  *  than staying invisible for the life of the strip. A no-op set
+  *  returns the same state object. */
+ function forgetAutoOpened(state: TabsState, keys: string[]): TabsState {
+   if (keys.length === 0) return state;
+   const drop = new Set(keys);
+   const autoOpened = state.autoOpened.filter((k) => !drop.has(k));
+   return autoOpened.length === state.autoOpened.length
+     ? state
+     : { ...state, autoOpened };
+ }
+ 
+ /**
+  * Activate the tab for an item, opening one if none is on it yet.
+  *
+- * The search matches by itemKey, not id: a re-keyed tab (see
+- * `sync-items`) keeps its original id, and opening its item again must
+- * find it rather than spawn a duplicate.
++ * The search is {@link standsFor}: by itemKey, and by the id the tab
++ * was opened with — a re-keyed tab (see `sync-items`) keeps its
++ * original id, so a tab opened as `branch:x` and since re-keyed to
++ * `pr:n` must be found when `branch:x` is opened again, which the
++ * palette does whenever the branch isn't in the sidebar model yet.
++ * Panes are keyed by tab id, so two tabs sharing one would render each
++ * other's content and closing one would act on the wrong tab — which
++ * is also why a tab that followed its worktree off the item it was
++ * opened on does not match by id, and the new tab takes a free one
++ * ({@link tabIdFor}).
+  *
+- * …and by id as well, for the mirror case: a tab opened as `branch:x`
+- * and since re-keyed to `pr:n` still carries the id it was opened with,
+- * so opening `branch:x` again — which the palette does whenever the
+- * branch isn't in the sidebar model yet — would otherwise create a
+- * second tab sharing that id. Panes are keyed by tab id, so two of them
+- * render each other's content and closing one acts on the wrong tab.
+- *
+- * Both searches are confined to `repo`: the same item key in another
+- * repository is a different item, and matching it would hand this
+- * repo's click to a tab pointing at someone else's branch.
++ * Confined to `repo`: the same item key in another repository is a
++ * different item, and matching it would hand this repo's click to a
++ * tab pointing at someone else's branch.
+  */
+ function openItem(
+   state: TabsState,
+   repo: string,
+   itemKey: string,
+   preview: boolean
+ ): TabsState {
+-  const id = itemTabId(repo, itemKey);
+-  const existing = state.tabs.find(
+-    (t) =>
+-      t.kind === 'item' &&
+-      t.repo === repo &&
+-      (t.itemKey === itemKey || t.id === id)
+-  );
++  const existing = state.tabs.find((t) => standsFor(t, repo, itemKey));
+   if (existing) {
+     const tabs = preview ? state.tabs : pinTab(state.tabs, existing.id);
+     return { ...state, tabs, activeId: existing.id };
+   }
++  const id = tabIdFor(state.tabs, repo, itemKey);
+   const next: Tab = { id, kind: 'item', repo, itemKey, preview };
+   // Replace this repo's preview tab (if any) instead of stacking.
+   // Scoped to the repo: another repository's preview tab is a tab the
+   // user can no longer see, and swallowing it on a click over here
+   // would delete work in a window they are not looking at.
+   const previewIdx = state.tabs.findIndex(
+     (t) => t.preview && t.kind === 'item' && t.repo === repo
+   );
+   if (preview && previewIdx >= 0) {
+     const tabs = [...state.tabs];
+     tabs[previewIdx] = next;
+     return { ...state, tabs, activeId: id };
+   }
+   return { ...state, tabs: [...state.tabs, next], activeId: id };
+ }
+ 
+ /** Settings is a singleton tab: open it once, activate it thereafter. */
+ function openSettings(state: TabsState): TabsState {
+   if (state.tabs.some((t) => t.id === 'settings')) {
+     return { ...state, activeId: 'settings' };
+   }
+   return {
+     ...state,
+     tabs: [...state.tabs, { id: 'settings', kind: 'settings', preview: false }],
+     activeId: 'settings',
+   };
+ }
+ 
+ /** Drag-reorder: lift a tab out of the strip and drop it beside another. */
+ function moveTab(
+   state: TabsState,
+   id: string,
+   targetId: string,
+   side: 'before' | 'after'
+ ): TabsState {
+   if (id === targetId) return state;
+   const from = state.tabs.findIndex((t) => t.id === id);
+   if (from < 0) return state;
+   const tabs = [...state.tabs];
+   const [moved] = tabs.splice(from, 1);
+   const at = tabs.findIndex((t) => t.id === targetId);
+   if (at < 0) return state;
+   tabs.splice(side === 'after' ? at + 1 : at, 0, moved);
+   return { ...state, tabs };
+ }
+ 
+ /**
+  * Every running agent gets a tab: restores the tabs for tmux sessions
+  * that survived a restart, and surfaces sessions started elsewhere.
+  *
+  * Each session is auto-opened at most once — recorded in `autoOpened`,
+  * which is why a tab the user closes stays closed while the sidebar
+  * keeps reporting the agent — and never when a tab for its key is
+  * already open, so this can't steal focus from what the user is
+  * looking at either.
+  *
+  * `openTabs` answers that already-open question, and it is the strip
+  * *before* `rekey` ran, not after. The two differ only where re-keying
+  * collapsed a duplicate onto the survivor: the tab carrying the id
+  * `item:<key>` is gone from the new strip, but it was open, and the
+  * collapse was bookkeeping rather than the user closing anything.
+  * Asking the post-rekey strip answers "no tab" there, and the
+  * `open-item` that follows finds the survivor by its itemKey and
+  * activates it — moving the focus off whatever the user had in front
+  * of them, on a sidebar poll they never asked for.
+  */
+ function autoOpenRunning(
+   state: TabsState,
+   repo: string,
+   entries: ItemEntry[],
+   openTabs: readonly Tab[]
+ ): TabsState {
+   const opened = new Set(state.autoOpened);
+   let next = state;
+   let changed = false;
+   for (const e of entries) {
+     if (!e.running || !e.sessionName) continue;
+     const seenKey = autoOpenKey(repo, e.sessionName);
+     if (opened.has(seenKey)) continue;
+     opened.add(seenKey);
+     changed = true;
+-    if (openTabs.some((t) => t.id === itemTabId(repo, e.itemKey))) continue;
++    if (openTabs.some((t) => standsFor(t, repo, e.itemKey))) continue;
+     next = reduce(next, {
+       type: 'open-item',
+       repo,
+       itemKey: e.itemKey,
+       preview: false,
+     });
+   }
+   return changed ? { ...next, autoOpened: [...opened] } : next;
+ }
+diff --git a/apps/desktop/src/renderer/lib/tabs/tabs.tsx b/apps/desktop/src/renderer/lib/tabs/tabs.tsx
+index dfe6cda3..e9d77028 100644
+--- a/apps/desktop/src/renderer/lib/tabs/tabs.tsx
++++ b/apps/desktop/src/renderer/lib/tabs/tabs.tsx
+@@ -1,254 +1,256 @@
+ import {
+   createContext,
+   useCallback,
+   useContext,
+   useMemo,
+   useReducer,
+   type ReactNode,
+ } from 'react';
+ import {
+   EMPTY_TABS,
+   reduce,
+   type ForeignSessionEntry,
+   type ItemEntry,
+   type TabsState,
+   type TerminalEntry,
+ } from './tabs-model.js';
+ import { useRepo } from '../repo-context.js';
+ 
+ export type {
+   ForeignSessionEntry,
+   ItemEntry,
+   ItemTab,
+   Tab,
+   TabsAction,
+   TabsState,
+   TerminalEntry,
+   TerminalTab,
+ } from './tabs-model.js';
+ export { activeTabRepo } from './tabs-model.js';
+ export {
+   foreignRepoOf,
+   isForeignTab,
+   itemTabId,
++  standsFor,
++  tabIdFor,
+   terminalTabId,
+ } from './tab-identity.js';
+ 
+ /**
+  * The tab strip's api.
+  *
+  * `openItem` and `syncItems` name the repository they act on, because
+  * the provider sits *above* the repo gate — the strip keeps another
+  * repository's tabs after you switch away, so it cannot assume every
+  * action is about the repo that happens to be open. Components inside
+  * a repo workspace use `useRepoTabs`, which fills the repo in.
+  */
+ interface TabsApi extends TabsState {
+   openItem: (
+     repo: string,
+     itemKey: string,
+     opts?: { preview?: boolean }
+   ) => void;
+   openSettings: () => void;
+   pin: (id: string) => void;
+   activate: (id: string) => void;
+   /** `repo` is the one in view: focus never leaves it on a close. */
+   close: (id: string, repo?: string) => void;
+   closeOthers: (id: string) => void;
+   closeAll: () => void;
+   closeActive: () => void;
+   /** Activate the next (+1) / previous (-1) tab, wrapping around. */
+   cycle: (delta: 1 | -1) => void;
+   /** Drag-reorder: place `id` before/after `targetId`. */
+   moveTab: (id: string, targetId: string, side: 'before' | 'after') => void;
+   /**
+    * Reconcile the strip with the current sidebar items *and* the host's
+    * terminal listing, in one step: follow re-keyed items, open a tab
+    * for each newly running agent, pin any preview tab that now has a
+    * live agent behind it, and bring the terminal strip in line with
+    * what the host lists — closing the tabs of terminals it no longer
+    * has. One dispatch, so both reconciliations land in a single render
+    * rather than racing from two effects. No `terminals` is no listing
+    * yet, which leaves every terminal tab alone. `foreign` is the
+    * host's listing of agents alive in other repositories, each given
+    * a tab in its own group once.
+    */
+   syncItems: (
+     repo: string,
+     entries: ItemEntry[],
+     terminals: TerminalEntry[] | undefined,
+     foreign: ForeignSessionEntry[] | undefined
+   ) => void;
+   /** Tell the strip a repository is now the one in view. */
+   repoOpened: (repo: string) => void;
+   /** Open (or activate) the tab for a terminal the host just started. */
+   openTerminal: (terminal: TerminalEntry) => void;
+   /** The host says the terminal's process ended: close its tab, listed
+    *  or not. `repo` is the one in view, for the close-focus rules. */
+   terminalEnded: (name: string, repo?: string) => void;
+   /** A close's kill failed: forget these auto-open keys (from
+    *  `autoOpenKey`/`terminalTabId`) so the session or terminal, still
+    *  running, is offered a tab again on the next sync rather than
+    *  staying invisible. */
+   forgetAutoOpened: (keys: string[]) => void;
+ }
+ 
+ const TabsContext = createContext<TabsApi | null>(null);
+ 
+ export function TabsProvider({ children }: { children: ReactNode }) {
+   const [state, dispatch] = useReducer(reduce, EMPTY_TABS);
+ 
+   const openItem = useCallback(
+     (repo: string, itemKey: string, opts?: { preview?: boolean }) =>
+       dispatch({
+         type: 'open-item',
+         repo,
+         itemKey,
+         preview: opts?.preview ?? false,
+       }),
+     []
+   );
+   const openSettings = useCallback(
+     () => dispatch({ type: 'open-settings' }),
+     []
+   );
+   const pin = useCallback((id: string) => dispatch({ type: 'pin', id }), []);
+   const activate = useCallback(
+     (id: string) => dispatch({ type: 'activate', id }),
+     []
+   );
+   const close = useCallback(
+     (id: string, repo?: string) => dispatch({ type: 'close', id, repo }),
+     []
+   );
+   const closeOthers = useCallback(
+     (id: string) => dispatch({ type: 'close-others', id }),
+     []
+   );
+   const closeAll = useCallback(() => dispatch({ type: 'close-all' }), []);
+   const closeActive = useCallback(() => {
+     if (state.activeId) dispatch({ type: 'close', id: state.activeId });
+   }, [state.activeId]);
+   const cycle = useCallback(
+     (delta: 1 | -1) => {
+       const { tabs, activeId } = state;
+       if (tabs.length < 2) return;
+       const idx = tabs.findIndex((t) => t.id === activeId);
+       const next = tabs[(idx + delta + tabs.length) % tabs.length];
+       dispatch({ type: 'activate', id: next.id });
+     },
+     [state]
+   );
+   const moveTab = useCallback(
+     (id: string, targetId: string, side: 'before' | 'after') =>
+       dispatch({ type: 'move', id, targetId, side }),
+     []
+   );
+   const syncItems = useCallback(
+     (
+       repo: string,
+       entries: ItemEntry[],
+       terminals: TerminalEntry[] | undefined,
+       foreign: ForeignSessionEntry[] | undefined
+     ) => dispatch({ type: 'sync-items', repo, entries, terminals, foreign }),
+     []
+   );
+   const repoOpened = useCallback(
+     (repo: string) => dispatch({ type: 'repo-opened', repo }),
+     []
+   );
+   const openTerminal = useCallback(
+     (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
+     []
+   );
+   const terminalEnded = useCallback(
+     (name: string, repo?: string) =>
+       dispatch({ type: 'terminal-ended', name, repo }),
+     []
+   );
+   const forgetAutoOpened = useCallback(
+     (keys: string[]) => dispatch({ type: 'forget-auto-opened', keys }),
+     []
+   );
+ 
+   const api = useMemo<TabsApi>(
+     () => ({
+       ...state,
+       openItem,
+       openSettings,
+       pin,
+       activate,
+       close,
+       closeOthers,
+       closeAll,
+       closeActive,
+       cycle,
+       moveTab,
+       syncItems,
+       repoOpened,
+       openTerminal,
+       terminalEnded,
+       forgetAutoOpened,
+     }),
+     [
+       state,
+       openItem,
+       openSettings,
+       pin,
+       activate,
+       close,
+       closeOthers,
+       closeAll,
+       closeActive,
+       cycle,
+       moveTab,
+       syncItems,
+       repoOpened,
+       openTerminal,
+       terminalEnded,
+       forgetAutoOpened,
+     ]
+   );
+ 
+   return <TabsContext.Provider value={api}>{children}</TabsContext.Provider>;
+ }
+ 
+ export function useTabs(): TabsApi {
+   const ctx = useContext(TabsContext);
+   if (!ctx) throw new Error('useTabs must be used within TabsProvider');
+   return ctx;
+ }
+ 
+ /** Repo-scoped api for everything rendered inside a repo workspace: the
+  *  same tabs, with `openItem`/`syncItems` bound to the open repo. */
+ export function useRepoTabs(): RepoTabsApi {
+   const { repo } = useRepo();
+   const tabs = useTabs();
+   const cwd = repo.cwd;
+   return useMemo(
+     () => ({
+       ...tabs,
+       openItem: (itemKey: string, opts?: { preview?: boolean }) =>
+         tabs.openItem(cwd, itemKey, opts),
+       syncItems: (
+         entries: ItemEntry[],
+         terminals: TerminalEntry[] | undefined,
+         foreign: ForeignSessionEntry[] | undefined
+       ) => tabs.syncItems(cwd, entries, terminals, foreign),
+       close: (id: string) => tabs.close(id, cwd),
+       terminalEnded: (name: string) => tabs.terminalEnded(name, cwd),
+     }),
+     [tabs, cwd]
+   );
+ }
+ 
+ export interface RepoTabsApi
+   extends Omit<TabsApi, 'openItem' | 'syncItems' | 'terminalEnded'> {
+   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
+   syncItems: (
+     entries: ItemEntry[],
+     terminals: TerminalEntry[] | undefined,
+     foreign: ForeignSessionEntry[] | undefined
+   ) => void;
+   terminalEnded: (name: string) => void;
+ }
+diff --git a/apps/desktop/src/renderer/screens/Workspace.tsx b/apps/desktop/src/renderer/screens/Workspace.tsx
+index bad6e957..394e7d71 100644
+--- a/apps/desktop/src/renderer/screens/Workspace.tsx
++++ b/apps/desktop/src/renderer/screens/Workspace.tsx
+@@ -1,328 +1,331 @@
+ import { useEffect, useMemo, useState } from 'react';
+ import {
+   Group,
+   Panel,
+   Separator as PanelSeparator,
+ } from 'react-resizable-panels';
+ import { toast } from 'sonner';
+ import type {
+   MenuCommand,
+   MenuCommandEvent,
+   RepoInfo,
+   SidebarItem,
+ } from '../../host/contract.js';
+ import { AttentionRail } from '../components/AttentionRail.js';
+ import {
+   applyPendingRemovals,
+   itemBranch,
+   itemKey,
+   itemRunning,
+   itemSessionName,
++  itemWorktree,
+   itemTitle,
+ } from '../lib/sidebar/sidebar-model.js';
+ import { CommandPalette } from '../components/CommandPalette.js';
+ import { EditorArea } from '../components/editor/EditorArea.js';
+ import { prefetchPanes } from '../components/editor/lazy-panes.js';
+ import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
+ import { Sidebar } from '../components/sidebar/Sidebar.js';
+ import { StatusBar } from '../components/StatusBar.js';
+ import { TitleBar } from '../components/TitleBar.js';
+ import { useForeignSessions, useSidebarModel } from '../lib/data/queries.js';
+ import { useFleet } from '../lib/fleet/fleet-context.js';
+ import {
+   useRefreshRemote,
+   useRemovingBranches,
+ } from '../lib/data/mutations.js';
+ import { BOOT_MARKS, markOnce } from '../lib/perf.js';
+ import { RepoProvider, useRepo } from '../lib/repo-context.js';
+ import {
+   useRepoTabs,
+   type ForeignSessionEntry,
+   type ItemEntry,
+ } from '../lib/tabs/tabs.js';
+ import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
+ import { REMOTE_HOME_CWD } from '../lib/terminals/terminal-launch-request.js';
+ import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
+ import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
+ import { setThemePreference, type ThemePreference } from '../lib/theme.js';
+ import { errorMessage } from '../lib/utils.js';
+ import { useHostEvents } from './use-host-events.js';
+ 
+ const SIDEBAR_KEY = 'n10.sidebar.hidden';
+ 
+ /**
+  * The main window once a repo is open: title bar, resizable sidebar +
+  * tabbed editor area, status bar. Owns global shortcuts, native menu
+  * command routing and the command palette.
+  */
+ export function Workspace({
+   repo,
+   onSwitchRepo,
+   onOpenRepo,
+   onPickRepoFolder,
+ }: {
+   repo: RepoInfo;
+   onSwitchRepo: () => void;
+   onOpenRepo: (cwd: string) => void;
+   onPickRepoFolder: () => void;
+ }) {
+   const ctx = useMemo(
+     () => ({ repo, switchRepo: onSwitchRepo, openRepo: onOpenRepo }),
+     [repo, onSwitchRepo, onOpenRepo]
+   );
+   return (
+     <RepoProvider value={ctx}>
+       <WorkspaceInner
+         onSwitchRepo={onSwitchRepo}
+         onOpenRepo={onOpenRepo}
+         onPickRepoFolder={onPickRepoFolder}
+       />
+     </RepoProvider>
+   );
+ }
+ 
+ function WorkspaceInner({
+   onSwitchRepo,
+   onOpenRepo,
+   onPickRepoFolder,
+ }: {
+   onSwitchRepo: () => void;
+   onOpenRepo: (cwd: string) => void;
+   onPickRepoFolder: () => void;
+ }) {
+   const { repo } = useRepo();
+   const tabs = useRepoTabs();
+   const model = useSidebarModel(repo.cwd);
+   const refresh = useRefreshRemote(repo.cwd);
+   // Worktrees being removed drop out of the model right away — every
+   // consumer below (sidebar, tabs, attention rail) derives from this one
+   // list, so the whole window reacts on confirm rather than on the git
+   // round-trip.
+   const removing = useRemovingBranches();
+   const items: SidebarItem[] = useMemo(
+     () => applyPendingRemovals(model.data ?? [], removing),
+     [model.data, removing]
+   );
+   const closer = useCloseTabs(items);
+   const terminalTabs = useTerminalTabs();
+   // Agents alive in other repositories, as the tab model needs them;
+   // `undefined` before the host has answered once.
+   const foreignSessions = useForeignSessions();
+   const foreign: ForeignSessionEntry[] | undefined = useMemo(
+     () =>
+       foreignSessions.data?.map((s) => ({
+         repo: s.repo,
+         branch: s.branch,
+         sessionName: s.sessionName,
+       })),
+     [foreignSessions.data]
+   );
+   const [paletteOpen, setPaletteOpen] = useState(false);
+   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+   const [sidebarHidden, setSidebarHidden] = useState(
+     () => localStorage.getItem(SIDEBAR_KEY) === '1'
+   );
+ 
+   const toggleSidebar = () =>
+     setSidebarHidden((h) => {
+       localStorage.setItem(SIDEBAR_KEY, h ? '0' : '1');
+       return !h;
+     });
+ 
+   // The sidebar as the tab model sees it.
+   const entries: ItemEntry[] = useMemo(
+     () =>
+       items.map((i) => ({
+         itemKey: itemKey(i),
+         branch: itemBranch(i),
+         title: itemTitle(i),
+         running: itemRunning(i),
+         sessionName: itemSessionName(i),
++        worktree: itemWorktree(i),
++        sessionBranch: i.kind === 'session' ? i.session.sessionBranch : undefined,
+       })),
+     [items]
+   );
+ 
+   // The one place every store the strip depends on is reconciled: the
+   // sidebar items, the host's terminal listing *and* its listing of
+   // agents alive in other repositories, in a single dispatch. The
+   // reducer follows items whose key changed (a worktree grows a PR:
+   // branch:x → pr:n, and back when it closes), opens a tab for each
+   // newly running agent, pins preview tabs that have an agent behind
+   // them, brings the terminal strip in line with the host, and gives
+   // each foreign agent a tab in its own group — atomically, so no
+   // render ever sees a half-reconciled strip and no listing gets a
+   // reconciliation effect of its own to race this one.
+   //
+   // `tabs` (the whole api, which changes identity on every dispatch)
+   // is the dependency on purpose: opening a preview tab is itself a
+   // reason to re-run, since the branch it lands on may already be
+   // live. Re-running settles — every step above is idempotent and
+   // returns the same state object once there is nothing left to do.
+   useEffect(() => {
+     tabs.syncItems(entries, terminalTabs.entries, foreign);
+   }, [tabs, entries, terminalTabs.entries, foreign]);
+ 
+   // Boot milestones (see lib/perf.ts): the shell is on screen once this
+   // mounts, and the sidebar is real once the host's first model lands —
+   // an empty repo settles the query too, so this is not gated on rows.
+   useEffect(() => {
+     markOnce(BOOT_MARKS.shell);
+     // The panes are code-split; pull them in while the app is idle so
+     // opening the first tab does not wait on a chunk.
+     prefetchPanes();
+   }, []);
+   const sidebarSettled = model.data !== undefined;
+   useEffect(() => {
+     if (sidebarSettled) markOnce(BOOT_MARKS.sidebar);
+   }, [sidebarSettled]);
+ 
+   useHostEvents(repo.cwd, tabs.terminalEnded);
+ 
+   // Surface query failures once, not on every poll.
+   const lastError = model.error ? errorMessage(model.error) : null;
+   useEffect(() => {
+     if (lastError) toast.error(lastError, { id: 'sidebar-error' });
+   }, [lastError]);
+ 
+   // Native application menu → renderer actions.
+   useEffect(() => {
+     // A full Record rather than a switch: adding a MenuCommand is then
+     // a type error here until it has a handler, which is the same
+     // guarantee the exhaustive switch gave, minus the branching.
+     const handlers: Record<MenuCommand, (arg?: string) => void> = {
+       'open-repo': onPickRepoFolder,
+       'switch-repo': onSwitchRepo,
+       'new-worktree': () => setPaletteOpen(true),
+       'new-terminal': terminalTabs.openDialog,
+       'command-palette': () => setPaletteOpen(true),
+       'open-settings': () => tabs.openSettings(),
+       'close-tab': () => closer.closeActive(),
+       'toggle-sidebar': toggleSidebar,
+       'refresh-remote': () =>
+         refresh.mutate(undefined, {
+           onError: (e) => toast.error(errorMessage(e)),
+         }),
+       'set-theme': (arg) => {
+         if (arg === 'system' || arg === 'light' || arg === 'dark') {
+           setThemePreference(arg as ThemePreference);
+         }
+       },
+       'open-url': (arg) => {
+         if (arg) void window.n10.openExternal(arg);
+       },
+       'show-shortcuts': () => setShortcutsOpen(true),
+       about: () => void window.n10.showAbout(),
+     };
+     const off = window.n10.onMenuCommand(({ command, arg }: MenuCommandEvent) =>
+       handlers[command](arg)
+     );
+     return off;
+   }, [
+     tabs,
+     closer,
+     refresh,
+     onPickRepoFolder,
+     onSwitchRepo,
+     terminalTabs.openDialog,
+   ]);
+ 
+   // In-page shortcuts for the web-rendered UI. Anything that is also a
+   // native menu accelerator reaches us through onMenuCommand instead;
+   // handled here: palette (⌘K). Tab cycling was removed for now — it
+   // collided with Shift+Tab inside agent terminals (Claude Code's mode
+   // switch).
+   // Under Fleet, ⌘K leaves Fleet for the palette, as the menu's does.
+   const { open: fleetOpen, close: closeFleet } = useFleet();
+   useEffect(() => {
+     const onKey = (e: KeyboardEvent) => {
+       const mod = e.metaKey || e.ctrlKey;
+       if (!mod) return;
+       if (e.key.toLowerCase() === 'k') {
+         e.preventDefault();
+         if (fleetOpen) closeFleet();
+         setPaletteOpen((o) => fleetOpen || !o);
+       }
+     };
+     window.addEventListener('keydown', onKey);
+     return () => window.removeEventListener('keydown', onKey);
+   }, [fleetOpen, closeFleet]);
+ 
+   return (
+     <div
+       data-testid="workspace-screen"
+       className="flex h-screen flex-col overflow-hidden bg-background text-foreground"
+     >
+       <TitleBar
+         repo={repo}
+         onSwitchRepo={onSwitchRepo}
+         onOpenRepo={onOpenRepo}
+         onOpenPalette={() => setPaletteOpen(true)}
+         onOpenSettings={() => tabs.openSettings()}
+       />
+ 
+       <div className="flex min-h-0 flex-1">
+         {sidebarHidden && (
+           <AttentionRail items={items} onReveal={toggleSidebar} />
+         )}
+         <Group
+           orientation="horizontal"
+           className="min-h-0 flex-1"
+           id="workspace"
+         >
+           {!sidebarHidden && (
+             <>
+               <Panel
+                 id="sidebar"
+                 defaultSize="280px"
+                 minSize="200px"
+                 maxSize="45%"
+                 className="min-w-0"
+               >
+                 <Sidebar
+                   items={items}
+                   loading={model.isLoading}
+                   updatedAt={model.dataUpdatedAt}
+                   error={null}
+                   onNewWorktree={() => setPaletteOpen(true)}
+                   onCollapse={toggleSidebar}
+                 />
+               </Panel>
+               <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
+             </>
+           )}
+           <Panel id="editor" minSize="40%" className="min-w-0">
+             <EditorArea
+               items={items}
+               onOpenPalette={() => setPaletteOpen(true)}
+             />
+           </Panel>
+         </Group>
+       </div>
+ 
+       <StatusBar items={items} onOpenSettings={() => tabs.openSettings()} />
+ 
+       <CommandPalette
+         open={paletteOpen}
+         onOpenChange={setPaletteOpen}
+         items={items}
+         onToggleSidebar={toggleSidebar}
+         onSwitchRepo={onSwitchRepo}
+         onNewTerminal={terminalTabs.openDialog}
+         onOpenTerminalOnMachine={(machine) =>
+           terminalTabs.launchTerminal('shell', REMOTE_HOME_CWD, machine)
+         }
+       />
+       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+       {terminalTabs.dialogOpen && (
+         <NewTerminalDialog
+           onLaunch={terminalTabs.launchTerminal}
+           onClose={terminalTabs.closeDialog}
+           busy={terminalTabs.busy}
+           remoteStep={terminalTabs.remoteStep}
+           remoteError={terminalTabs.remoteError}
+         />
+       )}
+       {closer.confirmDialog}
+     </div>
+   );
+ }
+diff --git a/libs/core/src/lib/types.ts b/libs/core/src/lib/types.ts
+index 85cc1723..c7f07123 100644
+--- a/libs/core/src/lib/types.ts
++++ b/libs/core/src/lib/types.ts
+@@ -1,77 +1,83 @@
+ import type { PullRequestInfo } from '@n10/vcs-core';
+ import type { BabysitStatus } from './babysit/babysit-model.js';
+ 
+ export type Focus = 'sidebar' | 'terminal';
+ 
+ export type PaneMode =
+   | 'terminal'
+   | 'pr-detail'
+   | 'diff'
+   | 'diff-file'
+   | 'comments'
+   | 'confirm'
+   | 'plan-checkout';
+ 
+ export type ReviewCategory = 'needs-review' | 'waiting' | 'approved';
+ 
+ export type SidebarItem =
+   | {
+       kind: 'session';
+       session: AgentSession;
+       pr?: PullRequestInfo;
+       branch?: string;
+       isMerged: boolean;
+       conflictCount?: number;
+       /** Set while the pull request is being babysat. */
+       babysit?: BabysitStatus;
+     }
+   | {
+       kind: 'orphan-pr';
+       pr: PullRequestInfo;
+       running?: boolean;
+       /** PTY session name when the PR's branch has a worktree session. */
+       sessionName?: string;
+       babysit?: BabysitStatus;
+     }
+   | {
+       kind: 'review-pr';
+       pr: PullRequestInfo;
+       category: ReviewCategory;
+       running?: boolean;
+       /** PTY session name when the PR's branch has a worktree session. */
+       sessionName?: string;
+       babysit?: BabysitStatus;
+     };
+ 
+ /** Extract the PR from any sidebar item kind. */
+ export function getPrFromItem(item: SidebarItem): PullRequestInfo | undefined {
+   return item.pr;
+ }
+ 
+ /** Stable identity key for a sidebar item. Survives list reorders. */
+ export function getItemKey(item: SidebarItem): string {
+   if (item.kind === 'session') return `session:${item.session.name}`;
+   if (item.kind === 'orphan-pr') return `orphan:${item.pr.id}`;
+   return `review:${item.pr.id}`;
+ }
+ 
+ /** Whether this sidebar item represents an active (running) agent session. */
+ export function isItemActive(item: SidebarItem): boolean {
+   if (item.kind === 'session') return item.session.running;
+   return item.running === true;
+ }
+ 
+ export interface AgentSession {
+   name: string;
+   label?: string;
+   running: boolean;
+   /** Mirrors `WorktreeInfo.state` — set when the worktree is mid-rebase. */
+   state?: 'rebasing';
++  /** The worktree's checkout directory — its identity, which a branch
++   *  switch inside it does not change. */
++  path?: string;
++  /** The branch the agent session in this worktree was created for,
++   *  set only when the worktree has since switched to another one. */
++  sessionBranch?: string;
+ }
+ 
+ export type { DiffFile, FileCategory } from '@n10/diff';
+ export type {
+   ReviewComment,
+   ReviewCommentsFile,
+   CommentSeverity,
+ } from '@n10/review-comments';
