@@ -1,3 +1,5 @@
+import { OrchestraReplies } from './orchestra-replies';
+
 const sources = [
   {
     cite: 'Cowan (2001)',
@@ -40,6 +42,7 @@ export function OrchestraAttention() {
         decision needs, so you don&apos;t have to reread the thread. The design
         draws on this research; nobody has measured whether it helps.
       </p>
+      <OrchestraReplies />
       <ul className="text-fd-muted-foreground mt-5 space-y-1.5 text-sm">
         {sources.map(({ cite, topic, href }) => (
           <li key={href}>
