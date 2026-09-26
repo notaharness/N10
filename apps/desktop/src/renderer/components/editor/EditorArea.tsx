@@ -17,7 +17,6 @@ import {
   itemSessionName,
 } from '../../lib/sidebar/sidebar-model.js';
 import { foreignRepoOf, useTabs, type Tab } from '../../lib/tabs/tabs.js';
-import { repoGroupStarts } from '../../lib/tabs/tab-presentation.js';
 import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
@@ -26,6 +25,7 @@ import { SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
 import { ForeignRepoPane } from './ForeignRepoPane.js';
 import { TabButton } from './TabButton.js';
+import { TabStrip } from './TabStrip.js';
 import { TerminalView } from './TerminalView.js';
 
 /** The pane body for a tab. Each kind renders its own placeholder
@@ -156,7 +156,9 @@ export function EditorArea({
   // in the first frame.
   const paneTabs = useDeferredValue(tabs.tabs);
   const paneActiveId = useDeferredValue(tabs.activeId);
-  const groupStarts = useMemo(() => repoGroupStarts(tabs.tabs), [tabs.tabs]);
+  const tabStopId = tabs.tabs.some((t) => t.id === tabs.activeId)
+    ? tabs.activeId
+    : tabs.tabs[0]?.id;
 
   // The active tab's repository, when it is not the open one. Its pane
   // cannot be rendered from here — every query and every host call is
@@ -182,8 +184,8 @@ export function EditorArea({
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
-      <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-tab [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.tabs.map((tab, i) => {
+      <TabStrip ids={tabs.tabs.map((t) => t.id)} onMove={tabs.moveTab}>
+        {tabs.tabs.map((tab) => {
           const sessionName = sessionNameFor(tab);
           return (
             <TabButton
@@ -194,15 +196,14 @@ export function EditorArea({
               closer={closer}
               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
               foreignRepo={foreignRepoOf(tab, repo.cwd)}
-              startsGroup={groupStarts[i]}
+              tabStop={tab.id === tabStopId}
               running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
               unseen={tabs.unseen.includes(tab.id)}
               machineLabel={machineLabelFor(tab)}
             />
           );
         })}
-        <div className="flex-1" />
-      </div>
+      </TabStrip>
       <div className="relative min-h-0 flex-1" data-editor-panes>
         {paneTabs.map((tab) => {
           // A foreign tab has no pane here: its data lives in a

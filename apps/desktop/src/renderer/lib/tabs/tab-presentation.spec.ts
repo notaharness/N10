@@ -3,7 +3,6 @@ import type { PullRequestInfo } from '@n10/vcs-core';
 import type { SidebarItem } from '../../../host/contract.js';
 import {
   repoDisplayName,
-  repoGroupStarts,
   tabPresentation,
   tabRepo,
   truncateLeading,
@@ -12,7 +11,6 @@ import { itemTabId, terminalTabId } from './tab-identity.js';
 import type { ItemTab, Tab } from './tabs-model.js';
 
 const A = '/repos/alpha';
-const B = '/repos/beta';
 
 const item = (repo: string, itemKey: string): Tab => ({
   id: itemTabId(repo, itemKey),
@@ -51,63 +49,6 @@ describe('repoDisplayName', () => {
 
   it('falls back to the path when there is nothing to take', () => {
     expect(repoDisplayName('/')).toBe('/');
-  });
-});
-
-describe('repoGroupStarts', () => {
-  it('never starts a group on the leftmost tab', () => {
-    expect(repoGroupStarts([item(A, 'branch:x'), item(A, 'branch:y')])).toEqual(
-      [false, false]
-    );
-  });
-
-  it('starts one where the repository changes', () => {
-    expect(repoGroupStarts([item(A, 'branch:x'), item(B, 'branch:x')])).toEqual(
-      [false, true]
-    );
-  });
-
-  it('starts one again when the strip returns to a repo', () => {
-    // Tabs are reorderable, so a repo's tabs are not guaranteed to be
-    // one contiguous run — each run gets its own separator.
-    expect(
-      repoGroupStarts([
-        item(A, 'branch:x'),
-        item(B, 'branch:x'),
-        item(A, 'pr:1'),
-      ])
-    ).toEqual([false, true, true]);
-  });
-
-  it('lets settings sit inside a group without breaking it', () => {
-    // Settings belongs to no repository: it neither starts a group nor
-    // makes the tab after it look like a new one.
-    expect(
-      repoGroupStarts([item(A, 'branch:x'), settings, item(A, 'pr:1')])
-    ).toEqual([false, false, false]);
-  });
-
-  it('is empty for an empty strip', () => {
-    expect(repoGroupStarts([])).toEqual([]);
-  });
-
-  // Plain-folder terminals are a group of their own: they sit apart
-  // from every repository's tabs, and together with each other.
-  it('gives repo-less terminals a group of their own', () => {
-    expect(
-      repoGroupStarts([
-        item(A, 'branch:x'),
-        terminal('t1', null),
-        terminal('t2', null),
-        item(A, 'pr:1'),
-      ])
-    ).toEqual([false, true, false, true]);
-  });
-
-  it('files a repository-root terminal with that repository', () => {
-    expect(
-      repoGroupStarts([item(A, 'branch:x'), terminal('t1', A), item(B, 'pr:1')])
-    ).toEqual([false, false, true]);
   });
 });
 

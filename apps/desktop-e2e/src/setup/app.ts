@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * Locators for the desktop shell, in one place.
@@ -200,4 +200,15 @@ export function fileTree(page: Page): Locator {
  */
 export function fileTreeFolder(page: Page, name: string): Locator {
   return fileTree(page).getByRole('button', { name, exact: true });
+}
+
+/** Two tabs of the strip sit edge to edge: nothing — no gap, no
+ *  divider — between `left`'s right edge and `right`'s left. */
+export async function expectAdjoining(
+  left: Locator,
+  right: Locator
+): Promise<void> {
+  const [a, b] = await Promise.all([left.boundingBox(), right.boundingBox()]);
+  if (!a || !b) throw new Error('tab is not laid out');
+  expect(b.x).toBeCloseTo(a.x + a.width, 0);
 }

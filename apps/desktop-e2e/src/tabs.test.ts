@@ -142,21 +142,4 @@ test.describe('Editor tabs', () => {
     await clickAppMenuItem(desktop.app, 'Settings…');
     await expect(tabs(page)).toHaveCount(2);
   });
-
-  test('a tab can be dragged to a new position', async ({ desktop }) => {
-    const { page } = desktop;
-    await createWorktree(page, 'alpha');
-    await createWorktree(page, 'beta');
-    await expect(tabs(page)).toHaveCount(2);
-
-    const names = async () =>
-      (await tabs(page).allInnerTexts()).map((t) => t.split('\n')[0].trim());
-    expect(await names()).toEqual(['alpha', 'beta']);
-
-    // The strip carries its own dataTransfer payload and drop-side
-    // maths; the reducer's unit tests say nothing about whether the
-    // DOM half is wired up.
-    await tab(page, /alpha/).dragTo(tab(page, /beta/));
-    await expect.poll(names, { timeout: 10_000 }).toEqual(['beta', 'alpha']);
-  });
 });

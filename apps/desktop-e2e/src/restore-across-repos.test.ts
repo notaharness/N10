@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test as base, expect } from './fixtures/desktop.js';
-import { tab, visibleText } from './setup/app.js';
+import { expectAdjoining, tab, tabs, visibleText } from './setup/app.js';
 import { cleanupExternalSessions, tmuxAvailable } from './setup/external.js';
 import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
 
@@ -68,7 +68,6 @@ test.describe('Agents restored across repositories', () => {
   }) => {
     const { page, repoPath } = desktop;
     const getRepo = () => page.evaluate(() => window.n10.getRepo());
-    const groups = page.locator('[role="tab"][data-starts-group="true"]');
     // Opened through a symlink, known by its real path.
     const alphaRoot = realpathSync(repoPath);
 
@@ -80,9 +79,11 @@ test.describe('Agents restored across repositories', () => {
     // that repository's name — and the workspace stayed where it opened.
     const beta = tab(page, new RegExp(`repo-beta\\s*/\\s*${BETA}`));
     await expect(beta).toBeVisible({ timeout: 30_000 });
-    // Two groups on the strip: whichever of the two tabs is second
-    // starts one (the leftmost group never draws a boundary).
-    await expect(groups).toHaveCount(1);
+    // Two repositories' tabs in one continuous row, with no gap or
+    // divider between the groups.
+    await expect(tabs(page)).toHaveCount(2);
+    const [left, right] = [tabs(page).first(), tabs(page).last()];
+    await expectAdjoining(left, right);
     expect(await getRepo()).toMatchObject({ cwd: alphaRoot });
 
     // Activating it opens its repository, whose own discovery attaches
@@ -108,10 +109,9 @@ test.describe('Agents restored across repositories', () => {
       })
       .toEqual([expect.objectContaining({ repo: alphaRoot, branch: ALPHA })]);
     await expect(tab(page, new RegExp(ALPHA))).toHaveCount(1);
-    await expect(groups).toHaveCount(1);
+    await expect(tabs(page)).toHaveCount(2);
 
-    // …and back, by alpha's own tab: still one tab per agent, still two
-    // groups, and the workspace on the same repository it opened on.
+    // …and back, by alpha's own tab: still one tab per agent, and the workspace on the same repository it opened on.
     await tab(page, new RegExp(ALPHA)).click();
     await expect
       .poll(getRepo, { timeout: 30_000 })
@@ -121,6 +121,6 @@ test.describe('Agents restored across repositories', () => {
     });
     await expect(tab(page, new RegExp(ALPHA))).toHaveCount(1);
     await expect(tab(page, new RegExp(BETA))).toHaveCount(1);
-    await expect(groups).toHaveCount(1);
+    await expect(tabs(page)).toHaveCount(2);
   });
 });

@@ -4,8 +4,10 @@ import { basename, join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
   createWorktree,
+  expectAdjoining,
   focusTerminal,
   openPalette,
+  tab as tabNamed,
   visibleText,
 } from './setup/app.js';
 import { armFolderPick } from './setup/dialogs.js';
@@ -133,8 +135,9 @@ test.describe('Terminal tabs', () => {
 
       const tab = terminalTabs(page);
       await expect(tab).toHaveAttribute('title', folder);
-      // A group of its own: the strip draws a boundary before it.
-      await expect(tab).toHaveAttribute('data-starts-group', 'true');
+      // A group of its own, yet one continuous row: no gap or divider
+      // sets it apart from the repository's tab.
+      await expectAdjoining(tabNamed(page, /some-work/), tab);
       // …and no repository prefix, because it belongs to none.
       await expect(tab).not.toContainText(basename(repoPath));
 
