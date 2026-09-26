@@ -63,7 +63,7 @@ test.describe('Window diagnostics', () => {
     await resume(app);
     await expect
       .poll(() => readLog(homeDir), { timeout: 30_000 })
-      .toMatch(/window healthy after resume/);
+      .toMatch(/window healthy \d+ s after resume/);
     expect(await readLog(homeDir)).toMatch(
       /session \S+, ozone \S+.*, gpu \S+=\S+/
     );
@@ -78,7 +78,7 @@ test.describe('Window diagnostics', () => {
     await resume(app);
     await expect
       .poll(() => readLog(homeDir), { timeout: 45_000 })
-      .toMatch(/\[ERROR\] desktop: window hung after resume/);
+      .toMatch(/\[ERROR\] desktop: window hung \d+ s after resume/);
     expect(await readLog(homeDir)).not.toMatch(/renderer gone/);
     expect(
       await app.evaluate(({ BrowserWindow }) =>
@@ -96,9 +96,21 @@ test.describe('Window diagnostics', () => {
         new Promise(() => undefined);
     });
     await resume(app);
+    // The timer's probe may be running under a lock screen: a warning.
     await expect
       .poll(() => readLog(homeDir), { timeout: 30_000 })
-      .toMatch(/\[ERROR\] desktop: window unpainted after resume/);
+      .toMatch(
+        /\[WARN\] desktop: window unpainted \d+ s after resume; probing again on focus/
+      );
+    // The user's own focus settles it.
+    await app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.blur();
+      win.focus();
+    });
+    await expect
+      .poll(() => readLog(homeDir), { timeout: 30_000 })
+      .toMatch(/\[ERROR\] desktop: window unpainted \d+ s after resume$/m);
   });
 
   test('a load that fails is retried with backoff until the server answers', async ({
@@ -138,6 +150,12 @@ test.describe('Window diagnostics', () => {
       await expect
         .poll(() => shown(app), { timeout: 30_000 })
         .toContain('n10-e2e-back');
+      // …and that load, unlike the error pages, is the renderer loading.
+      await expect
+        .poll(
+          async () => (await readLog(homeDir)).match(/renderer loaded/g)?.length
+        )
+        .toBe(2);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

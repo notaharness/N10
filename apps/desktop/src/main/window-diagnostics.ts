@@ -50,9 +50,15 @@ export function rendererLogLine(
   return { level: entry.level, line: `renderer: ${entry.message}${where}` };
 }
 
+/** Repeats are reported at 10, 100, 1000, … while they keep coming. */
+export function reportRepeat(repeats: number): boolean {
+  return repeats >= 10 && Number.isInteger(Math.log10(repeats));
+}
+
 function logConsole(win: BrowserWindow, devServer: boolean): void {
-  // A renderer stuck in an error loop repeats one line per frame.
-  let last = '';
+  // A renderer stuck in an error loop repeats one line per frame,
+  // until the app is restarted: the count has to land while it runs.
+  let last: { level: ConsoleLine['level']; line: string } | null = null;
   let repeats = 0;
   win.webContents.on('console-message', (details) => {
     const entry = rendererLogLine(
@@ -70,12 +76,17 @@ function logConsole(win: BrowserWindow, devServer: boolean): void {
       devServer
     );
     if (!entry) return;
-    if (entry.line === last) {
+    if (last && entry.line === last.line) {
       repeats += 1;
+      if (reportRepeat(repeats)) {
+        log(last.level, `previous line repeated ${repeats} times`);
+      }
       return;
     }
-    if (repeats > 0) log('error', `previous line repeated ${repeats} times`);
-    last = entry.line;
+    if (repeats > 0 && !reportRepeat(repeats)) {
+      log(last?.level ?? 'error', `previous line repeated ${repeats} times`);
+    }
+    last = entry;
     repeats = 0;
     log(entry.level, entry.line);
   });

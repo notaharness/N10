@@ -10,8 +10,13 @@ import { join } from 'node:path';
 
 const ROTATE_BYTES = 1_000_000;
 
-/** Start writing to `<dir>/desktop.log`; returns the path. */
+/**
+ * Start writing to `<dir>/desktop.log`; returns the path. A run given
+ * an explicit `N10_LOG` keeps writing there, unrotated: it was asked
+ * for by someone collecting a bug report.
+ */
 export function openDesktopLog(dir: string): string {
+  if (process.env.N10_LOG) return process.env.N10_LOG;
   const path = join(dir, 'desktop.log');
   try {
     mkdirSync(dir, { recursive: true });

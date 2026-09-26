@@ -79,7 +79,8 @@ function withTimeout<T>(
  */
 async function probeWindow(win: BrowserWindow): Promise<Probe | null> {
   const contents = win.webContents;
-  if (contents.isCrashed()) return 'hung';
+  // A dead renderer is renderer-recovery.ts's to report, not a hang.
+  if (contents.isCrashed()) return null;
   const answered = await withTimeout(
     contents.executeJavaScript('true', true),
     SCRIPT_TIMEOUT_MS
@@ -92,7 +93,7 @@ async function probeWindow(win: BrowserWindow): Promise<Probe | null> {
 }
 
 export function installWindowWatchdog(win: BrowserWindow): void {
-  let suspect: string | null = null;
+  let suspect: { why: string; since: number } | null = null;
   let checking = false;
   let timer: NodeJS.Timeout | null = null;
 
@@ -102,16 +103,25 @@ export function installWindowWatchdog(win: BrowserWindow): void {
   const lookedAt = () =>
     !gone() && win.isVisible() && !win.isMinimized() && win.isFocused();
 
-  async function check(): Promise<void> {
+  /**
+   * `focused` is a probe the user's own focus triggered. The timer's
+   * probe can run under a lock screen that left the window focused,
+   * where a capture stalls too, so an unpainted verdict from it is a
+   * warning and the question stays open until the next focus.
+   */
+  async function check(focused: boolean): Promise<void> {
     if (checking || !suspect || !lookedAt()) return;
     checking = true;
     try {
       const probe = await probeWindow(win);
       if (probe === null || gone() || !suspect) return;
-      log(
-        probe === 'healthy' ? 'info' : 'error',
-        `window ${probe} after ${suspect}`
-      );
+      const seconds = Math.round((Date.now() - suspect.since) / 1000);
+      const verdict = `window ${probe} ${seconds} s after ${suspect.why}`;
+      if (probe === 'unpainted' && !focused) {
+        log('warn', `${verdict}; probing again on focus`);
+        return;
+      }
+      log(probe === 'healthy' ? 'info' : 'error', verdict);
       suspect = null;
     } finally {
       checking = false;
@@ -120,11 +130,11 @@ export function installWindowWatchdog(win: BrowserWindow): void {
 
   const mark = (why: string) => {
     if (gone()) return;
-    suspect = why;
+    suspect = { why, since: Date.now() };
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      void check();
+      void check(false);
     }, RESUME_SETTLE_MS);
   };
 
@@ -137,7 +147,7 @@ export function installWindowWatchdog(win: BrowserWindow): void {
   };
   powerMonitor.on('resume', onResume);
   app.on('child-process-gone', onChildGone);
-  win.on('focus', () => void check());
+  win.on('focus', () => void check(true));
   win.on('closed', () => {
     powerMonitor.off('resume', onResume);
     app.off('child-process-gone', onChildGone);

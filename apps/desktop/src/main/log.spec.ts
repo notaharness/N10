@@ -31,6 +31,16 @@ describe('desktop log', () => {
     expect(lines[1]).toMatch(/ \[ERROR\] desktop: GPU process gone: crashed$/);
   });
 
+  it('keeps an explicit N10_LOG path', () => {
+    const chosen = join(dir, 'chosen.log');
+    vi.stubEnv('N10_LOG', chosen);
+    try {
+      expect(openDesktopLog(join(dir, 'logs'))).toBe(chosen);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('still prints to the console, at the matching level', () => {
     openDesktopLog(dir);
     log('warn', 'renderer unresponsive');

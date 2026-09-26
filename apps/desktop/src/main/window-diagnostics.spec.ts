@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { loadRetryDelay, rendererLogLine } from './window-diagnostics.js';
+import {
+  loadRetryDelay,
+  rendererLogLine,
+  reportRepeat,
+} from './window-diagnostics.js';
 
 describe('loadRetryDelay', () => {
   it('doubles from one second and settles at ten', () => {
@@ -54,5 +58,21 @@ describe('rendererLogLine', () => {
         true
       )?.level
     ).toBe('warn');
+  });
+});
+
+describe('reportRepeat', () => {
+  it('reports at each power of ten from ten on', () => {
+    expect([1, 2, 9, 10, 11, 99, 100, 1000, 1001].map(reportRepeat)).toEqual([
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ]);
   });
 });
