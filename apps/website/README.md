@@ -78,8 +78,22 @@ adding.
 
 ## Deploying
 
-`wrangler.jsonc`'s `routes` entry is commented out until `n10.is` is added
-as a zone in the Cloudflare account. See the plan doc for the full Cloudflare
-setup (custom domain, API token scopes, GitHub secrets) and the CI workflow
-that runs `deploy:check` unconditionally and the real `deploy` once
-`CLOUDFLARE_API_TOKEN` exists.
+The `Deploy website` workflow (`.github/workflows/deploy-website.yml`) runs
+on every push to master. It always runs `deploy:check`, a wrangler dry run
+that needs no credentials, and runs the real `deploy` once
+`CLOUDFLARE_API_TOKEN` exists. To go live:
+
+1. Add `n10.is` as a zone in the Cloudflare account.
+2. Uncomment the `routes` entry in `wrangler.jsonc`. Until the zone exists,
+   `wrangler deploy` fails on the unresolvable route.
+3. Create an API token from Cloudflare's "Edit Cloudflare Workers" template,
+   scoped to this account and the `n10.is` zone, and add it as the
+   `CLOUDFLARE_API_TOKEN` repository secret.
+4. Add the account ID as the `CLOUDFLARE_ACCOUNT_ID` repository variable.
+
+## Media
+
+`scripts/convert-media.mjs` re-encodes the GIFs in `docs/media/` into
+`public/media/`. It needs ffmpeg and the output changes only when a demo is
+re-recorded, so run it by hand and commit the result rather than making the
+build depend on ffmpeg.
