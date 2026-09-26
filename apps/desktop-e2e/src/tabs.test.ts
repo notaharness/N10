@@ -26,12 +26,30 @@ async function carryOver(page: Page, from: Locator, to: Locator) {
   await page.mouse.move(b.x + b.width / 2, y, { steps: 10 });
 }
 
-/** Focus `name`'s tab, lift it with Space and step it right, until
+const LIFT = 'Control+Shift+Space';
+
+/** Nothing on the strip has been lifted. A lift starts a sort that
+ *  puts a transform on every tab within the frame, so after two frames
+ *  an untransformed row means no drag began. */
+async function expectNothingLifted(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done))
+      )
+  );
+  for (const t of await tabs(page).all()) {
+    expect(await motion(t)).toMatchObject({ transform: '' });
+  }
+  await expect(page.getByText(/^Picked up /)).toHaveCount(0);
+}
+
+/** Focus `name`'s tab, lift it with the chord and step it right, until
  *  `neighbour` has slid aside. The sensor starts listening for arrows
  *  a task after the lift, so an early press can go unheard. */
 async function liftRightOver(page: Page, name: RegExp, neighbour: RegExp) {
   await tab(page, name).focus();
-  await page.keyboard.press('Space');
+  await page.keyboard.press(LIFT);
   await expect(async () => {
     await page.keyboard.press('ArrowRight');
     expect(await motion(tab(page, neighbour))).toMatchObject({
@@ -244,5 +262,44 @@ test.describe('Reordering tabs', () => {
       .poll(() => motion(tab(page, /beta/)))
       .toMatchObject({ transform: '' });
     expect(await tabNames(page)).toEqual(['alpha', 'beta']);
+  });
+
+  test('Enter and Space activate a tab; the arrows move focus along the row', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const [alpha, beta] = [tab(page, /alpha/), tab(page, /beta/)];
+    // One Tab stop for the row: the active tab.
+    await expect(beta).toHaveAttribute('tabindex', '0');
+    await expect(alpha).toHaveAttribute('tabindex', '-1');
+
+    // A click focuses the tab, so a stray Space afterwards must not
+    // lift it: it activates, as on any tab.
+    await alpha.click();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowRight');
+    await expect(beta).toBeFocused();
+    await expect(alpha).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Enter');
+    await expect(beta).toHaveAttribute('aria-selected', 'true');
+    // The arrows wrap.
+    await page.keyboard.press('ArrowRight');
+    await expect(alpha).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(alpha).toHaveAttribute('aria-selected', 'true');
+
+    await expectNothingLifted(page);
+    expect(await tabNames(page)).toEqual(['alpha', 'beta']);
+  });
+
+  test('keys on the close button never lift the tab', async ({ desktop }) => {
+    const { page } = desktop;
+    const close = tab(page, /beta/).getByLabel('Close tab');
+    await close.focus();
+    await page.keyboard.press(LIFT);
+    await expectNothingLifted(page);
+    await page.keyboard.press('Enter');
+    await expect(tab(page, /beta/)).toHaveCount(0);
+    await expectNothingLifted(page);
   });
 });

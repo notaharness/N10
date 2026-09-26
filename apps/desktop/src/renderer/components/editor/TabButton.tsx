@@ -195,6 +195,7 @@ export function TabButton({
   closer,
   snapshot,
   foreignRepo,
+  tabStop,
   running = false,
   unseen = false,
   machineLabel,
@@ -211,6 +212,9 @@ export function TabButton({
   /** The other repository this tab belongs to, or null when it is at
    *  home in the open one. */
   foreignRepo: string | null;
+  /** The row's one Tab stop: the active tab, or the first one while
+   *  none on the row is active. */
+  tabStop: boolean;
   /** The tab's machine, resolved by the caller — null for a local tab,
    *  or with only the local machine registered (ux-machines.md §6, D8). */
   machineLabel?: string | null;
@@ -221,7 +225,12 @@ export function TabButton({
   // A plan is built inside a tab and then navigated away from, so the
   // count has to be visible from wherever the user ends up.
   const planCount = usePlanCount(item?.pr?.id);
-  const { setNode, props, style, isDragging } = useSortableTab(tab.id, label);
+  const { setNode, props, style, isDragging } = useSortableTab({
+    id: tab.id,
+    label,
+    tabStop,
+    onActivate: () => tabs.activate(tab.id),
+  });
 
   return (
     <div

@@ -1,7 +1,6 @@
 import {
   closestCenter,
   DndContext,
-  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -18,8 +17,13 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { usePrefersReducedMotion } from '../../lib/reduced-motion.js';
+import {
+  ChordKeyboardSensor,
+  handleTabKey,
+  screenReaderInstructions,
+} from './tab-keyboard.js';
 
 /** How far the pointer travels before a press becomes a drag, so
  *  clicks and double clicks on a tab stay clicks. */
@@ -45,10 +49,10 @@ const announcements: Announcements = {
 };
 
 /**
- * The tab row, sortable by pointer and by keyboard (focus a tab, Space
- * or Enter to lift, arrows to move, Space or Enter to drop, Escape to
- * cancel). The other tabs slide aside while one is dragged; the order
- * only changes in the model on drop.
+ * The tab row, sortable by pointer and by keyboard (see
+ * `tab-keyboard.ts`: a chord lifts, so Enter and Space still activate).
+ * The other tabs slide aside while one is dragged; the order only
+ * changes in the model on drop.
  */
 export function TabStrip({
   ids,
@@ -63,7 +67,7 @@ export function TabStrip({
     useSensor(PointerSensor, {
       activationConstraint: { distance: DRAG_THRESHOLD_PX },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(ChordKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -82,25 +86,42 @@ export function TabStrip({
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={[restrictToHorizontalAxis]}
-      accessibility={{ announcements }}
+      accessibility={{ announcements, screenReaderInstructions }}
       onDragEnd={onDragEnd}
     >
       <SortableContext
         items={[...ids]}
         strategy={horizontalListSortingStrategy}
       >
-        <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-tab [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          role="tablist"
+          aria-label="Open tabs"
+          className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-tab [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {children}
-          <div className="flex-1" />
+          <div className="flex-1" aria-hidden />
         </div>
       </SortableContext>
     </DndContext>
   );
 }
 
-/** What a tab in `TabStrip` spreads onto its element to be sortable;
- *  `label` is what the drag announcements call it. */
-export function useSortableTab(id: string, label: string) {
+/**
+ * What a tab in `TabStrip` spreads onto its element to be sortable.
+ * `label` is what the drag announcements call it; `tabStop` makes it
+ * the row's one Tab stop (the arrows move focus within the row).
+ */
+export function useSortableTab({
+  id,
+  label,
+  tabStop,
+  onActivate,
+}: {
+  id: string;
+  label: string;
+  tabStop: boolean;
+  onActivate: () => void;
+}) {
   const reducedMotion = usePrefersReducedMotion();
   const {
     attributes,
@@ -110,10 +131,15 @@ export function useSortableTab(id: string, label: string) {
     transform,
     transition,
     isDragging,
+    active,
   } = useSortable({
     id,
     data: { label },
-    attributes: { role: 'tab' },
+    attributes: {
+      role: 'tab',
+      roleDescription: 'sortable tab',
+      tabIndex: tabStop ? 0 : -1,
+    },
     // `null` turns the slide off; the tabs then jump to their places.
     transition: reducedMotion ? null : undefined,
   });
@@ -124,7 +150,18 @@ export function useSortableTab(id: string, label: string) {
       setNodeRef(node);
       setActivatorNodeRef(node);
     },
-    props: { ...attributes, ...listeners },
+    props: {
+      ...attributes,
+      ...listeners,
+      onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+        listeners?.onKeyDown?.(e);
+        // The sensor took it (the lift chord), a drag is under way, or
+        // the key was meant for the close button inside the tab.
+        if (e.defaultPrevented || active || e.target !== e.currentTarget)
+          return;
+        handleTabKey(e, onActivate);
+      },
+    },
     style: { transform: CSS.Translate.toString(transform), transition },
     isDragging,
   };

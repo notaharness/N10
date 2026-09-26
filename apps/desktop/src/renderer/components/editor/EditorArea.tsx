@@ -156,6 +156,9 @@ export function EditorArea({
   // in the first frame.
   const paneTabs = useDeferredValue(tabs.tabs);
   const paneActiveId = useDeferredValue(tabs.activeId);
+  const tabStopId = tabs.tabs.some((t) => t.id === tabs.activeId)
+    ? tabs.activeId
+    : tabs.tabs[0]?.id;
 
   // The active tab's repository, when it is not the open one. Its pane
   // cannot be rendered from here — every query and every host call is
@@ -193,6 +196,7 @@ export function EditorArea({
               closer={closer}
               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
               foreignRepo={foreignRepoOf(tab, repo.cwd)}
+              tabStop={tab.id === tabStopId}
               running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
               unseen={tabs.unseen.includes(tab.id)}
               machineLabel={machineLabelFor(tab)}
