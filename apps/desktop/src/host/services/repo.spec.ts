@@ -68,8 +68,8 @@ describe('isGitRepo', () => {
 });
 
 describe('openStartupRepo', () => {
-  it('opens the repo when N10_START_DIR is a valid git repo', () => {
-    const info = openStartupRepo({ N10_START_DIR: gitDir });
+  it('opens the start dir when it is a valid git repo', () => {
+    const info = openStartupRepo(gitDir);
     expect(info).not.toBeNull();
     expect(info!.cwd).toBe(gitDir);
     expect(getRepo()?.cwd).toBe(gitDir);
@@ -77,23 +77,20 @@ describe('openStartupRepo', () => {
 
   it('falls back to restoring the most recent valid repo', () => {
     // Launch without a start dir; recents injected explicitly.
-    const info = openStartupRepo({}, recents([gitDir, '/gone/repo']));
+    const info = openStartupRepo(undefined, recents([gitDir, '/gone/repo']));
     expect(info).not.toBeNull();
     expect(info!.cwd).toBe(gitDir);
   });
 
   it('skips dead recents when restoring', () => {
-    const info = openStartupRepo(
-      { N10_START_DIR: plainDir },
-      recents(['/gone/repo', gitDir])
-    );
+    const info = openStartupRepo(plainDir, recents(['/gone/repo', gitDir]));
     // invalid start dir falls through to the first valid recent
     expect(info).not.toBeNull();
     expect(info!.cwd).toBe(gitDir);
   });
 
   it('returns null with no start dir and empty recents', () => {
-    expect(openStartupRepo({ N10_START_DIR: undefined }, [])).toBeNull();
+    expect(openStartupRepo(undefined, [])).toBeNull();
   });
 });
 
@@ -191,7 +188,7 @@ describe('opening a repository through a symlink', () => {
 
   it('canonicalises the start directory the same way', () => {
     saveRecents([]);
-    const info = openStartupRepo({ N10_START_DIR: link });
+    const info = openStartupRepo(link);
     expect(info?.cwd).toBe(real);
   });
 });

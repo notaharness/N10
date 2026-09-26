@@ -40,7 +40,7 @@ async function run(command: Command): Promise<number | undefined> {
       return undefined;
     }
     case 'desktop':
-      return launchDesktop(root, packageVersion());
+      return launchDesktop(root);
     case 'unknown':
       console.error(`n10: unknown argument '${command.arg}'\n\n${USAGE}`);
       return 2;

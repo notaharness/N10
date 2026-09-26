@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { isatty } from 'node:tty';
 import {
   app,
   BrowserWindow,
@@ -37,6 +38,12 @@ import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
 import { pickFolderWithDialog } from './folder-picker.js';
 import { buildMenuTemplate } from './menu.js';
+import { runQaSteps } from './qa-steps.js';
+import {
+  appIdentity,
+  importLoginShellPath,
+  launchStartDir,
+} from './launch-env.js';
 import {
   installProcessDiagnostics,
   installRendererRecovery,
@@ -52,8 +59,22 @@ mark(MAIN_MARKS.module);
 
 const DIST = join(import.meta.dirname, '..');
 const DEV_SERVER_URL = process.env.N10_VITE_URL;
-const APP_VERSION = process.env.N10_DESKTOP_VERSION ?? 'dev';
-const IS_DEV = Boolean(DEV_SERVER_URL) || APP_VERSION === 'dev';
+const { version: APP_VERSION, isDev: IS_DEV } = appIdentity(
+  app.getName(),
+  app.getVersion(),
+  process.env
+);
+// A terminal on stdin: started from a shell, which gave it its PATH.
+const FROM_TERMINAL = isatty(0);
+const START_DIR = launchStartDir({
+  env: process.env,
+  argv: process.argv,
+  cwd: process.cwd(),
+  packaged: app.isPackaged,
+  fromTerminal: FROM_TERMINAL,
+});
+// Read once: sessions, and an app started from one, must not inherit it.
+delete process.env.N10_START_DIR;
 
 let prefs: DesktopPrefs = loadDesktopPrefs();
 
@@ -194,61 +215,6 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
-// ── Headless QA hook ─────────────────────────────────────────────
-// N10_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
-// runs each step's JS in the page, waits, captures a PNG, then quits.
-// Dev/CI only — lets us screenshot the real app under xvfb.
-
-interface QaStep {
-  js?: string;
-  waitMs?: number;
-  shot?: string;
-}
-
-async function runQaSteps(win: BrowserWindow): Promise<void> {
-  const raw = process.env.N10_QA_STEPS;
-  if (!raw) return;
-  let steps: QaStep[] = [];
-  try {
-    steps = JSON.parse(raw) as QaStep[];
-  } catch (err) {
-    console.error('[desktop] bad N10_QA_STEPS:', err);
-    app.quit();
-    return;
-  }
-  const { writeFile } = await import('node:fs/promises');
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  // Hidden/occluded windows may never paint, which makes capturePage
-  // hang — force the window visible and un-throttled for the run.
-  win.show();
-  win.focus();
-  win.webContents.setBackgroundThrottling(false);
-  console.log(`[desktop] qa: ${steps.length} steps`);
-  await sleep(1500);
-  let i = 0;
-  for (const step of steps) {
-    i += 1;
-    try {
-      if (step.js) {
-        const r: unknown = await win.webContents.executeJavaScript(
-          step.js,
-          true
-        );
-        console.log(`[desktop] qa step ${i} js →`, r);
-      }
-      await sleep(step.waitMs ?? 600);
-      if (step.shot) {
-        const img = await win.webContents.capturePage();
-        await writeFile(step.shot, img.toPNG());
-        console.log(`[desktop] qa step ${i} shot → ${step.shot}`);
-      }
-    } catch (err) {
-      console.error(`[desktop] qa step ${i} failed:`, err);
-    }
-  }
-  app.quit();
-}
-
 // ── Host contract (main-process side) ────────────────────────────
 
 registerHostHandlers(ipcMain);
@@ -268,6 +234,7 @@ setShellGlue({
     menu?.popup({ window: win });
   },
   aboutBox: showAbout,
+  appVersion: APP_VERSION,
   prefsChanged: (next) => {
     prefs = next;
     nativeTheme.themeSource = next.theme; // recolors overlay + native menus
@@ -308,13 +275,17 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       mark(MAIN_MARKS.ready);
+      // Before anything that runs a command: sessions, and the beam
+      // daemon's remote shells, get this PATH.
+      if (app.isPackaged && !FROM_TERMINAL) await importLoginShellPath();
+      // Throws without tmux, before the beam daemon starts for nothing.
+      await probeTmuxAvailability();
+      applySessionBackend();
       beam.start();
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
       installDesktopTmuxPreparer();
-      await probeTmuxAvailability();
-      applySessionBackend();
-      const opened = openStartupRepo();
+      const opened = openStartupRepo(START_DIR);
       mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 

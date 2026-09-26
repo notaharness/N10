@@ -111,4 +111,9 @@ Every rule below has its reasoning in `docs/decisions.md`.
   Electron on the package. Nothing here is published on its own. See the
   `publish-beta` skill. The private `productName` `n10-dev` keeps a dev
   build's userData, and its single-instance lock, apart from the installed
-  app's `n10`.
+  app's `n10`, and it is how `main/launch-env.ts` recognizes the dev build.
+- The Linux installers package the same build: `package-linux` target,
+  `electron-builder.yml`, `scripts/package-linux.mjs`. Keep anything another
+  process runs (node-pty, beam) in `asarUnpack`, and resolve its path with
+  `unpackedPath`. Icons are rendered from `build/icon.svg` by
+  `scripts/icons.sh`.

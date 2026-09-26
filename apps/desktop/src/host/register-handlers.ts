@@ -32,7 +32,7 @@ export function createHostApi(): N10HostApi {
   return {
     getVersion: () =>
       Promise.resolve({
-        app: process.env.N10_DESKTOP_VERSION ?? 'dev',
+        app: appVersion,
         electron: process.versions.electron ?? 'unknown',
         node: process.versions.node,
         chrome: process.versions.chrome ?? 'unknown',
@@ -172,6 +172,7 @@ let contextMenu: (
 let appMenuPopup: () => Promise<void> = async () => undefined;
 let aboutBox: () => Promise<void> = async () => undefined;
 let prefsChanged: (next: prefs.DesktopPrefsLike) => void = () => undefined;
+let appVersion = 'dev';
 
 export function setFolderPicker(
   fn: (title: string) => Promise<string | null>
@@ -197,7 +198,9 @@ export function setShellGlue(glue: {
   appMenuPopup: () => Promise<void>;
   aboutBox: () => Promise<void>;
   prefsChanged: (next: prefs.DesktopPrefsLike) => void;
+  appVersion: string;
 }): void {
+  appVersion = glue.appVersion;
   contextMenu = glue.contextMenu;
   appMenuPopup = glue.appMenuPopup;
   aboutBox = glue.aboutBox;

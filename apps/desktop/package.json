@@ -132,6 +132,18 @@
           "build-renderer"
         ]
       },
+      "package-linux": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "outputs": [
+          "{projectRoot}/dist/installers"
+        ],
+        "options": {
+          "command": "node apps/desktop/scripts/package-linux.mjs"
+        }
+      },
       "serve": {
         "executor": "nx:run-commands",
         "dependsOn": [
@@ -180,6 +192,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.1.2",
     "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.1.14",
     "vite": "^7.1.11"
   },

@@ -317,6 +317,25 @@ chunk is what makes a fast wheel spin scroll by more than one line.
 For release preparation and global-install constraints, see
 `.agents/skills/publish-beta/references/packaging.md`.
 
+The Linux installers are a second packaging of the same desktop build
+(`npx nx package-linux desktop`, `apps/desktop/electron-builder.yml`). Each is
+built on, and holds binaries for, one architecture: `scripts/package-linux.mjs`
+copies node-pty and the one installed beam platform package from the
+workspace, and both stay unpacked from the asar because other processes run
+them. The executable is `n10-desktop`, so a deb never shadows the npm
+package's `n10`. An AppImage's session bin points into its FUSE mount, so
+`n10 util` and `beam` in sessions that outlive it fail until it runs again;
+the deb has fixed paths. Where AppArmor blocks user namespaces (Ubuntu 24.04
+and later) the deb installs a profile, and the AppImage's launcher adds
+`--no-sandbox`.
+
+The app tells builds apart by manifest name, not `app.isPackaged`, which is
+false under the npm package too: `n10-dev` is the dev build, and anything else
+reports its manifest version. An installed app opens its last path argument,
+or the cwd only when a terminal started it. When no terminal started it, it
+puts the login shell's PATH first, since a desktop menu's PATH lacks tmux and
+the agents.
+
 ## Machine integration decisions
 
 Wiring beam into n10: remote tmux, the desktop's client of the beam
