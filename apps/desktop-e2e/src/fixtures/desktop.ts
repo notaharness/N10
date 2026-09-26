@@ -19,7 +19,13 @@ import { killFixtureSessions } from '../setup/tmux.js';
 import { appEnv } from './app-env.js';
 import { closeDesktopApp } from '../setup/app-close.js';
 import type { TerminalSeed } from '../setup/terminals.js';
-import { fakeAgent, seedHome, seedTmux, type HomeSeed } from './seed-home.js';
+import {
+  fakeAgent,
+  seedHome,
+  seedTmux,
+  type HomeSeed,
+  type LiveSessionSeed,
+} from './seed-home.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -57,7 +63,7 @@ export interface DesktopOptions extends HomeSeed {
    * puts the agent in another repository than the test's own — the
    * state after a run that had work open across several.
    */
-  liveSessions?: { branch: string; command: string; repo?: string }[];
+  liveSessions?: LiveSessionSeed[];
   /**
    * Extra environment for the app process, for the knobs the host
    * reads from it — a background cadence a test cannot wait out at its

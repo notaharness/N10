@@ -87,15 +87,23 @@ function buildHints(
   };
 }
 
+/** The row's own label, else its checkout's name. */
+function headerLabel(label: string | null, sessionName: string | null): string {
+  return label ?? (sessionName ? sessionLabel(sessionName) : 'Session');
+}
+
 export const SessionMenuPane = memo(function SessionMenuPane({
   pr,
   sessionName,
+  label,
   selectedOption,
   agentIndex,
   instruction,
 }: {
   pr: PullRequestInfo | null;
   sessionName: string | null;
+  /** What the row is called: its branch, as checked out now. */
+  label: string | null;
   selectedOption: number;
   agentIndex: number;
   instruction: string;
@@ -122,7 +130,7 @@ export const SessionMenuPane = memo(function SessionMenuPane({
       {pr ? (
         <PrHeader pr={pr} />
       ) : (
-        <Text bold>{sessionName ? sessionLabel(sessionName) : 'Session'}</Text>
+        <Text bold>{headerLabel(label, sessionName)}</Text>
       )}
 
       <Box marginTop={1} flexDirection="column">

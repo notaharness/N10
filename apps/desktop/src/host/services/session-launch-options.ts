@@ -2,7 +2,7 @@ import {
   buildAgentOptions,
   getSessionLaunchContext as readSessionLaunchContext,
   resolveAgent,
-  worktreeSessionKey,
+  sessionKeyForBranch,
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
 import type { AgentOptionView, SessionLaunchView } from '../contract.js';
@@ -21,12 +21,19 @@ export function listAgentOptions(): AgentOptionView[] {
   }));
 }
 
-/** Read native state when the menu opens; no registry-only resume guesses. */
-export function getSessionLaunchContext(branch: string): SessionLaunchView {
+/** Read native state when the menu opens; no registry-only resume
+ *  guesses. The session is the one in the checkout that has `branch`;
+ *  with no such checkout there is none. */
+export async function getSessionLaunchContext(
+  branch: string
+): Promise<SessionLaunchView> {
   const cwd = requireRepo();
   const config = readConfig(cwd);
+  const name = await sessionKeyForBranch(branch, cwd);
   return {
-    ...readSessionLaunchContext(worktreeSessionKey(branch, cwd), config),
+    ...(name
+      ? readSessionLaunchContext(name, config)
+      : { exists: false, running: false, canResume: false }),
     defaultAgentName: resolveAgent(config).name,
   };
 }

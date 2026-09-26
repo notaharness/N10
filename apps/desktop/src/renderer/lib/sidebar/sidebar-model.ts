@@ -80,6 +80,12 @@ export function itemBranch(item: SidebarItem): string {
   return item.pr.sourceBranch;
 }
 
+/** The worktree checkout an item lives in — only a worktree row knows
+ *  it. */
+export function itemWorktree(item: SidebarItem): string | undefined {
+  return item.kind === 'session' ? item.session.path : undefined;
+}
+
 /** PTY session name for an item — the worktree session, or (for PR
  *  items) the alive review session the host attached to it. */
 export function itemSessionName(item: SidebarItem): string | undefined {

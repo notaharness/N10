@@ -18,6 +18,7 @@ import {
   itemKey,
   itemRunning,
   itemSessionName,
+  itemWorktree,
   itemTitle,
 } from '../lib/sidebar/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
@@ -113,6 +114,7 @@ function WorkspaceInner({
       foreignSessions.data?.map((s) => ({
         repo: s.repo,
         branch: s.branch,
+        worktree: s.worktree,
         sessionName: s.sessionName,
       })),
     [foreignSessions.data]
@@ -138,6 +140,9 @@ function WorkspaceInner({
         title: itemTitle(i),
         running: itemRunning(i),
         sessionName: itemSessionName(i),
+        worktree: itemWorktree(i),
+        sessionBranch:
+          i.kind === 'session' ? i.session.sessionBranch : undefined,
       })),
     [items]
   );

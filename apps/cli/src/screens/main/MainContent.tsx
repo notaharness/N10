@@ -26,6 +26,8 @@ interface MainContentProps {
   terminal: TerminalLayout;
   terminalFocused: boolean;
   sessionNameForTerminal: string | null;
+  /** The selected worktree row's label, its branch as checked out now. */
+  rowLabel: string | null;
   selectedPr: PullRequestInfo | undefined;
   onFocusSidebar: () => void;
 }
@@ -76,6 +78,7 @@ export function MainContent({
   terminal,
   terminalFocused,
   sessionNameForTerminal,
+  rowLabel,
   selectedPr,
   onFocusSidebar,
 }: MainContentProps) {
@@ -165,6 +168,7 @@ export function MainContent({
           <SessionMenuPane
             pr={pane.sessionMenu!.pr}
             sessionName={sessionNameForTerminal}
+            label={rowLabel}
             selectedOption={pane.sessionMenu!.selectedOption}
             agentIndex={pane.sessionMenu!.agentIndex}
             instruction={pane.reviewInstruction}

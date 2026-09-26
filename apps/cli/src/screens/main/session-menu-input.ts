@@ -3,6 +3,7 @@ import {
   type KeyPress,
   isSessionAlive,
   launchSession,
+  worktreeSessionKey,
   buildReviewLaunchRequest,
   buildAgentOptions,
   sessionMenuOptions,
@@ -31,17 +32,20 @@ function closeMenu(ctx: SessionMenuHandlerCtx): void {
 
 /**
  * Spawn (unless the agent is already alive — an exited one is
- * relaunched), then refresh and move focus into the started terminal. `launch` returns false to abort without
- * focusing — no worktree, or the worktree could not be created.
+ * relaunched), then refresh and move focus into the started terminal.
+ * `launch` answers the session it started — keyed by the checkout it
+ * landed in, which a PR row without a worktree only has once the launch
+ * has created one — or null to abort without focusing: no worktree, or
+ * the worktree could not be created.
  */
 function runStart(
   ctx: SessionMenuHandlerCtx,
-  launch: () => Promise<boolean>
+  launch: () => Promise<string | null>
 ): void {
-  const name = ctx.sessionNameForTerminal;
-  if (!name) return;
   void ctx.asyncOps.run('start-session', async () => {
-    if (!isSessionAlive(name) && !(await launch())) return;
+    const current = ctx.sessionNameForTerminal;
+    const name = current && isSessionAlive(current) ? current : await launch();
+    if (!name) return;
     await ctx.sessions.refreshSessions();
     if (ctx.selectedItem?.kind !== 'review-pr') {
       ctx.sidebar.selectByKey(`session:${name}`);
@@ -61,22 +65,24 @@ function runStart(
  */
 async function launchSelectedAgent(
   ctx: SessionMenuHandlerCtx
-): Promise<boolean> {
+): Promise<string | null> {
   const item = ctx.selectedItem;
   const worktreePath = item
     ? await resolveEditorTarget(item, { listWorktrees, createWorktree })
     : null;
   if (!worktreePath) {
     ctx.sessions.flashStatus('No worktree found for selected session');
-    return false;
+    return null;
   }
   const options = buildAgentOptions(ctx.config.config);
   const wanted = ctx.pane.sessionMenu?.agentIndex ?? 0;
   const idx = Math.min(Math.max(wanted, 0), options.length);
   // Automatic uses the recorded agent; every named choice starts fresh.
+  const name = worktreeSessionKey(worktreePath);
   await launchSession({
-    name: ctx.sessionNameForTerminal!,
+    name,
     cwd: worktreePath,
+    ...(item?.kind === 'session' ? {} : { branch: item?.pr.sourceBranch }),
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
@@ -84,7 +90,7 @@ async function launchSelectedAgent(
     request: { intent: idx === 0 ? 'continue-or-blank' : 'blank' },
     fresh: idx !== 0,
   });
-  return true;
+  return name;
 }
 
 /**
@@ -95,25 +101,27 @@ async function launchSelectedAgent(
 async function launchReview(
   ctx: SessionMenuHandlerCtx,
   instruction?: string
-): Promise<boolean> {
+): Promise<string | null> {
   const pr = ctx.pane.sessionMenu?.pr;
-  if (!pr) return false;
+  if (!pr) return null;
   const worktreePath = await createWorktree(pr.sourceBranch);
   if (!worktreePath) {
     ctx.sessions.flashStatus(
       `Failed to create worktree for ${pr.sourceBranch}`
     );
-    return false;
+    return null;
   }
+  const name = worktreeSessionKey(worktreePath);
   await launchSession({
-    name: ctx.sessionNameForTerminal!,
+    name,
     cwd: worktreePath,
+    branch: pr.sourceBranch,
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
     request: buildReviewLaunchRequest(pr, instruction),
   });
-  return true;
+  return name;
 }
 
 // Updater form throughout: arrow presses bunched into one stdin chunk

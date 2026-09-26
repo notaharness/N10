@@ -1,5 +1,6 @@
-import { basename } from 'node:path';
-import type { WorktreeInfo } from '@n10/worktree-manager';
+import { realpathSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
+import type { MachineExecutor, WorktreeInfo } from '@n10/worktree-manager';
 import { getRepoRoot } from './repo-root.js';
 
 /** The machine a session lives on: a beam `peerId`, or `'local'` for
@@ -8,24 +9,66 @@ import { getRepoRoot } from './repo-root.js';
 export const LOCAL_MACHINE = 'local';
 
 export type SessionIdentity =
-  | { kind: 'worktree'; repo: string; branch: string; machine: string }
+  | { kind: 'worktree'; repo: string; path: string; machine: string }
   | { kind: 'terminal'; id: string; machine: string };
 
 /**
+ * A worktree checkout's identity: its physical absolute path as resolved
+ * on the machine that holds it — what `pwd -P` prints inside it there,
+ * and what Orchestra records. Here that is `realpath`, or the resolved
+ * path as given once the directory is gone. Another machine's path is
+ * kept as given: it must already be canonical, which
+ * {@link resolveRemoteWorktreePath} makes it when the checkout is first
+ * resolved there.
+ */
+export function canonicalWorktreePath(
+  path: string,
+  machine: string = LOCAL_MACHINE
+): string {
+  // No path is no checkout — not the process's working directory.
+  if (machine !== LOCAL_MACHINE || !path) return path;
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+/** `pwd -P` in `path` on the machine `executor` runs on — the canonical
+ *  form of another machine's checkout. The path as given when it cannot
+ *  be resolved there. */
+export async function resolveRemoteWorktreePath(
+  path: string,
+  executor: MachineExecutor
+): Promise<string> {
+  try {
+    const { stdout, code } = await executor.run(['pwd', '-P'], { cwd: path });
+    const resolved = stdout.trim();
+    return code === 0 && resolved ? resolved : path;
+  } catch {
+    return path;
+  }
+}
+
+/**
  * Opaque internal keys. JSON tuples keep punctuation and namespaces
- * distinct. The machine is an *optional trailing segment*, omitted
+ * distinct. A worktree session is keyed by its checkout, not its
+ * branch: `git switch`, a branch rename or a detached HEAD inside the
+ * worktree leave the key alone, and a second worktree on the same
+ * branch is a different key. The machine is an *optional trailing segment*, omitted
  * entirely when it is `'local'` — every call site that does not pass
  * one keeps producing exactly the key it produces today (decisions.md
  * D2). Do not renumber the tuple; a new dimension is always appended.
  */
 export function worktreeSessionKey(
-  branch: string,
+  worktreePath: string,
   repo = getRepoRoot() ?? process.cwd(),
   machine: string = LOCAL_MACHINE
 ): string {
+  const path = canonicalWorktreePath(worktreePath, machine);
   return machine === LOCAL_MACHINE
-    ? JSON.stringify(['worktree', repo, branch])
-    : JSON.stringify(['worktree', repo, branch, machine]);
+    ? JSON.stringify(['worktree', repo, path])
+    : JSON.stringify(['worktree', repo, path, machine]);
 }
 
 export function terminalSessionKey(
@@ -70,7 +113,7 @@ function parseWorktreeIdentity(value: unknown[]): SessionIdentity | null {
   const machine = trailingMachine(value, 3);
   return machine === null
     ? null
-    : { kind: 'worktree', repo: value[1], branch: value[2], machine };
+    : { kind: 'worktree', repo: value[1], path: value[2], machine };
 }
 
 export function sessionIdentity(key: string): SessionIdentity | null {
@@ -88,12 +131,12 @@ export function sessionIdentity(key: string): SessionIdentity | null {
 /** Display text is never used to address a registry entry. */
 export function sessionLabel(key: string): string {
   const id = sessionIdentity(key);
-  return id?.kind === 'worktree' ? id.branch : id?.id ?? key;
+  return id?.kind === 'worktree' ? basename(id.path) : id?.id ?? key;
 }
 
 export function keyForWorktree(
-  wt: Pick<WorktreeInfo, 'branch' | 'path'>,
+  wt: Pick<WorktreeInfo, 'path'>,
   repo?: string
 ): string {
-  return worktreeSessionKey(wt.branch || basename(wt.path), repo);
+  return worktreeSessionKey(wt.path, repo);
 }

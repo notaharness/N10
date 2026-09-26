@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '@n10/core';
+import { sessionForBranch } from '@n10/core';
 import type { KeyPress, PlanItem } from '@n10/core';
 import {
   hasSession,
@@ -96,7 +96,10 @@ function send({ ctx, items }: PlanCheckoutActionCtx): void {
     ctx.sessions.flashStatus('Plan is empty');
     return;
   }
-  if (hasSession(worktreeSessionKey(selectedPr.sourceBranch))) {
+  // The selected row's session is the one in the checkout on the PR's
+  // branch, when there is one.
+  const name = ctx.sidebar.sessionNameForTerminal;
+  if (name && hasSession(name)) {
     // An agent is running — ask how to deliver. Default to inject
     // (non-destructive).
     ctx.pane.setPlanCheckoutTarget('inject');
@@ -182,9 +185,9 @@ function runCheckout(
     }
 
     plan.clear(prId);
-    await ctx.sessions.refreshSessions();
-    const name = worktreeSessionKey(selectedPr.sourceBranch);
-    ctx.sidebar.selectByKey(`session:${name}`);
+    const rows = await ctx.sessions.refreshSessions();
+    const name = sessionForBranch(rows, selectedPr.sourceBranch)?.name;
+    if (name) ctx.sidebar.selectByKey(`session:${name}`);
     ctx.sessions.flashStatus(
       result === 'injected' ? 'Plan sent to agent' : 'Agent started with plan'
     );

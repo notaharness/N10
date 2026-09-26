@@ -44,6 +44,7 @@ export function listForeignSessions(): ForeignSessionSummary[] {
     out.push({
       repo: live.repoRoot,
       branch: live.branch,
+      worktree: live.path,
       sessionName: live.sessionName,
     });
   }

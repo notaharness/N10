@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '@n10/core';
+import { sessionKeyForBranch, worktreeSessionKey } from '@n10/core';
 import {
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
@@ -17,10 +17,13 @@ import {
 } from '@n10/core';
 import { readConfig } from '@n10/vcs-core';
 import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
-import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
-import { machineFor } from './remote-machines.js';
 import { refuseIfRemoteOwns } from './plan-remote-owner.js';
+import {
+  noteLaunchStep,
+  refuseRemoteOwned,
+  resolveLaunchWorktree,
+} from './launch-worktree.js';
 import {
   adoptSession,
   foreignSessionError,
@@ -29,11 +32,7 @@ import {
   ownSessionNames,
   stopOwnWorktreeSession,
 } from './session-registry.js';
-import {
-  broadcastLaunchStep,
-  relayBuffer,
-  setSessionBroadcaster,
-} from './session-relay.js';
+import { relayBuffer, setSessionBroadcaster } from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
   PlanCheckoutRequest,
@@ -92,7 +91,13 @@ export function launchAgent(
   knownWorktreePath?: string
 ): Promise<LaunchResult> {
   const repo = requireRepo();
-  const name = worktreeSessionKey(req.branch, repo, req.machine);
+  // Keyed by what was asked for: the session's own key is its checkout,
+  // which is only known once the worktree is resolved below.
+  const requestKey = JSON.stringify([
+    repo,
+    req.machine ?? LOCAL_MACHINE,
+    knownWorktreePath ?? req.branch,
+  ]);
   const signature = JSON.stringify([
     req.intent,
     req.agentId,
@@ -103,7 +108,7 @@ export function launchAgent(
     knownWorktreePath,
     req.machine,
   ]);
-  const existing = inflightLaunches.get(name);
+  const existing = inflightLaunches.get(requestKey);
   if (existing) {
     return existing.signature === signature
       ? existing.promise
@@ -113,61 +118,35 @@ export function launchAgent(
           )
         );
   }
-  const promise = doLaunchAgent(req, name, knownWorktreePath).finally(() =>
-    inflightLaunches.delete(name)
+  const promise = doLaunchAgent(req, repo, knownWorktreePath).finally(() =>
+    inflightLaunches.delete(requestKey)
   );
-  inflightLaunches.set(name, { signature, promise });
+  inflightLaunches.set(requestKey, { signature, promise });
   return promise;
 }
 
-/** Named launch progress (ux-machines.md §5) — a no-op unless `req`
- *  names both a machine and a launchId, which only a remote launch's
- *  request ever does. Split out to keep `doLaunchAgent` readable. */
-function noteLaunchStep(
-  req: SessionLaunchRequest,
-  step: 'worktree' | 'start'
-): void {
-  if (req.machine && req.launchId) {
-    broadcastLaunchStep({ launchId: req.launchId, step });
-  }
-}
-
-/** Reuse a live connection, or refuse a local launch a fleet member
- *  already owns — split out to keep `doLaunchAgent` under budget. */
-async function guardLaunch(
+/** Reuse a live connection — split out to keep `doLaunchAgent` under
+ *  budget. */
+function reuseConnection(
   req: SessionLaunchRequest,
   name: string
-): Promise<{ name: string } | null> {
-  if (canReuseConnection(req, name)) {
-    // A stale UI request must not read another repository's relay.
-    if (!ownSession(name)) throw foreignSessionError(name);
-    return { name };
-  }
-  // An explicit machine is the user's own choice of where to launch —
-  // findSession already resolves or creates on exactly that machine.
-  // Only a local launch risks a second, local agent (finding 4).
-  if (!req.machine) await refuseIfRemoteOwns(requireRepo(), req.branch, name);
-  return null;
+): { name: string } | null {
+  if (!canReuseConnection(req, name)) return null;
+  // A stale UI request must not read another repository's relay.
+  if (!ownSession(name)) throw foreignSessionError(name);
+  return { name };
 }
 
 async function doLaunchAgent(
   req: SessionLaunchRequest,
-  name: string,
+  repoCwd: string,
   knownWorktreePath?: string
 ): Promise<{ name: string }> {
-  const reused = await guardLaunch(req, name);
+  await refuseRemoteOwned(req, repoCwd, knownWorktreePath);
+  const wtPath = await resolveLaunchWorktree(req, repoCwd, knownWorktreePath);
+  const name = worktreeSessionKey(wtPath, repoCwd, req.machine);
+  const reused = reuseConnection(req, name);
   if (reused) return reused;
-  const repoCwd = requireRepo();
-  // Use the actual checkout path reported by discovery, or resolve this
-  // exact branch. machineFor() throws for a machine it cannot build, so
-  // createWorktree runs on the right machine or not at all.
-  const machine = req.machine ? machineFor(req.machine) : undefined;
-  if (!knownWorktreePath) noteLaunchStep(req, 'worktree');
-  const wtPath =
-    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd, machine));
-  if (!wtPath) {
-    throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
-  }
   noteLaunchStep(req, 'start');
   // Config comes from the repo root, like the TUI — per-project config
   // is keyed by cwd hash, so reading from the worktree path resolved a
@@ -180,6 +159,9 @@ async function doLaunchAgent(
   const entry = await launchSession({
     name,
     cwd: wtPath,
+    // Discovery attaches to whatever the checkout is on now; a launch
+    // from the UI names the branch it expects to find there.
+    ...(knownWorktreePath ? {} : { branch: req.branch }),
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
@@ -193,8 +175,7 @@ async function doLaunchAgent(
       systemGuidance: req.systemGuidance,
     },
   });
-  if (entry !== before || !ownSession(name))
-    adoptSession(name, req.branch, repoCwd);
+  if (entry !== before || !ownSession(name)) adoptSession(name, repoCwd);
   return { name };
 }
 
@@ -251,30 +232,34 @@ export function checkoutPlan(
   req: PlanCheckoutRequest
 ): Promise<PlanCheckoutResult> {
   const repoCwd = requireRepo();
-  const name = worktreeSessionKey(req.pr.sourceBranch, repoCwd);
-  // Reject a stale request aimed at another repository's relay.
-  if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
-  const existing = inflightCheckouts.get(name);
+  // Keyed by the PR's branch: which checkout (and so which session) it
+  // lands in is only known once core has resolved or created it.
+  const key = JSON.stringify([repoCwd, req.pr.sourceBranch]);
+  const existing = inflightCheckouts.get(key);
   if (existing) return existing;
-  const promise = doCheckoutPlan(req, name, repoCwd).finally(() =>
-    inflightCheckouts.delete(name)
+  const promise = doCheckoutPlan(req, repoCwd).finally(() =>
+    inflightCheckouts.delete(key)
   );
-  inflightCheckouts.set(name, promise);
+  inflightCheckouts.set(key, promise);
   return promise;
 }
 
 async function doCheckoutPlan(
   req: PlanCheckoutRequest,
-  name: string,
   repoCwd: string
 ): Promise<PlanCheckoutResult> {
-  await refuseIfRemoteOwns(repoCwd, req.pr.sourceBranch, name);
+  const branch = req.pr.sourceBranch;
+  const current = await sessionKeyForBranch(branch, repoCwd);
+  // Reject a stale request aimed at another repository's relay.
+  if (current && known.has(current) && !ownSession(current))
+    throw foreignSessionError(current);
+  await refuseIfRemoteOwns(repoCwd, branch, current);
   const config = readConfig(repoCwd);
   // core reports failures by flashing a status line, which the TUI has
   // and the host does not. Capture the message and reject with it: the
   // renderer toasts it and leaves the plan intact for a retry.
   let failure: string | null = null;
-  const before = getSession(name);
+  const before = current ? getSession(current) : undefined;
   const result = await checkoutPlanCore({
     repo: repoCwd,
     pr: req.pr,
@@ -290,11 +275,12 @@ async function doCheckoutPlan(
   if (result === 'failed') {
     throw new Error(failure ?? 'Could not send the plan to the agent');
   }
+  const name = await sessionKeyForBranch(branch, repoCwd);
   if (
-    result === 'spawned' ||
-    (getSession(name) && getSession(name) !== before)
+    name &&
+    (result === 'spawned' || (getSession(name) && getSession(name) !== before))
   ) {
-    adoptSession(name, req.pr.sourceBranch, repoCwd);
+    adoptSession(name, repoCwd);
   }
   return result;
 }

@@ -1,5 +1,9 @@
-import { worktreeSessionKey } from '../session-key.js';
-import { canRemoveBranch, fastForwardMainBranch } from '@n10/worktree-manager';
+import { keyForWorktree } from '../session-key.js';
+import {
+  canRemoveBranch,
+  fastForwardMainBranch,
+  listWorktrees,
+} from '@n10/worktree-manager';
 import { logError } from '@n10/logger';
 import type { AppConfig, BranchPrMap, VcsProvider } from '@n10/vcs-core';
 import { isSessionAlive } from '../pty-registry.js';
@@ -82,10 +86,15 @@ async function autoDeleteMerged(args: {
 }): Promise<string[] | null> {
   const { merged, onAutoDelete, isCancelled } = args;
   const rebasingNow: string[] = [];
+  // One listing for the pass: each merged branch's session is the one in
+  // the checkout that has it.
+  const checkouts = await listWorktrees();
   for (const branch of merged) {
     // A live agent prevents auto-deletion even when n10 is detached.
     // Deleting its working directory would disrupt the running process.
-    const sessionName = worktreeSessionKey(branch);
+    const checkout = checkouts.find((w) => w.branch === branch);
+    if (!checkout) continue;
+    const sessionName = keyForWorktree(checkout);
     if (isSessionAlive(sessionName) || hasLiveTmuxSession(sessionName)) {
       logError(
         'sweepMergedBranches',
@@ -96,7 +105,7 @@ async function autoDeleteMerged(args: {
     const check = await canRemoveBranch(branch, true);
     if (isCancelled()) return null;
     if (check.safe) {
-      await onAutoDelete(worktreeSessionKey(branch), branch);
+      await onAutoDelete(sessionName, branch);
     } else {
       if (check.reason === 'rebase in progress') rebasingNow.push(branch);
       logError(

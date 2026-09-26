@@ -84,11 +84,14 @@ function listed(
   return { name, created: 10, path: '/p', paneDead: false, options, ...extra };
 }
 
+const WT = '/repos/alpha/.worktrees/feat-a';
+
 const OURS = {
   '@orchestra-spawner': 'n10',
   '@orchestra-repo': '/repos/alpha',
   '@orchestra-session-type': 'worktree',
   '@orchestra-branch': 'feat/a',
+  '@orchestra-worktree-path': WT,
 };
 
 describe('taggedSession', () => {
@@ -102,6 +105,7 @@ describe('taggedSession', () => {
       repo: '/repos/alpha',
       type: 'worktree',
       branch: 'feat/a',
+      worktreePath: WT,
       machine: 'local',
     });
   });
@@ -176,16 +180,18 @@ describe('matching', () => {
     })
   )!;
 
-  it('matches a worktree session on repo and unsanitized branch, exactly', () => {
-    expect(isWorktreeSessionFor(worktree, '/repos/alpha', 'feat/a')).toBe(true);
-    expect(isWorktreeSessionFor(worktree, '/repos/alpha', 'feat-a')).toBe(
+  it('matches a worktree session on repo and canonical checkout path, never its branch', () => {
+    expect(isWorktreeSessionFor(worktree, '/repos/alpha', WT)).toBe(true);
+    expect(isWorktreeSessionFor(worktree, '/repos/alpha', `${WT}/`)).toBe(true);
+    expect(isWorktreeSessionFor(worktree, '/repos/alpha', `${WT}-other`)).toBe(
       false
     );
-    expect(isWorktreeSessionFor(worktree, '/repos/alpha/', 'feat/a')).toBe(
+    expect(isWorktreeSessionFor(worktree, '/repos/alpha', 'feat/a')).toBe(
       false
     );
-    expect(isWorktreeSessionFor(worktree, '/repos/beta', 'feat/a')).toBe(false);
-    expect(isWorktreeSessionFor(shell, '/repos/alpha', 'feat/a')).toBe(false);
+    expect(isWorktreeSessionFor(worktree, '/repos/alpha/', WT)).toBe(false);
+    expect(isWorktreeSessionFor(worktree, '/repos/beta', WT)).toBe(false);
+    expect(isWorktreeSessionFor(shell, '/repos/alpha', WT)).toBe(false);
   });
 
   it('tells a terminal tab from a worktree session by type', () => {
@@ -193,20 +199,24 @@ describe('matching', () => {
     expect(isTerminalSession(worktree)).toBe(false);
   });
 
-  // The registry keys a worktree session by the branch with `/`
-  // rewritten, and a terminal by its tmux name.
+  // The registry keys a worktree session by its checkout, and a
+  // terminal by its tmux name.
   it('keys a session the way the PTY registry does', () => {
     expect(registryNameOf(worktree)).toBe(
-      worktreeSessionKey('feat/a', '/repos/alpha')
+      worktreeSessionKey(WT, '/repos/alpha')
     );
     expect(registryNameOf(shell)).toBe(terminalSessionKey('alpha-shell'));
   });
 });
 
 describe('sessionTags', () => {
-  it('writes spawner, repo, type and — for a worktree — the unsanitized branch', () => {
+  it('writes spawner, repo, type and — for a worktree — the unsanitized branch and checkout', () => {
     expect(
-      sessionTags('/repos/alpha', { type: 'worktree', branch: 'feat/a' })
+      sessionTags('/repos/alpha', {
+        type: 'worktree',
+        branch: 'feat/a',
+        worktreePath: WT,
+      })
     ).toEqual(OURS);
     expect(sessionTags('/repos/alpha', { type: 'agent' })).toEqual({
       '@orchestra-spawner': 'n10',

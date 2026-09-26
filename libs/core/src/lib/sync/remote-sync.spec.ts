@@ -19,6 +19,8 @@ import type { VcsProvider } from '@n10/vcs-core';
  *     its deletions into a repo the user has since navigated away from.
  */
 
+const checkout = vi.hoisted(() => (branch: string) => `/wt/${branch}`);
+
 const env = vi.hoisted(() => ({
   merged: new Set<string>(),
   fetchThrows: false,
@@ -51,6 +53,15 @@ vi.mock('@n10/worktree-manager', () => ({
   fastForwardMainBranch: () => Promise.resolve(),
   fetchRemote: () => Promise.resolve(true),
   fetchBranches: () => Promise.resolve(true),
+  // Every swept branch is checked out in a worktree of its own, whose
+  // checkout keys the agent session.
+  listWorktrees: () =>
+    Promise.resolve(
+      ['feature/a', 'feature/b', 'feature/c'].map((branch) => ({
+        branch,
+        path: checkout(branch),
+      }))
+    ),
 }));
 
 vi.mock('@n10/logger', () => ({ logError: () => undefined }));
@@ -151,21 +162,24 @@ describe('sweepMergedBranches', () => {
     const result = await sweep();
     expect([...result.merged]).toEqual(['feature/a']);
     expect(env.deleted).toEqual([
-      { session: worktreeSessionKey('feature/a'), branch: 'feature/a' },
+      {
+        session: worktreeSessionKey(checkout('feature/a')),
+        branch: 'feature/a',
+      },
     ]);
   });
 
   it('leaves a branch alone when its agent is still running', async () => {
     // The user deliberately left that agent running; deleting the
     // worktree under it destroys whatever it had in memory.
-    env.alive = new Set([worktreeSessionKey('feature/a')]);
+    env.alive = new Set([worktreeSessionKey(checkout('feature/a'))]);
     await sweep();
     expect(env.deleted).toEqual([]);
   });
 
   it('leaves a branch alone when a tmux session for it survived a restart', async () => {
     // Same agent, just not in this process's registry.
-    env.persisted = new Set([worktreeSessionKey('feature/a')]);
+    env.persisted = new Set([worktreeSessionKey(checkout('feature/a'))]);
     await sweep();
     expect(env.deleted).toEqual([]);
   });
@@ -174,7 +188,7 @@ describe('sweepMergedBranches', () => {
   // and deleting its worktree is destructive. A user who switched to
   // PTY after the session was created must not lose it.
   it('leaves it alone even when the config now selects pty', async () => {
-    env.persisted = new Set([worktreeSessionKey('feature/a')]);
+    env.persisted = new Set([worktreeSessionKey(checkout('feature/a'))]);
     await sweep({
       config: { autoDeleteOnMerge: true } as never,
     });

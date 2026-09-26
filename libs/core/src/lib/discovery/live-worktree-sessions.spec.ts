@@ -5,9 +5,9 @@ import type { WorktreeHead } from './worktree-origin.js';
 
 /**
  * Which live tmux sessions are worktree agents, and whose: the tags
- * are the record — repository and spawned-under branch — and the
- * worktree's HEAD file says whether it is still that branch. Nothing
- * here forks git, and a session with no tags is nobody's.
+ * are the record — repository and checkout — and the checkout's HEAD
+ * file says which branch it is on now. Nothing here forks git, and a
+ * session with no tags is nobody's.
  */
 
 const state = vi.hoisted(() => ({
@@ -56,6 +56,7 @@ function session(
     repo,
     type: 'worktree',
     branch,
+    worktreePath: path,
     machine: 'local',
     ...extra,
   };
@@ -81,7 +82,7 @@ beforeEach(() => {
 });
 
 describe('listLiveWorktreeSessions', () => {
-  it('ties every worktree agent to its repository and branch from its tags', () => {
+  it('ties every worktree agent to its repository and checkout from its tags', () => {
     state.sessions = [ALPHA, BETA];
     expect(list()).toEqual([
       {
@@ -90,7 +91,7 @@ describe('listLiveWorktreeSessions', () => {
         repoRoot: '/repos/alpha',
         branch: 'feat/a',
         detached: false,
-        sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
+        sessionName: worktreeSessionKey(ALPHA.path, '/repos/alpha'),
         machine: 'local',
       },
       {
@@ -99,7 +100,7 @@ describe('listLiveWorktreeSessions', () => {
         repoRoot: '/repos/beta',
         branch: 'feat-b',
         detached: false,
-        sessionName: worktreeSessionKey('feat-b', '/repos/beta'),
+        sessionName: worktreeSessionKey(BETA.path, '/repos/beta'),
         machine: 'local',
       },
     ]);
@@ -110,7 +111,7 @@ describe('listLiveWorktreeSessions', () => {
     expect(list()).toEqual([
       expect.objectContaining({
         machine: 'local',
-        sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
+        sessionName: worktreeSessionKey(ALPHA.path, '/repos/alpha'),
       }),
     ]);
   });
@@ -162,7 +163,7 @@ describe('listLiveWorktreeSessions', () => {
       session('alpha-agent', '/repos/alpha', '/repos/alpha', '', {
         type: 'agent',
       }),
-      { ...ALPHA, path: '' },
+      { ...ALPHA, path: '', worktreePath: '' },
     ];
     expect(list()).toEqual([]);
   });
@@ -176,20 +177,25 @@ describe('listLiveWorktreeSessions', () => {
     expect(list()).toEqual([]);
   });
 
-  // The tag says what the session was spawned under; HEAD says what
-  // the worktree is on now. When they differ the agent checked out
-  // another branch mid-session — the orphan case, which the
-  // repository's own scanner reports as a terminal — and nobody's to
-  // list here.
-  it('leaves out a session whose worktree has moved to another branch', () => {
+  // The branch tag says what the session was spawned under; HEAD says
+  // what the checkout is on now. When they differ the agent checked
+  // out another branch mid-session, and the session is still that
+  // checkout's: listed under the checkout's key, on HEAD's branch.
+  it('keeps a session whose worktree has moved to another branch, keyed by its checkout', () => {
     state.sessions = [ALPHA];
     headMock.mockReturnValueOnce({ branch: 'other/branch', detached: false });
-    expect(list()).toEqual([]);
+    expect(list()).toEqual([
+      expect.objectContaining({
+        path: ALPHA.path,
+        branch: 'other/branch',
+        sessionName: worktreeSessionKey(ALPHA.path, '/repos/alpha'),
+      }),
+    ]);
   });
 
-  it('matches the tagged branch exactly, unsanitized', () => {
+  it('reports the branch from HEAD, never from the tag', () => {
     state.sessions = [{ ...ALPHA, branch: 'feat-a' }];
-    expect(list()).toEqual([]);
+    expect(list()).toEqual([expect.objectContaining({ branch: 'feat/a' })]);
   });
 
   it('passes the Orchestra tags along when set', () => {

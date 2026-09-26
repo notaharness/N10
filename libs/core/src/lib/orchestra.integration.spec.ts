@@ -1,6 +1,12 @@
 import { worktreeSessionKey } from './session-key.js';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { orchestraFixture } from '../../tests/orchestra-fixture.js';
@@ -45,8 +51,39 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
-      const session = resolveWorktreeSession(fixture.repo, branch);
-      expect(session).not.toBeNull();
+      // The pinned plugin (tests/fixtures/orchestra.tar.gz) predates
+      // `@orchestra-worktree-path`, which notaharness/plugins#11 writes at
+      // spawn; without it the player is foreign to n10. Write it the way
+      // that change does, `pwd -P` of the checkout. Drop this once the
+      // fixture includes plugins#11.
+      const [name, path] = fixture
+        .tmux(
+          'list-sessions',
+          '-F',
+          '#{session_name}\t#{session_path}\t#{@orchestra-branch}'
+        )
+        .split('\n')
+        .map((line) => line.split('\t'))
+        .find((cols) => cols[2] === branch)!;
+      fixture.tmux(
+        'set-option',
+        '-t',
+        `=${name}:`,
+        '@orchestra-worktree-path',
+        realpathSync(path!)
+      );
+      // Found by the branch Orchestra tagged it with, once: from here on
+      // it is addressed by its checkout, as n10 addresses it.
+      const session = listOurSessions().find(
+        (s) =>
+          s.type === 'worktree' &&
+          s.repo === fixture.repo &&
+          s.branch === branch
+      );
+      expect(session).toBeDefined();
+      expect(
+        resolveWorktreeSession(fixture.repo, session!.worktreePath)
+      ).toEqual(session);
       return session!;
     }
 
@@ -102,7 +139,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         '#{pane_pid}'
       );
       const entry = await openSession({
-        session: { type: 'worktree', repo: fixture.repo, branch },
+        session: { type: 'worktree', repo: fixture.repo, path: player.path },
         mode: 'attach',
         cwd: player.path,
         cols: 80,
@@ -112,7 +149,9 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         },
       });
       expect(entry.agent).toBe('codex');
-      expect(getSession(worktreeSessionKey(branch, fixture.repo))).toBe(entry);
+      expect(getSession(worktreeSessionKey(player.path, fixture.repo))).toBe(
+        entry
+      );
       expect(entry.pty.name).toBe(player.name);
       expect(
         fixture.tmux(
@@ -123,14 +162,18 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
           '#{pane_pid}'
         )
       ).toBe(beforePid);
-      expect(resolveWorktreeSession(fixture.repo, branch)).toEqual(player);
+      expect(resolveWorktreeSession(fixture.repo, player.worktreePath)).toEqual(
+        player
+      );
       expect(listOurSessions()).toHaveLength(1);
       const killed = fixture.script('kill.sh', branch);
       expect({ status: killed.status, stderr: killed.stderr }).toEqual({
         status: 0,
         stderr: '',
       });
-      expect(resolveWorktreeSession(fixture.repo, branch)).toBeNull();
+      expect(
+        resolveWorktreeSession(fixture.repo, player.worktreePath)
+      ).toBeNull();
       expect(existsSync(player.path)).toBe(true);
       expect(
         fixture.tmux('has-session', '-t', '=shop-feature-integration:')
@@ -162,7 +205,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       ]);
       const lastReport = resolveWorktreeSession(
         fixture.repo,
-        branch
+        player.worktreePath
       )?.lastReport;
       expect(lastReport).toMatch(/^PROGRESS \d{4}-.*Z$/);
       writeFileSync(join(fixture.home, 'refuse-queue'), '1');
@@ -189,9 +232,9 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(result.stderr).toContain(
         `Report: [player ${player.name}] PROGRESS: complete failed message`
       );
-      expect(resolveWorktreeSession(fixture.repo, branch)?.lastReport).toBe(
-        lastReport
-      );
+      expect(
+        resolveWorktreeSession(fixture.repo, player.worktreePath)?.lastReport
+      ).toBe(lastReport);
       expect(fixture.read('deliveries.jsonl').trim().split('\n')).toHaveLength(
         1
       );
@@ -204,12 +247,15 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       };
       process.kill(first.pid, 'SIGTERM');
       await expect
-        .poll(() => resolveWorktreeSession(fixture.repo, branch)?.paneDead)
+        .poll(
+          () =>
+            resolveWorktreeSession(fixture.repo, player.worktreePath)?.paneDead
+        )
         .toBe(true);
       expect(listLiveWorktreeSessions()).toEqual([]);
       killAll();
       const attached = await openSession({
-        session: { type: 'worktree', repo: fixture.repo, branch },
+        session: { type: 'worktree', repo: fixture.repo, path: player.path },
         mode: 'attach',
         cwd: player.path,
         cols: 80,
@@ -221,7 +267,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       await expect.poll(() => attached.exited).toBe(true);
       rmSync(join(fixture.home, 'agent-start.json'));
       const resumed = await launchSession({
-        name: worktreeSessionKey(branch, fixture.repo),
+        name: worktreeSessionKey(player.path, fixture.repo),
         cwd: player.path,
         cols: 80,
         rows: 24,
@@ -236,7 +282,9 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(next.args).toEqual(['resume', '--last']);
       expect(resumed.pty.name).toBe(player.name);
       expect(resumed.agent).toBe('codex');
-      expect(resolveWorktreeSession(fixture.repo, branch)).toMatchObject({
+      expect(
+        resolveWorktreeSession(fixture.repo, player.worktreePath)
+      ).toMatchObject({
         paneDead: false,
         agent: 'codex',
         spawner: 'orchestra',
@@ -246,7 +294,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
 
     it('starts a fresh agent with provenance intact and reporting detached, including inherited Orchestra environment', async () => {
       const player = await spawnPlayer();
-      const name = worktreeSessionKey(branch, fixture.repo);
+      const name = worktreeSessionKey(player.path, fixture.repo);
       const config = {
         agentId: 'claude' as const,
         vendorAuth: {},
@@ -304,7 +352,10 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
       expect(next.agent).toBe('claude');
-      const current = resolveWorktreeSession(fixture.repo, branch)!;
+      const current = resolveWorktreeSession(
+        fixture.repo,
+        player.worktreePath
+      )!;
       expect(current).toMatchObject({
         name: player.name,
         repo: fixture.repo,
@@ -333,28 +384,38 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       };
       process.kill(first.pid, 'SIGTERM');
       await expect
-        .poll(() => resolveWorktreeSession(fixture.repo, branch)?.paneDead)
+        .poll(
+          () =>
+            resolveWorktreeSession(fixture.repo, player.worktreePath)?.paneDead
+        )
         .toBe(true);
       await launchSession({
-        name: worktreeSessionKey(branch, fixture.repo),
+        name: worktreeSessionKey(player.path, fixture.repo),
         cwd: player.path,
         cols: 80,
         rows: 24,
         config: { agentId: 'codex', vendorAuth: {}, vendorProject: {} },
         request: { intent: 'blank' },
       });
-      expect(resolveWorktreeSession(fixture.repo, branch)).toMatchObject({
+      expect(
+        resolveWorktreeSession(fixture.repo, player.worktreePath)
+      ).toMatchObject({
         agent: 'codex',
         spawner: 'orchestra',
       });
       expect(
-        resolveWorktreeSession(fixture.repo, branch)?.orchestrator
+        resolveWorktreeSession(fixture.repo, player.worktreePath)?.orchestrator
       ).toBeUndefined();
     });
 
     it('lets Orchestra adopt and stop a n10-created player while preserving creator identity', async () => {
       const entry = await openSession({
-        session: { type: 'worktree', repo: fixture.repo, branch: 'main' },
+        session: {
+          type: 'worktree',
+          repo: fixture.repo,
+          path: fixture.repo,
+          branch: 'main',
+        },
         cwd: fixture.repo,
         cols: 80,
         rows: 24,
@@ -363,7 +424,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
-      const player = resolveWorktreeSession(fixture.repo, 'main')!;
+      const player = resolveWorktreeSession(fixture.repo, fixture.repo)!;
       expect(player.spawner).toBe('n10');
       const adopted = fixture.script(
         'adopt.sh',
@@ -384,13 +445,13 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(fixture.read('agent-input.jsonl')).toContain(
         '$player handoff task'
       );
-      expect(resolveWorktreeSession(fixture.repo, 'main')).toMatchObject({
+      expect(resolveWorktreeSession(fixture.repo, fixture.repo)).toMatchObject({
         spawner: 'n10',
         orchestrator: target,
       });
       expect(fixture.script('kill.sh', player.name).status).toBe(0);
       await expect.poll(() => entry.exited).toBe(true);
-      expect(resolveWorktreeSession(fixture.repo, 'main')).toBeNull();
+      expect(resolveWorktreeSession(fixture.repo, fixture.repo)).toBeNull();
     });
   }
 );

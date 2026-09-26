@@ -10,13 +10,17 @@ The reasoning behind each rule is in `docs/decisions.md`.
   before startup validation. Require tmux 3.2+. Legacy backend preferences are
   ignored; no direct-agent PTY fallback exists.
 - **Launch boundary** (`session/open-session.ts`): receive explicit worktree or
-  terminal identity, validate the worktree HEAD, resolve tags, then choose
+  terminal identity, validate the worktree HEAD against the branch a caller
+  names (discovery's attaches name none), resolve tags, then choose
   create/attach/restart. Build agent argv only for create or restart. The tmux
   package receives opaque launch plans; it must not infer n10 identities.
-- **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
-  branch; terminal keys encode the allocated tmux target. Both gain an
-  _optional trailing_ machine segment (a beam `peerId`), omitted entirely when
-  local, so every existing call site keeps producing byte-identical keys.
+- **Registry identity** (`session-key.ts`): worktree keys encode repo and the
+  canonical checkout path (`canonicalWorktreePath`), never the branch: a
+  `git switch`, rename or detached HEAD keeps the key, and a second worktree
+  on the same branch is another. Code starting from a branch resolves the
+  checkout first (`worktree-rows.ts`). Terminal keys encode the allocated tmux
+  target. Both gain an _optional trailing_ machine segment (a beam `peerId`),
+  omitted entirely when local.
   `sessionIdentity` switches on kind (`value[0]`) first, then reads
   positionally with the optional machine — never on tuple length and kind
   together, since a remote terminal key and a local worktree key are both
@@ -24,9 +28,14 @@ The reasoning behind each rule is in `docs/decisions.md`.
   connections, rendering and activity, not launch policy. `dispose()`
   detaches; `kill()` terminates; shutdown must dispose.
 - **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
-  labels, `@orchestra-*` tags are identity. Attach and continuation preserve
-  creator/reporting tags. Fresh conversations preserve creator/repo/branch but
-  clear supervisor and last-report tags; record the actual launched agent.
+  labels, `@orchestra-*` tags are identity. A worktree session belongs to the
+  checkout in `@orchestra-worktree-path`, never `#{session_path}` or
+  `@orchestra-branch` (only the branch it was created for); one without the
+  tag is foreign. No migration paths for session tags: users close sessions
+  before upgrading.
+  Attach and continuation preserve creator/reporting tags. Fresh
+  conversations preserve creator/repo/branch but clear supervisor and
+  last-report tags; record the actual launched agent.
   Replacing a live process requires its captured native incarnation and an
   atomic tmux guard. Unconfirmed restarts never interrupt a live winner.
   Untagged sessions are foreign. Never use config `projectKey` for tmux identity.

@@ -17,8 +17,9 @@
 import {
   autoOpenKey,
   isForeignTab,
-  itemTabId,
+  standsFor,
   tabHome,
+  tabIdFor,
   terminalTabId,
   type Tab,
 } from './tab-identity.js';
@@ -47,6 +48,11 @@ export interface ItemEntry {
    *  worktree row whether or not an agent was ever started, so it says
    *  nothing about liveness on its own — `running` does. */
   sessionName?: string;
+  /** The worktree checkout the item lives in, when it has one. */
+  worktree?: string;
+  /** The branch the item's agent session was created for, when the
+   *  worktree has since switched to another. */
+  sessionBranch?: string;
 }
 
 export interface TabsState {
@@ -329,20 +335,20 @@ function forgetAutoOpened(state: TabsState, keys: string[]): TabsState {
 /**
  * Activate the tab for an item, opening one if none is on it yet.
  *
- * The search matches by itemKey, not id: a re-keyed tab (see
- * `sync-items`) keeps its original id, and opening its item again must
- * find it rather than spawn a duplicate.
+ * The search is {@link standsFor}: by itemKey, and by the id the tab
+ * was opened with — a re-keyed tab (see `sync-items`) keeps its
+ * original id, so a tab opened as `branch:x` and since re-keyed to
+ * `pr:n` must be found when `branch:x` is opened again, which the
+ * palette does whenever the branch isn't in the sidebar model yet.
+ * Panes are keyed by tab id, so two tabs sharing one would render each
+ * other's content and closing one would act on the wrong tab — which
+ * is also why a tab that followed its worktree off the item it was
+ * opened on does not match by id, and the new tab takes a free one
+ * ({@link tabIdFor}).
  *
- * …and by id as well, for the mirror case: a tab opened as `branch:x`
- * and since re-keyed to `pr:n` still carries the id it was opened with,
- * so opening `branch:x` again — which the palette does whenever the
- * branch isn't in the sidebar model yet — would otherwise create a
- * second tab sharing that id. Panes are keyed by tab id, so two of them
- * render each other's content and closing one acts on the wrong tab.
- *
- * Both searches are confined to `repo`: the same item key in another
- * repository is a different item, and matching it would hand this
- * repo's click to a tab pointing at someone else's branch.
+ * Confined to `repo`: the same item key in another repository is a
+ * different item, and matching it would hand this repo's click to a
+ * tab pointing at someone else's branch.
  */
 function openItem(
   state: TabsState,
@@ -350,17 +356,12 @@ function openItem(
   itemKey: string,
   preview: boolean
 ): TabsState {
-  const id = itemTabId(repo, itemKey);
-  const existing = state.tabs.find(
-    (t) =>
-      t.kind === 'item' &&
-      t.repo === repo &&
-      (t.itemKey === itemKey || t.id === id)
-  );
+  const existing = state.tabs.find((t) => standsFor(t, repo, itemKey));
   if (existing) {
     const tabs = preview ? state.tabs : pinTab(state.tabs, existing.id);
     return { ...state, tabs, activeId: existing.id };
   }
+  const id = tabIdFor(state.tabs, repo, itemKey);
   const next: Tab = { id, kind: 'item', repo, itemKey, preview };
   // Replace this repo's preview tab (if any) instead of stacking.
   // Scoped to the repo: another repository's preview tab is a tab the
@@ -453,7 +454,7 @@ function autoOpenRunning(
     if (opened.has(seenKey)) continue;
     opened.add(seenKey);
     changed = true;
-    if (openTabs.some((t) => t.id === itemTabId(repo, e.itemKey))) continue;
+    if (openTabs.some((t) => standsFor(t, repo, e.itemKey))) continue;
     const shown = openItem(next, repo, e.itemKey, false);
     next = background ? behindActive(next, shown) : shown;
   }

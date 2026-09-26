@@ -80,7 +80,7 @@ export async function startBabysit(prId: number): Promise<BabysitStatus> {
     readPullRequest: () => lookupPullRequest(cwd, prId),
     paneSize: defaultPaneSize,
     onSpawned: (name) => {
-      adoptSpawnedSession(name, pr.sourceBranch);
+      adoptSpawnedSession(name);
       changed?.({ spawned: { prId, name } });
     },
     isForeignSession,

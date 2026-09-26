@@ -1,4 +1,4 @@
-import { worktreeSessionKey, keyForWorktree } from '@n10/core';
+import { keyForWorktree } from '@n10/core';
 import { spawn } from 'node:child_process';
 import type { SidebarItem } from '@n10/core';
 import {
@@ -75,7 +75,7 @@ function sessionNameForRow(item: SidebarItem | undefined): string | null {
   if (!item) return null;
   if (item.kind === 'session') return item.session.name;
   if (item.kind === 'review-pr' && item.running != null) {
-    return worktreeSessionKey(item.pr.sourceBranch);
+    return item.sessionName ?? null;
   }
   return null;
 }

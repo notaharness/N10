@@ -65,6 +65,9 @@ vi.mock('@n10/core', async (importOriginal) => {
     sessionLabel: actual.sessionLabel,
     sessionIdentity: actual.sessionIdentity,
     LOCAL_MACHINE: actual.LOCAL_MACHINE,
+    // A launch's remote-owner guard asks which local session the
+    // branch's checkout has; none here is live before it is launched.
+    sessionKeyForBranch: () => Promise.resolve(null),
     startSessionDiscovery: (opts: SessionDiscoveryOptions) => {
       state.opts = opts;
       return {
@@ -124,10 +127,18 @@ vi.mock('@n10/core', async (importOriginal) => {
 let discovery: typeof DiscoveryModule;
 let sessions: typeof SessionsModule;
 
+/** Where `branch`'s checkout sits in `repo`, as git would report it. */
+const checkoutPath = (branch: string, repo = state.cwd) =>
+  `${repo}/.claude/worktrees/${branch}`;
+
+/** The session key of `branch`'s checkout in `repo`. */
+const keyFor = (branch: string, repo = state.cwd) =>
+  worktreeSessionKey(checkoutPath(branch, repo), repo);
+
 const worktree = (branch: string) => ({
-  name: worktreeSessionKey(branch, state.cwd),
+  name: keyFor(branch),
   branch,
-  path: `/repo-a/.claude/worktrees/${branch}`,
+  path: checkoutPath(branch),
 });
 
 /** The options the service handed the scanner. */
@@ -161,20 +172,18 @@ describe('startDiscoveryForRepo', () => {
 
     expect(state.spawns).toEqual([
       {
-        name: worktreeSessionKey('feature/x', '/repo-a'),
+        name: keyFor('feature/x', '/repo-a'),
         cwd: '/repo-a/.claude/worktrees/feature/x',
       },
     ]);
     // Adopted by the host, not merely spawned: without the relay the
     // agent runs with nothing forwarding it and the pane stays blank.
-    state.onData.get(worktreeSessionKey('feature/x', '/repo-a'))?.(
+    state.onData.get(keyFor('feature/x', '/repo-a'))?.('agent says hello');
+    expect(sessions.getSessionBuffer(keyFor('feature/x', '/repo-a')).data).toBe(
       'agent says hello'
     );
-    expect(
-      sessions.getSessionBuffer(worktreeSessionKey('feature/x', '/repo-a')).data
-    ).toBe('agent says hello');
     expect(sessions.listSessions().map((s) => s.name)).toEqual([
-      worktreeSessionKey('feature/x', '/repo-a'),
+      keyFor('feature/x', '/repo-a'),
     ]);
   });
 
@@ -197,14 +206,14 @@ describe('startDiscoveryForRepo', () => {
   it('attaches in the worktree git reported, not one derived from the branch', async () => {
     discovery.startDiscoveryForRepo('/repo-a');
     await opts().adopt({
-      name: worktreeSessionKey('my/branch', '/repo-a'),
+      name: worktreeSessionKey('/repo-a/.claude/worktrees/foo', '/repo-a'),
       branch: 'my/branch',
       path: '/repo-a/.claude/worktrees/foo',
     });
 
     expect(state.spawns).toEqual([
       {
-        name: worktreeSessionKey('my/branch', '/repo-a'),
+        name: worktreeSessionKey('/repo-a/.claude/worktrees/foo', '/repo-a'),
         cwd: '/repo-a/.claude/worktrees/foo',
       },
     ]);
@@ -212,9 +221,9 @@ describe('startDiscoveryForRepo', () => {
   });
 
   it('adopts the same branch independently in each repository', async () => {
-    // A session alive under this name but owned by another repository:
-    // the registry is keyed by bare branch name, so attaching would
-    // hand this repo's tab the other repo's agent.
+    // A live session for the same branch, owned by another repository:
+    // each repository's checkout is its own key, so attaching here must
+    // not hand this repo's tab the other repo's agent.
     state.cwd = '/repo-a';
     await sessions.launchAgent({
       branch: 'shared',
@@ -225,8 +234,8 @@ describe('startDiscoveryForRepo', () => {
 
     await opts().adopt(worktree('shared'));
     expect(state.spawns.map((s) => s.name)).toEqual([
-      worktreeSessionKey('shared', '/repo-a'),
-      worktreeSessionKey('shared', '/repo-b'),
+      keyFor('shared', '/repo-a'),
+      keyFor('shared', '/repo-b'),
     ]);
   });
 
@@ -270,6 +279,7 @@ describe('the change notification', () => {
   const delta = {
     appeared: [],
     disappeared: [],
+    switched: [],
     adoptable: [],
     ended: [],
     adoptableTerminals: [],

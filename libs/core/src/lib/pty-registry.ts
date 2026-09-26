@@ -6,6 +6,9 @@ import { remove as removeInactiveAlert } from './inactive-alerts.js';
 export interface PtyEntry {
   pty: SessionBackend;
   agent?: string;
+  /** A worktree session's `@orchestra-branch`: the branch it was
+   *  created for, which its checkout may since have switched away from. */
+  createdFor?: string;
   emu: TerminalEmulator;
   exited: boolean;
   exitCode?: number;
@@ -43,7 +46,8 @@ export function spawnSession(
   pty: SessionBackend,
   cols: number,
   rows: number,
-  agent?: string
+  agent?: string,
+  createdFor?: string
 ): NamedPtyEntry {
   // Respawn under the same name: dispose (soft) the prior entry. On
   // tmux this detaches without killing, so the new spawn resolves the
@@ -63,6 +67,7 @@ export function spawnSession(
     pty,
     emu,
     agent,
+    ...(createdFor ? { createdFor } : {}),
     exited: pty.processState?.running === false,
     exitCode: pty.processState?.exitCode,
     spawnedAt: Date.now(),

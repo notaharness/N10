@@ -25,12 +25,15 @@ export function rekey(
 ): TabsState {
   // Reconcile open tabs with the current sidebar items. An item's
   // key changes identity over its life (worktree `branch:x` grows a
-  // PR and becomes `pr:n`; a closed PR reverts) — follow it by
-  // branch so the tab never strands on a key no item carries.
+  // PR and becomes `pr:n`; a closed PR reverts; `git switch` in the
+  // worktree moves it to another branch) — follow it by worktree,
+  // then by branch, so the tab never strands on a key no item carries.
   const branchOf = new Map<string, string>();
+  const worktreeOf = new Map<string, string>();
   const keys = new Set<string>();
   for (const e of entries) {
     keys.add(e.itemKey);
+    if (e.worktree) worktreeOf.set(e.worktree, e.itemKey);
     // On a branch collision prefer the PR-bearing key — it is the
     // newer identity (the sidebar keys any PR-bearing item by PR).
     const prev = branchOf.get(e.branch);
@@ -38,43 +41,69 @@ export function rekey(
       branchOf.set(e.branch, e.itemKey);
   }
   const entryByKey = new Map(entries.map((e) => [e.itemKey, e]));
+  const index = { keys, branchOf, worktreeOf };
   let changed = false;
   const remapped = state.tabs.map((t): Tab => {
     // Another repository's tabs are none of this sync's business: its
     // items are not in `entries`, so every one of them would read as a
     // stale key and get followed onto a same-named branch over here.
     if (t.kind !== 'item' || t.repo !== repo) return t;
-    if (keys.has(t.itemKey)) {
-      const stamped = stamp(t, entryByKey.get(t.itemKey));
-      if (stamped !== t) changed = true;
-      return stamped;
-    }
-    // Stale key. `branch:`-shaped keys carry their branch; older
-    // tabs may have a stamped one from a previous sync.
-    const branch =
-      t.branch ??
-      (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
-    const nextKey = branch ? branchOf.get(branch) : undefined;
-    if (!nextKey || nextKey === t.itemKey) return t;
-    changed = true;
-    return stamp({ ...t, itemKey: nextKey, branch }, entryByKey.get(nextKey));
+    const itemKey = followedKey(t, index);
+    const stamped = stamp(
+      itemKey === t.itemKey ? t : { ...t, itemKey },
+      entryByKey.get(itemKey)
+    );
+    if (stamped !== t) changed = true;
+    return stamped;
   });
   if (!changed) return state;
   return { ...state, ...collapseDuplicateKeys(remapped, state.activeId) };
 }
 
+/** Where an item tab's item is now. */
+function followedKey(
+  t: ItemTab,
+  index: {
+    keys: ReadonlySet<string>;
+    branchOf: ReadonlyMap<string, string>;
+    worktreeOf: ReadonlyMap<string, string>;
+  }
+): string {
+  // The worktree comes first, even over a key that still exists: a
+  // worktree with a PR that switches branch leaves the PR behind as a
+  // row of its own, and the tab belongs with the checkout.
+  const moved = t.worktree ? index.worktreeOf.get(t.worktree) : undefined;
+  if (moved) return moved;
+  if (index.keys.has(t.itemKey)) return t.itemKey;
+  // Stale key. `branch:`-shaped keys carry their branch; older tabs
+  // may have a stamped one from a previous sync.
+  const branch =
+    t.branch ??
+    (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
+  return (branch ? index.branchOf.get(branch) : undefined) ?? t.itemKey;
+}
+
 /**
- * Remember on the tab what its item says about itself — branch and
- * title — so the strip can still describe the tab once the item is out
- * of reach. Returns the same tab when nothing changed, so a quiet poll
- * does not re-render the strip.
+ * Remember on the tab what its item says about itself — branch,
+ * worktree and title — so the strip can still describe the tab once
+ * the item is out of reach, and the branch it was opened for, once.
+ * Returns the same tab when nothing changed, so a quiet poll does not
+ * re-render the strip.
  */
 function stamp(tab: ItemTab, entry: ItemEntry | undefined): ItemTab {
   if (!entry) return tab;
-  const branch = entry.branch || tab.branch;
-  const title = entry.title ?? tab.title;
-  if (branch === tab.branch && title === tab.title) return tab;
-  return { ...tab, branch, title };
+  const next: ItemTab = {
+    ...tab,
+    branch: entry.branch || tab.branch,
+    worktree: entry.worktree ?? tab.worktree,
+    originBranch:
+      tab.originBranch ?? (entry.sessionBranch || entry.branch || undefined),
+    title: entry.title ?? tab.title,
+  };
+  const same = (['branch', 'worktree', 'originBranch', 'title'] as const).every(
+    (k) => next[k] === tab[k]
+  );
+  return same ? tab : next;
 }
 
 /**

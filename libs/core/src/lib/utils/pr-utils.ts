@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '../session-key.js';
+import type { AgentSession } from '../types.js';
 
 import {
   isBlockingDecision,
@@ -10,21 +10,21 @@ import {
 } from '@n10/vcs-core';
 
 /**
- * Find PRs created by the current user that have no matching worktree session.
+ * Find PRs created by the current user whose branch no worktree has
+ * checked out.
  */
 export function findOrphanPrs(
   prMap: BranchPrMap,
-  sessionNames: Set<string>,
+  checkedOut: ReadonlySet<string>,
   config: AppConfig,
-  provider: VcsProvider,
-  repo?: string
+  provider: VcsProvider
 ): PullRequestInfo[] {
   return Object.values(prMap)
     .filter(
       (pr): pr is PullRequestInfo =>
         pr != null &&
         provider.matchesUser(pr.createdByIdentifier, config) &&
-        !sessionNames.has(worktreeSessionKey(pr.sourceBranch, repo))
+        !checkedOut.has(pr.sourceBranch)
     )
     .sort((a, b) => b.id - a.id);
 }
@@ -67,21 +67,17 @@ export function categorizeReviews(
 }
 
 /**
- * Build session-name to branch and session-name to PR lookup maps.
+ * Map each worktree session's name to the pull request of the branch
+ * checked out in it now.
  */
-export function buildSessionLookups(
+export function buildSessionPrMap(
   prMap: BranchPrMap,
-  repo?: string
-): {
-  sessionBranchMap: Map<string, string>;
-  sessionPrMap: Map<string, PullRequestInfo>;
-} {
-  const sessionBranchMap = new Map<string, string>();
+  sessions: readonly AgentSession[]
+): Map<string, PullRequestInfo> {
   const sessionPrMap = new Map<string, PullRequestInfo>();
-  for (const [branch, pr] of Object.entries(prMap)) {
-    const name = worktreeSessionKey(branch, repo);
-    sessionBranchMap.set(name, branch);
-    if (pr) sessionPrMap.set(name, pr);
+  for (const session of sessions) {
+    const pr = session.branch ? prMap[session.branch] : undefined;
+    if (pr) sessionPrMap.set(session.name, pr);
   }
-  return { sessionBranchMap, sessionPrMap };
+  return sessionPrMap;
 }

@@ -42,6 +42,9 @@ vi.mock('@n10/worktree-manager', () => ({
   refExists: (ref: string, cwd?: string) => mocks.refExists(ref, cwd),
   checkoutWorktree: (branch: string, cwd?: string) =>
     mocks.checkoutWorktree(branch, cwd),
+  // The checkout the PR's branch is in, which keys its agent session.
+  listWorktrees: () =>
+    Promise.resolve([{ branch: 'feat/thing', path: '/wt/feat-thing' }]),
 }));
 // The fetch line is shared with the sync pass; here it is the fetch.
 vi.mock('../sync/fetch-queue.js', () => ({
@@ -319,7 +322,7 @@ describe('startPrBabysitter', () => {
     clock = 10 * MIN;
     await sitter.pollNow();
     expect(mocks.deliverToRunningSession).toHaveBeenCalledWith(
-      worktreeSessionKey('feat/thing', '/repo'),
+      worktreeSessionKey('/wt/feat-thing', '/repo'),
       expect.stringContaining('CI: failed')
     );
     expect(statuses.at(-1)).toMatchObject({
@@ -365,7 +368,7 @@ describe('startPrBabysitter', () => {
   it('never types into a session that belongs to another repository', async () => {
     const sitter = start({
       isForeignSession: (name) =>
-        name === worktreeSessionKey('feat/thing', '/repo'),
+        name === worktreeSessionKey('/wt/feat-thing', '/repo'),
     });
     await pollPastDebounce(sitter);
     expect(mocks.deliverToRunningSession).not.toHaveBeenCalled();
@@ -383,7 +386,7 @@ describe('startPrBabysitter', () => {
     await pollPastDebounce(sitter);
     expect(mocks.launchSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: worktreeSessionKey('feat/thing', '/repo'),
+        name: worktreeSessionKey('/wt/feat-thing', '/repo'),
         cwd: '/wt/feat-thing',
         cols: 100,
         rows: 30,
@@ -394,7 +397,7 @@ describe('startPrBabysitter', () => {
       })
     );
     expect(spawned).toEqual([
-      `${worktreeSessionKey('feat/thing', '/repo')}@/wt/feat-thing`,
+      `${worktreeSessionKey('/wt/feat-thing', '/repo')}@/wt/feat-thing`,
     ]);
     expect(statuses.at(-1)?.deliveries).toBe(1);
     sitter.stop();

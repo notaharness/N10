@@ -1,4 +1,3 @@
-import { worktreeSessionKey } from '@n10/core';
 import {
   createContext,
   useCallback,
@@ -9,7 +8,7 @@ import {
 import type { ReactNode } from 'react';
 import type { CategorizedReviews, PullRequestInfo } from '@n10/vcs-core';
 
-import type { SidebarItem } from '@n10/core';
+import type { AgentSession, SidebarItem } from '@n10/core';
 import { getItemKey, getPrFromItem, isItemActive } from '@n10/core';
 import { buildSidebarItems } from '@n10/core';
 import { useSessionData } from './SessionContext.js';
@@ -113,12 +112,12 @@ export function selectionForKey(
  */
 export function translateSelectKey(
   key: string,
-  sessionBranchMap: Map<string, string>,
+  sessions: readonly AgentSession[],
   categorizedReviews: CategorizedReviews
 ): string {
   if (!key.startsWith('session:')) return key;
   const sessionName = key.slice('session:'.length);
-  const branch = sessionBranchMap.get(sessionName);
+  const branch = sessions.find((s) => s.name === sessionName)?.branch;
   if (!branch) return key;
   // The review PR is looked up by branch, the same test `buildSidebarItems`
   // folds on — not through the session's own PR data, which resolves
@@ -162,8 +161,13 @@ export interface SidebarContextValue {
   selectedIndex: number;
   selectedItem: SidebarItem | undefined;
   selectedPr: PullRequestInfo | undefined;
-  /** Session name to use for terminal: branch-based name for all item kinds. */
+  /** Session name to use for terminal: a worktree row's checkout key, a
+   *  PR row's `sessionName` (the checkout on its branch, if any), else
+   *  `null`. */
   sessionNameForTerminal: string | null;
+  /** The selected worktree row's label — its branch as checked out now,
+   *  which its session key (the checkout) does not carry. */
+  selectedRowLabel: string | null;
   totalItems: number;
   /** Select a sidebar item by its stable identity key. */
   selectByKey: (key: string) => void;
@@ -197,7 +201,6 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
         vcsConfigured
           ? sessionCtx.categorizedReviews
           : { needsReview: [], waitingForAuthor: [], approvedByYou: [] },
-        sessionCtx.sessionBranchMap,
         sessionCtx.sessionPrMap,
         sessionCtx.mergedBranches,
         sessionCtx.conflictCounts
@@ -206,7 +209,6 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       sessionCtx.sortedSessions,
       sessionCtx.orphanPrs,
       sessionCtx.categorizedReviews,
-      sessionCtx.sessionBranchMap,
       sessionCtx.sessionPrMap,
       sessionCtx.mergedBranches,
       sessionCtx.conflictCounts,
@@ -248,7 +250,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       ? null
       : translateSelectKey(
           selection.key,
-          sessionCtx.sessionBranchMap,
+          sessionCtx.sessions,
           sessionCtx.categorizedReviews
         );
   const listChanged = anchoredItems !== items;
@@ -267,7 +269,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     ? null
     : selectedItem.kind === 'session'
     ? selectedItem.session.name
-    : worktreeSessionKey(selectedItem.pr.sourceBranch);
+    : selectedItem.sessionName ?? null;
+  const selectedRowLabel =
+    selectedItem?.kind === 'session'
+      ? selectedItem.session.label ?? null
+      : null;
 
   // ── Navigation helpers ───────────────────────────────────────────
   const selectByKey = useCallback((key: string) => {
@@ -318,6 +324,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       selectedItem,
       selectedPr,
       sessionNameForTerminal,
+      selectedRowLabel,
       totalItems,
       selectByKey,
       moveSelection,
@@ -329,6 +336,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       selectedItem,
       selectedPr,
       sessionNameForTerminal,
+      selectedRowLabel,
       totalItems,
       selectByKey,
       moveSelection,

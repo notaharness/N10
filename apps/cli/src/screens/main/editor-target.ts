@@ -1,4 +1,4 @@
-import { worktreeSessionKey, keyForWorktree } from '@n10/core';
+import { keyForWorktree } from '@n10/core';
 import { type WorktreeInfo } from '@n10/worktree-manager';
 import type { SidebarItem } from '@n10/core';
 
@@ -23,13 +23,14 @@ export async function resolveEditorTarget(
   item: SidebarItem,
   deps: EditorTargetDeps
 ): Promise<string | null> {
-  const sessionName =
-    item.kind === 'session'
-      ? item.session.name
-      : worktreeSessionKey(item.pr.sourceBranch);
-
+  // A session row is its checkout; a PR row's worktree is whichever
+  // checkout has the PR's branch.
   const worktrees = await deps.listWorktrees();
-  const existing = worktrees.find((w) => keyForWorktree(w) === sessionName);
+  const existing = worktrees.find((w) =>
+    item.kind === 'session'
+      ? keyForWorktree(w) === item.session.name
+      : w.branch === item.pr.sourceBranch
+  );
   if (existing) return existing.path;
 
   if (item.kind !== 'session') {

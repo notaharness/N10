@@ -48,6 +48,10 @@ export interface DiscoveryDelta {
   appeared: DiscoveredWorktree[];
   /** Session names whose worktree is no longer there. */
   disappeared: string[];
+  /** Worktrees still there, now on another branch (`git switch`, a
+   *  rename, a detached HEAD): same key, since a worktree is its
+   *  checkout, but a row whose label and pull request have changed. */
+  switched: DiscoveredWorktree[];
   /** External sessions to attach to: a live tmux session this process
    *  holds no live PTY for. */
   adoptable: DiscoveredWorktree[];
@@ -108,6 +112,12 @@ export function diffScans(
       ? []
       : next.worktrees.filter((wt) => !before.has(wt.name));
   const disappeared = [...before].filter((name) => !now.has(name));
+  const branchBefore = new Map(
+    base.worktrees.map((wt) => [wt.name, wt.branch])
+  );
+  const switched = next.worktrees.filter(
+    (wt) => branchBefore.has(wt.name) && branchBefore.get(wt.name) !== wt.branch
+  );
   const adoptable = next.worktrees.filter(
     (wt) =>
       next.persisted.has(wt.name) &&
@@ -131,6 +141,7 @@ export function diffScans(
   return {
     appeared,
     disappeared,
+    switched,
     adoptable,
     ended,
     adoptableTerminals,
@@ -138,6 +149,7 @@ export function diffScans(
     changed:
       appeared.length > 0 ||
       disappeared.length > 0 ||
+      switched.length > 0 ||
       adoptable.length > 0 ||
       ended.length > 0 ||
       adoptableTerminals.length > 0 ||

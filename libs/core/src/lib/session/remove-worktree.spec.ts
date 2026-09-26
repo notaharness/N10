@@ -10,6 +10,10 @@ vi.mock('../session-backend.js', () => ({
     state.calls.push(['persisted', key]),
 }));
 vi.mock('@n10/worktree-manager', () => ({
+  listWorktrees: async () => [
+    { branch: 'main', path: '/repo-a' },
+    { branch: 'feature/login', path: '/repo-a/.worktrees/login' },
+  ],
   removeWorktree: async (branch: string, opts: unknown) => {
     state.calls.push(['remove', branch, opts]);
     return state.removed;
@@ -26,7 +30,7 @@ beforeEach(() => {
 });
 it('stops only the qualified agent before removing its checkout and branch in the captured repo', async () => {
   await removeWorktreeSession('feature/login', true, '/repo-a');
-  const key = worktreeSessionKey('feature/login', '/repo-a');
+  const key = worktreeSessionKey('/repo-a/.worktrees/login', '/repo-a');
   expect(state.calls).toEqual([
     ['kill', key],
     ['remove', 'feature/login', { force: true, cwd: '/repo-a' }],

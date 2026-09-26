@@ -310,6 +310,7 @@ export function startExternalTmuxSession(opts: {
     '@orchestra-repo': repoRootOf(opts.repoPath),
     '@orchestra-session-type': 'worktree',
     '@orchestra-branch': opts.branch,
+    '@orchestra-worktree-path': realpathSync(opts.worktreePath),
   };
   for (const [key, value] of Object.entries(tags)) {
     execFileSync('tmux', ['set-option', '-t', `=${name}:`, key, value], {

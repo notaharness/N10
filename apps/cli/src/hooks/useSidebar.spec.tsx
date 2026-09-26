@@ -21,8 +21,9 @@ import { getItemKey } from '@n10/core';
 
 // Identities have to be stable across renders: SidebarProvider memoises
 // `items` on these fields, and a fresh Map every render would make the
-// list look changed on every pass. Only `sortedSessions` is swapped.
+// list look changed on every pass. Only the session lists are swapped.
 const sessionData = vi.hoisted(() => ({
+  sessions: [] as { name: string; running: boolean }[],
   sortedSessions: [] as { name: string; running: boolean }[],
   orphanPrs: [],
   categorizedReviews: {
@@ -30,7 +31,6 @@ const sessionData = vi.hoisted(() => ({
     waitingForAuthor: [],
     approvedByYou: [],
   },
-  sessionBranchMap: new Map<string, string>(),
   sessionPrMap: new Map<string, never>(),
   mergedBranches: new Set<string>(),
   conflictCounts: new Map<string, number>(),
@@ -64,7 +64,7 @@ function selectedKeyOf(sidebar: SidebarContextValue): string {
  * ends up doing.
  */
 function mountSidebar(names: string[]) {
-  sessionData.sortedSessions = sessions(...names);
+  sessionData.sessions = sessionData.sortedSessions = sessions(...names);
   const renders: SidebarContextValue[] = [];
 
   function Probe() {
@@ -87,7 +87,7 @@ function mountSidebar(names: string[]) {
     latest: () => renders[renders.length - 1]!,
     /** Publish a new sessions list, the way a sidebar refresh does. */
     commit: async (...next: string[]) => {
-      sessionData.sortedSessions = sessions(...next);
+      sessionData.sessions = sessionData.sortedSessions = sessions(...next);
       inst.rerender(tree());
       await flush();
     },

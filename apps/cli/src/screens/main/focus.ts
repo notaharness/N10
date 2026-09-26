@@ -68,6 +68,9 @@ export interface PaneTitleState {
   aiCommand: string | undefined;
   prTitle: string | undefined;
   sessionName: string | null;
+  /** The selected worktree row's label — its branch as checked out
+   *  now. The session key names the checkout, not the branch. */
+  rowLabel?: string | null;
   /**
    * When true AND we're in terminal mode, the title appends a
    * `· ctrl+space to exit` hint so the user knows how to escape.
@@ -122,7 +125,9 @@ export function getPaneTitle(s: PaneTitleState): string {
     ? 'Agent'
     : resolved.name;
   const label =
-    s.prTitle || (s.sessionName ? sessionLabel(s.sessionName) : null);
+    s.prTitle ||
+    s.rowLabel ||
+    (s.sessionName ? sessionLabel(s.sessionName) : null);
   const base = label
     ? `\u{1F916} ${agent} \u2014 ${label}`
     : `\u{1F916} ${agent}`;

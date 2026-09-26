@@ -60,16 +60,17 @@ describe('diffScans', () => {
       expect(delta).toMatchObject({
         appeared: [],
         disappeared: [],
+        switched: [],
         adoptable: [],
         ended: [],
         changed: false,
       });
     });
 
-    // A branch worktree's name is derived from its branch, so checking
-    // out something else in place reads as one row leaving and another
-    // arriving — which is exactly what the sidebar should show.
-    it('treats a re-pointed worktree as one leaving and one arriving', () => {
+    // A worktree's name is its checkout, so one checkout removed and
+    // another added reads as one row leaving and another arriving —
+    // which is exactly what the sidebar should show.
+    it('treats a replaced worktree as one leaving and one arriving', () => {
       const delta = diffScans(
         scan([wt('feature-a')]),
         scan([wt('feature-b')]),

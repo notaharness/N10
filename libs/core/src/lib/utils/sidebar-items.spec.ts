@@ -26,14 +26,10 @@ const emptyReviews: CategorizedReviews = {
 describe('buildSidebarItems', () => {
   it('emits no-PR sessions before PR-backed sessions with branch/PR/merge/conflict info', () => {
     const sessions: AgentSession[] = [
-      { name: 'feature-foo', running: true },
-      { name: 'feature-bar', running: false },
+      { name: 'feature-foo', running: true, branch: 'feature/foo' },
+      { name: 'feature-bar', running: false, branch: 'feature/bar' },
     ];
     const pr = makePr({ id: 1 });
-    const sessionBranchMap = new Map([
-      ['feature-foo', 'feature/foo'],
-      ['feature-bar', 'feature/bar'],
-    ]);
     const sessionPrMap = new Map([['feature-foo', pr]]);
     const mergedBranches = new Set(['feature/bar']);
     const conflictCounts = new Map([['feature/foo', 3]]);
@@ -42,7 +38,6 @@ describe('buildSidebarItems', () => {
       sessions,
       [],
       emptyReviews,
-      sessionBranchMap,
       sessionPrMap,
       mergedBranches,
       conflictCounts
@@ -69,17 +64,12 @@ describe('buildSidebarItems', () => {
 
   it('splits PR-backed sessions into draft and active buckets', () => {
     const sessions: AgentSession[] = [
-      { name: 'feature-active', running: true },
-      { name: 'feature-draft', running: true },
-      { name: 'feature-local', running: false },
+      { name: 'feature-active', running: true, branch: 'feature/active' },
+      { name: 'feature-draft', running: true, branch: 'feature/draft' },
+      { name: 'feature-local', running: false, branch: 'feature/local' },
     ];
     const activePr = makePr({ id: 40, isDraft: false });
     const draftPr = makePr({ id: 41, isDraft: true });
-    const sessionBranchMap = new Map([
-      ['feature-active', 'feature/active'],
-      ['feature-draft', 'feature/draft'],
-      ['feature-local', 'feature/local'],
-    ]);
     const sessionPrMap = new Map([
       ['feature-active', activePr],
       ['feature-draft', draftPr],
@@ -89,7 +79,6 @@ describe('buildSidebarItems', () => {
       sessions,
       [],
       emptyReviews,
-      sessionBranchMap,
       sessionPrMap,
       new Set(),
       new Map()
@@ -109,7 +98,6 @@ describe('buildSidebarItems', () => {
       [activePr, draftPr],
       emptyReviews,
       new Map(),
-      new Map(),
       new Set(),
       new Map()
     );
@@ -117,6 +105,8 @@ describe('buildSidebarItems', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toEqual({ kind: 'orphan-pr', pr: draftPr });
     expect(items[1]).toEqual({ kind: 'orphan-pr', pr: activePr });
+    // No worktree has an orphan's branch, so the item names no session.
+    expect(items.some((i) => 'sessionName' in i || 'running' in i)).toBe(false);
   });
 
   it('places review PRs after orphans in category order', () => {
@@ -134,7 +124,6 @@ describe('buildSidebarItems', () => {
       [],
       [],
       reviews,
-      new Map(),
       new Map(),
       new Set(),
       new Map()
@@ -158,6 +147,34 @@ describe('buildSidebarItems', () => {
     });
   });
 
+  it('lists a session under review only in its review row, which carries it', () => {
+    const session: AgentSession = {
+      name: 'wt-review',
+      running: true,
+      branch: 'feature/branch-7',
+    };
+    const review = makePr({ id: 7 });
+
+    const items = buildSidebarItems(
+      [session],
+      [],
+      { needsReview: [review], waitingForAuthor: [], approvedByYou: [] },
+      new Map(),
+      new Set(),
+      new Map()
+    );
+
+    expect(items).toEqual([
+      {
+        kind: 'review-pr',
+        pr: review,
+        category: 'needs-review',
+        running: true,
+        sessionName: 'wt-review',
+      },
+    ]);
+  });
+
   it('combines all sections in the correct order', () => {
     const session: AgentSession = { name: 'my-session', running: true };
     const orphan = makePr({ id: 5 });
@@ -167,7 +184,6 @@ describe('buildSidebarItems', () => {
       [session],
       [orphan],
       { needsReview: [review], waitingForAuthor: [], approvedByYou: [] },
-      new Map(),
       new Map(),
       new Set(),
       new Map()
@@ -185,7 +201,11 @@ describe('buildSidebarItems', () => {
     // request has to carry the status whether it is a worktree row, an
     // orphan or a review — and a row that is not babysat has no key at
     // all, so the item's shape says what it carries.
-    const session: AgentSession = { name: 'feature-branch-1', running: true };
+    const session: AgentSession = {
+      name: 'feature-branch-1',
+      running: true,
+      branch: 'feature/branch-1',
+    };
     const watched = makePr({ id: 1 });
     const orphan = makePr({ id: 2 });
     const review = makePr({ id: 3 });
@@ -209,7 +229,6 @@ describe('buildSidebarItems', () => {
       [session],
       [orphan],
       { needsReview: [review], waitingForAuthor: [], approvedByYou: [] },
-      new Map([['feature-branch-1', 'feature/branch-1']]),
       new Map([['feature-branch-1', watched]]),
       new Set(),
       new Map(),
@@ -225,7 +244,6 @@ describe('buildSidebarItems', () => {
       [],
       [],
       emptyReviews,
-      new Map(),
       new Map(),
       new Set(),
       new Map()

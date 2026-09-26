@@ -23,6 +23,7 @@ vi.mock('@n10/terminal-tmux', () => ({
             '@orchestra-spawner': 'orchestra',
             '@orchestra-repo': '/repo',
             '@orchestra-branch': 'feature',
+            '@orchestra-worktree-path': '/repo/worktree',
             '@orchestra-session-type': 'worktree',
             '@orchestra-agent': state.agent,
             '@orchestra-orchestrator': 'tmux:boss',
@@ -48,13 +49,19 @@ it.each(['test', '', 'unknown', 'gemini'])(
   (agent) => {
     state.agent = agent;
     expect(
-      getSessionLaunchContext(worktreeSessionKey('feature', '/repo'), config)
+      getSessionLaunchContext(
+        worktreeSessionKey('/repo/worktree', '/repo'),
+        config
+      )
     ).toMatchObject({ exists: true, running: false, canResume: false });
   }
 );
 it('reads named resume capability and reporting details from the native snapshot', () => {
   expect(
-    getSessionLaunchContext(worktreeSessionKey('feature', '/repo'), config)
+    getSessionLaunchContext(
+      worktreeSessionKey('/repo/worktree', '/repo'),
+      config
+    )
   ).toMatchObject({
     canResume: true,
     recordedAgent: 'claude',
@@ -66,6 +73,9 @@ it('reads named resume capability and reporting details from the native snapshot
 it('treats a vanished native target as absent', () => {
   state.exists = false;
   expect(
-    getSessionLaunchContext(worktreeSessionKey('feature', '/repo'), config)
+    getSessionLaunchContext(
+      worktreeSessionKey('/repo/worktree', '/repo'),
+      config
+    )
   ).toEqual({ exists: false, running: false, canResume: false });
 });

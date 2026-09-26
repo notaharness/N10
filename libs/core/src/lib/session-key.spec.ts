@@ -10,8 +10,8 @@ import {
 
 describe('session-key (D2: an optional trailing machine segment)', () => {
   it("produces the exact literal today's code produces for a local key, so a future change to the tuple shape fails loudly", () => {
-    expect(worktreeSessionKey('feature/x', '/repo')).toBe(
-      '["worktree","/repo","feature/x"]'
+    expect(worktreeSessionKey('/wt/feature-x', '/repo')).toBe(
+      '["worktree","/repo","/wt/feature-x"]'
     );
     expect(terminalSessionKey('alpha-shell')).toBe(
       '["terminal","alpha-shell"]'
@@ -19,8 +19,8 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
   });
 
   it('omits the machine segment entirely when it is local, byte-identical to a call that never mentions machine', () => {
-    expect(worktreeSessionKey('feature/x', '/repo', LOCAL_MACHINE)).toBe(
-      worktreeSessionKey('feature/x', '/repo')
+    expect(worktreeSessionKey('/wt/feature-x', '/repo', LOCAL_MACHINE)).toBe(
+      worktreeSessionKey('/wt/feature-x', '/repo')
     );
     expect(terminalSessionKey('alpha-shell', LOCAL_MACHINE)).toBe(
       terminalSessionKey('alpha-shell')
@@ -28,8 +28,8 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
   });
 
   it('appends the machine as a trailing segment when remote', () => {
-    expect(worktreeSessionKey('feature/x', '/repo', 'peer-abc')).toBe(
-      '["worktree","/repo","feature/x","peer-abc"]'
+    expect(worktreeSessionKey('/wt/feature-x', '/repo', 'peer-abc')).toBe(
+      '["worktree","/repo","/wt/feature-x","peer-abc"]'
     );
     expect(terminalSessionKey('alpha-shell', 'peer-abc')).toBe(
       '["terminal","alpha-shell","peer-abc"]'
@@ -43,7 +43,7 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
   // same test, since they are the pair that collides on length.
   it('parses a remote terminal key and a local worktree key correctly in the same test, despite both being length-3 tuples', () => {
     const remoteTerminal = terminalSessionKey('alpha-shell', 'peer-abc');
-    const localWorktree = worktreeSessionKey('feature/x', '/repo');
+    const localWorktree = worktreeSessionKey('/wt/feature-x', '/repo');
 
     expect(JSON.parse(remoteTerminal)).toHaveLength(3);
     expect(JSON.parse(localWorktree)).toHaveLength(3);
@@ -56,17 +56,17 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
     expect(sessionIdentity(localWorktree)).toEqual({
       kind: 'worktree',
       repo: '/repo',
-      branch: 'feature/x',
+      path: '/wt/feature-x',
       machine: 'local',
     });
   });
 
   it('parses a remote worktree key (length 4)', () => {
-    const key = worktreeSessionKey('feature/x', '/repo', 'peer-abc');
+    const key = worktreeSessionKey('/wt/feature-x', '/repo', 'peer-abc');
     expect(sessionIdentity(key)).toEqual({
       kind: 'worktree',
       repo: '/repo',
-      branch: 'feature/x',
+      path: '/wt/feature-x',
       machine: 'peer-abc',
     });
   });
@@ -77,10 +77,10 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
       id: 'alpha-shell',
       machine: 'local',
     });
-    expect(sessionIdentity('["worktree","/repo","feature/x"]')).toEqual({
+    expect(sessionIdentity('["worktree","/repo","/wt/feature-x"]')).toEqual({
       kind: 'worktree',
       repo: '/repo',
-      branch: 'feature/x',
+      path: '/wt/feature-x',
       machine: 'local',
     });
   });
@@ -108,8 +108,8 @@ describe('session-key (D2: an optional trailing machine segment)', () => {
   });
 
   it('keyForWorktree stays local-only (no machine parameter) and unaffected by D2', () => {
-    expect(keyForWorktree({ branch: 'feature/x', path: '/x/feature/x' })).toBe(
-      worktreeSessionKey('feature/x')
+    expect(keyForWorktree({ path: '/wt/feature-x' })).toBe(
+      worktreeSessionKey('/wt/feature-x')
     );
   });
 });

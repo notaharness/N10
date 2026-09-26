@@ -84,10 +84,10 @@ function makePr(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
   };
 }
 
-function sessionItem(name: string, pr?: PullRequestInfo): SidebarItem {
+function sessionItem(path: string, pr?: PullRequestInfo): SidebarItem {
   return {
     kind: 'session',
-    session: { name: worktreeSessionKey(name), running: false },
+    session: { name: worktreeSessionKey(path), running: false },
     ...(pr ? { pr } : {}),
   } as SidebarItem;
 }
@@ -147,7 +147,7 @@ function makeCtx(opts: {
     selectedItem: opts.selectedItem,
     sessionNameForTerminal:
       opts.sessionName === undefined
-        ? worktreeSessionKey('alpha')
+        ? worktreeSessionKey('/wt/alpha')
         : opts.sessionName,
     keybinds: {
       resolve: (input: string, key: KeyPress, context: 'confirm') =>
@@ -220,7 +220,7 @@ describe('session menu — start', () => {
   it('launches the chosen agent in the row worktree and focuses it', async () => {
     const t = makeCtx({
       menu: { ...openMenu(), agentIndex: 2 },
-      selectedItem: sessionItem('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
     });
     vi.mocked(listWorktrees).mockResolvedValue([
       { path: '/wt/alpha', branch: 'alpha', bare: false },
@@ -233,7 +233,7 @@ describe('session menu — start', () => {
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
     expect(params).toMatchObject({
-      name: worktreeSessionKey('alpha'),
+      name: worktreeSessionKey('/wt/alpha'),
       cols: 80,
       rows: 24,
       cwd: '/wt/alpha',
@@ -243,7 +243,7 @@ describe('session menu — start', () => {
     expect(params.agent?.id).toBe('codex');
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
-      `session:${worktreeSessionKey('alpha')}`
+      `session:${worktreeSessionKey('/wt/alpha')}`
     );
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
@@ -258,7 +258,7 @@ describe('session menu — start', () => {
     async (agentIndex, intent, agent, fresh) => {
       const t = makeCtx({
         menu: { ...openMenu(), agentIndex },
-        selectedItem: sessionItem('alpha'),
+        selectedItem: sessionItem('/wt/alpha'),
       });
       vi.mocked(listWorktrees).mockResolvedValue([
         { path: '/wt/alpha', branch: 'alpha', bare: false },
@@ -283,7 +283,10 @@ describe('session menu — start', () => {
       await gate;
       return {} as Awaited<ReturnType<typeof launchSession>>;
     });
-    const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
+    const t = makeCtx({
+      menu: openMenu(),
+      selectedItem: sessionItem('/wt/alpha'),
+    });
     vi.mocked(listWorktrees).mockResolvedValue([
       { path: '/wt/alpha', branch: 'alpha', bare: false },
     ]);
@@ -298,7 +301,10 @@ describe('session menu — start', () => {
   });
 
   it('stays in the menu when no worktree can be resolved', async () => {
-    const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
+    const t = makeCtx({
+      menu: openMenu(),
+      selectedItem: sessionItem('/wt/alpha'),
+    });
     vi.mocked(listWorktrees).mockResolvedValue([]);
 
     press(KEYS.enter(), t.ctx);
@@ -313,8 +319,11 @@ describe('session menu — start', () => {
   });
 
   it('only focuses a session that is already running', async () => {
-    liveSessions.add(worktreeSessionKey('alpha'));
-    const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
+    liveSessions.add(worktreeSessionKey('/wt/alpha'));
+    const t = makeCtx({
+      menu: openMenu(),
+      selectedItem: sessionItem('/wt/alpha'),
+    });
 
     press(KEYS.enter(), t.ctx);
     await t.settle();
@@ -331,8 +340,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 1 },
-      selectedItem: sessionItem('feat/thing', pr),
-      sessionName: worktreeSessionKey('feat/thing'),
+      selectedItem: sessionItem('/wt/feat-thing', pr),
+      sessionName: worktreeSessionKey('/wt/feat-thing'),
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');
 
@@ -342,10 +351,31 @@ describe('session menu — review', () => {
     expect(createWorktree).toHaveBeenCalledExactlyOnceWith('feat/thing');
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
-    expect(params.name).toBe(worktreeSessionKey('feat/thing'));
+    expect(params.name).toBe(worktreeSessionKey('/wt/feat-thing'));
     expect(params.cwd).toBe('/wt/feat-thing');
+    expect(params.branch).toBe('feat/thing');
     expect(params.request.intent).toBe('continue-or-seed');
     expect(params.request.prompt).toContain('Review PR #7');
+    expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
+  });
+
+  it('reviews a PR with no worktree yet under the checkout it creates', async () => {
+    const pr = makePr();
+    const t = makeCtx({
+      menu: { ...openMenu(pr), selectedOption: 1 },
+      selectedItem: { kind: 'review-pr', pr, category: 'needs-review' },
+      sessionName: null,
+    });
+    vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');
+
+    press(KEYS.enter(), t.ctx);
+    await t.settle();
+
+    const params = vi.mocked(launchSession).mock.calls[0]![0];
+    expect(params.name).toBe(worktreeSessionKey('/wt/feat-thing'));
+    expect(params.branch).toBe('feat/thing');
+    // A review row stays selected; only the terminal takes focus.
+    expect(t.sidebar.selectByKey).not.toHaveBeenCalled();
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
   });
 
@@ -365,8 +395,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 2 },
-      selectedItem: sessionItem('feat/thing', pr),
-      sessionName: worktreeSessionKey('feat/thing'),
+      selectedItem: sessionItem('/wt/feat-thing', pr),
+      sessionName: worktreeSessionKey('/wt/feat-thing'),
       instruction: 'focus on tests',
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');

@@ -1,7 +1,10 @@
 /** tmux availability and discovery policy shared by both applications. */
-import { terminalSessionKey, sessionIdentity } from './session-key.js';
+import {
+  canonicalWorktreePath,
+  terminalSessionKey,
+  sessionIdentity,
+} from './session-key.js';
 import { getRepoRoot } from './repo-root.js';
-import { basename } from 'node:path';
 import {
   isTmuxAvailable,
   tmuxKillSession,
@@ -62,7 +65,7 @@ export function applySessionBackend(): void {
  *  cares about. */
 export interface TmuxObservation {
   /** The registry names of the asked-about worktrees that have a live
-   *  tmux session tagged with this repository and their branch. */
+   *  tmux session tagged with this repository and their checkout. */
   persisted: Set<string>;
   /** Every terminal-tab session on the server, whatever directory or
    *  repository it belongs to, plus this repository's orphaned worktree
@@ -72,13 +75,6 @@ export interface TmuxObservation {
 
 const NOTHING: TmuxObservation = { persisted: new Set(), terminals: [] };
 
-/** The branch a worktree's session is tagged with: the branch, or the
- *  directory's name on a detached HEAD — the same fallback the HEAD
- *  reader and `worktreeSessionName` use. */
-function worktreeBranch(wt: DiscoveredWorktree): string {
-  return wt.branch || basename(wt.path);
-}
-
 /**
  * One fork, two answers: which worktree sessions survived, and which
  * terminal sessions exist.
@@ -87,9 +83,10 @@ function worktreeBranch(wt: DiscoveredWorktree): string {
  * are seen at all: a session whose name n10 might have chosen but
  * that carries no tags is foreign and never listed. A worktree session
  * is this repository's when its `@orchestra-repo` is the open root;
- * it is *persisted* when one of the worktrees handed in is on the
- * branch it is tagged with. Another checkout's sessions carry that
- * checkout's root and are left alone.
+ * it is *persisted* when one of the worktrees handed in is the
+ * checkout it belongs to (`TaggedSession.worktreePath`), whichever
+ * branch that checkout is on now. Another checkout's sessions carry
+ * that checkout's root and are left alone.
  *
  * Terminal sessions are found by session type and reported wherever
  * they run, because a terminal belongs to its directory, not to the
@@ -97,18 +94,17 @@ function worktreeBranch(wt: DiscoveredWorktree): string {
  * checkout still has to come back as a tab. Its directory is tmux's
  * own `session_path`; nothing is written to disk to remember it.
  *
- * A worktree session tagged with this repository whose branch no
- * worktree answers to is an orphan — an agent that checked out another
- * branch inside its worktree changes what the scan looks for, not the
- * session — and is reported as an agent terminal in its directory, so
- * it surfaces as a tab instead of running on invisibly. But only when
- * nothing here already holds it: the PTY registry keys a worktree
- * session by the branch it was spawned under, which is exactly what a
- * mid-session checkout leaves stale, so a session is checked against
- * every live registry entry's key before it is offered as adoptable.
- * Skipping that check is how the orphan path attaches a second client
- * to a session this process is already driving. Never throws; an
- * absent tmux server yields nothing, same as no sessions.
+ * A worktree session tagged with this repository whose checkout no
+ * worktree answers to — its directory was removed, or its tag names a
+ * path git no longer lists — is an orphan, and is reported as an agent
+ * terminal in its directory, so it surfaces as a tab instead of running
+ * on invisibly. It is never matched to a worktree by its branch: that
+ * branch may be checked out in another worktree now, which would hand
+ * that worktree this session's agent. Only when nothing here already
+ * holds it, though, since attaching a second client to a session this
+ * process is driving is exactly what the orphan path must not do.
+ * Never throws; an absent tmux server yields nothing, same as no
+ * sessions.
  */
 export function observeTmuxSessions(
   worktrees: readonly DiscoveredWorktree[]
@@ -117,7 +113,9 @@ export function observeTmuxSessions(
   if (!root) return NOTHING;
   const ctx: ClassifyContext = {
     root,
-    byBranch: new Map(worktrees.map((wt) => [worktreeBranch(wt), wt.name])),
+    byPath: new Map(
+      worktrees.map((wt) => [canonicalWorktreePath(wt.path), wt.name])
+    ),
     owned: new Set(liveSessionNames()),
   };
   const persisted = new Set<string>();
@@ -134,8 +132,8 @@ export function observeTmuxSessions(
 interface ClassifyContext {
   /** The open repository's root — what `@orchestra-repo` must equal. */
   root: string;
-  /** Tagged branch → the registry name of the worktree on it. */
-  byBranch: Map<string, string>;
+  /** Canonical checkout path → the registry name of that worktree. */
+  byPath: Map<string, string>;
   /** Registry keys of every session this process already holds — see
    *  {@link liveSessionNames}. */
   owned: Set<string>;
@@ -171,7 +169,9 @@ function classifySession(
       : null;
   }
   if (session.repo !== ctx.root) return null;
-  const registryName = ctx.byBranch.get(session.branch);
+  const registryName = ctx.byPath.get(
+    canonicalWorktreePath(session.worktreePath)
+  );
   if (registryName !== undefined)
     return session.paneDead ? null : { kind: 'persisted', name: registryName };
   if (ctx.owned.has(registryNameOf(session)) || !path) return null;

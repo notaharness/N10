@@ -112,6 +112,7 @@ export function startExternalTmuxSession(opts: {
       '@orchestra-repo': repoRootOf(opts.repoPath),
       '@orchestra-session-type': 'worktree',
       '@orchestra-branch': opts.branch,
+      '@orchestra-worktree-path': realpathSync(opts.worktreePath),
     },
     opts.homeDir
   );

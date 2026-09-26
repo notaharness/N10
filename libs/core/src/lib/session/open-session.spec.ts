@@ -51,12 +51,14 @@ vi.mock('../session-resolver.js', () => ({
       : sessions.find((s) => s.name === name) ?? null,
   resolveWorktreeSession: (
     repo: string,
-    branch: string,
+    worktreePath: string,
     sessions?: TaggedSession[]
   ) =>
     sessions === undefined
       ? state.existing
-      : sessions.find((s) => s.repo === repo && s.branch === branch) ?? null,
+      : sessions.find(
+          (s) => s.repo === repo && s.worktreePath === worktreePath
+        ) ?? null,
   listOurSessions: () => [],
   listOurSessionsWith: state.listOurSessionsWith,
 }));
@@ -74,7 +76,12 @@ const build = vi.fn(() => ({
   agent: 'codex',
 }));
 const base: OpenSessionParams = {
-  session: { type: 'worktree', repo: '/repo', branch: 'feature/x' },
+  session: {
+    type: 'worktree',
+    repo: '/repo',
+    path: '/repo/worktree',
+    branch: 'feature/x',
+  },
   cwd: '/repo/worktree',
   cols: 80,
   rows: 24,
@@ -85,6 +92,7 @@ const found: TaggedSession = {
   repo: '/repo',
   branch: 'feature/x',
   path: base.cwd,
+  worktreePath: base.cwd,
   type: 'worktree',
   spawner: 'orchestra',
   agent: 'claude',
@@ -113,11 +121,12 @@ describe('session launch boundary', () => {
       target: found.name,
     });
     expect(state.register).toHaveBeenCalledWith(
-      '["worktree","/repo","feature/x"]',
+      '["worktree","/repo","/repo/worktree"]',
       expect.anything(),
       80,
       24,
-      'claude'
+      'claude',
+      'feature/x'
     );
   });
   it('attaches an exited pane for discovery without restarting it', async () => {
@@ -194,6 +203,7 @@ describe('session launch boundary', () => {
       tags: {
         '@orchestra-repo': '/repo',
         '@orchestra-branch': 'feature/x',
+        '@orchestra-worktree-path': '/repo/worktree',
         '@orchestra-agent': 'codex',
       },
       retainOnExit: true,
@@ -247,6 +257,7 @@ describe('the local session environment', () => {
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
@@ -263,6 +274,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
@@ -292,6 +304,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
         session: {
           type: 'worktree',
           repo: '/repo',
+          path: '/repo/worktree',
           branch: 'feature/x',
           machine: 'peer-abc',
         },
@@ -327,6 +340,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
@@ -342,7 +356,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
     expect(state.createRemote).toHaveBeenCalledOnce();
   });
 
-  it('creates fresh when the remote machine’s own listing finds nothing for this repo/branch', async () => {
+  it('creates fresh when the remote machine’s own listing finds nothing for this repo/checkout', async () => {
     // state.existing stays null (the remote listing's default in this
     // suite) — discovery is still consulted (asserted below), it
     // simply finds nothing, which must still create rather than throw.
@@ -351,6 +365,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
@@ -370,26 +385,29 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
     });
     expect(state.register).toHaveBeenCalledWith(
-      '["worktree","/repo","feature/x","peer-abc"]',
+      '["worktree","/repo","/repo/worktree","peer-abc"]',
       expect.anything(),
       80,
       24,
-      'codex'
+      'codex',
+      'feature/x'
     );
   });
 
-  it('does not coalesce a local and a remote request for the same repo/branch', async () => {
+  it('does not coalesce a local and a remote request for the same repo/checkout', async () => {
     const local = openSession(base);
     const remote = openSession({
       ...base,
       session: {
         type: 'worktree',
         repo: '/repo',
+        path: '/repo/worktree',
         branch: 'feature/x',
         machine: 'peer-abc',
       },
@@ -409,6 +427,7 @@ describe('remote sessions (D2/D4/D5): the machine in the request reaches the pla
         session: {
           type: 'worktree',
           repo: '/repo',
+          path: '/repo/worktree',
           branch: 'feature/x',
           machine: 'peer-abc',
         },

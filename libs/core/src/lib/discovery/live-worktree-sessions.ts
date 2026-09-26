@@ -14,27 +14,27 @@ import { readWorktreeHead, type WorktreeHead } from './worktree-origin.js';
  * tab strip that spans repositories asks at launch: which agents are
  * running *anywhere*, so each can have its tab back in its own group
  * without being attached to. The tmux server is the whole record: the
- * tags say the session is ours and which repository and branch it was
- * spawned for, `session_path` is the worktree, and the worktree's HEAD
- * says whether it is still on that branch.
+ * tags say the session is ours, which repository it belongs to and
+ * which checkout (`TaggedSession.worktreePath`), and the checkout's HEAD
+ * says which branch it is on now.
  */
 export interface LiveWorktreeSession {
   /** The tmux session name — a label, never parsed. */
   tmuxName: string;
-  /** The worktree directory, from tmux. */
+  /** The worktree directory the session belongs to, from its tags. */
   path: string;
   /** The main checkout the worktree belongs to — real path, as `git
    *  rev-parse --show-toplevel` prints it, from `@orchestra-repo`. */
   repoRoot: string;
-  /** The branch checked out in the worktree, which is the one the
-   *  session was spawned under: a worktree that has moved on is left
-   *  out. */
+  /** The branch checked out in the worktree now — not necessarily the
+   *  one the session was spawned under. */
   branch: string;
   /** `branch` is the directory's name because no branch is checked
    *  out — see `WorktreeHead.detached`. */
   detached: boolean;
   /** The registry name the session runs under in its repository
-   *  (`worktreeSessionKey`), the key its tab's auto-open history uses. */
+   *  (`worktreeSessionKey` of its checkout), the key its tab's
+   *  auto-open history uses. */
   sessionName: string;
   /** The machine the session lives on — `'local'` or a beam peerId,
    *  stamped by whoever listed it. */
@@ -60,15 +60,11 @@ export interface LiveWorktreeSessionDeps {
  * gate the scanner uses, read from the config handed in — or there is
  * no server.
  *
- * A session counts only when everything agrees: it is a tagged
- * `worktree` session, its directory still exists and has a HEAD to
- * read, and that HEAD is on the branch the session is tagged with (or
- * is detached in the directory the tag names). The tag records what
- * the session was *spawned* under; a worktree whose agent has since
- * checked out another branch is the orphan case, left to the scanner
- * of its own repository, which surfaces it as a terminal tab there. No
- * git is forked: the repository is the tag's to say, and a session
- * without tags is foreign, not a question for git. Never throws.
+ * A session counts only when it is a tagged `worktree` session whose
+ * checkout still exists and has a HEAD to read. Whichever branch that
+ * HEAD is on, the session is still that checkout's. No git is forked:
+ * the repository is the tag's to say, and a session without tags is
+ * foreign, not a question for git. Never throws.
  */
 export function listLiveWorktreeSessions(
   deps: LiveWorktreeSessionDeps = {}
@@ -86,13 +82,13 @@ export function listLiveWorktreeSessions(
 }
 
 /** One tagged session as a live worktree session, or `null` when it
- *  is not one — a terminal tab, a pathless line, a directory that is
- *  gone, or a worktree that has moved to another branch. */
+ *  is not one — a terminal tab, a pathless line, or a directory that
+ *  is gone. */
 function describeSession(
   session: TaggedSession,
   deps: Required<Omit<LiveWorktreeSessionDeps, 'sessions'>>
 ): LiveWorktreeSession | null {
-  if (session.paneDead || session.type !== 'worktree' || !session.path)
+  if (session.paneDead || session.type !== 'worktree' || !session.worktreePath)
     return null;
   // `exists`/`readHead` are this machine's filesystem, synchronously —
   // fine while `deps.sessions` only ever lists local tmux (the default
@@ -106,16 +102,17 @@ function describeSession(
   // filesystem, and this function's own contract already excludes for
   // ordinary reasons (paneDead, wrong type, no path) the same way.
   if (session.machine !== LOCAL_MACHINE) return null;
-  if (!deps.exists(session.path)) return null;
-  const head = deps.readHead(session.path);
-  if (!head || head.branch !== session.branch) return null;
+  const path = session.worktreePath;
+  if (!deps.exists(path)) return null;
+  const head = deps.readHead(path);
+  if (!head) return null;
   return {
     tmuxName: session.name,
-    path: session.path,
+    path,
     repoRoot: session.repo,
     branch: head.branch,
     detached: head.detached,
-    sessionName: worktreeSessionKey(head.branch, session.repo, session.machine),
+    sessionName: worktreeSessionKey(path, session.repo, session.machine),
     machine: session.machine,
     ...orchestraFields(session),
   };

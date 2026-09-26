@@ -1,5 +1,6 @@
 import { getRepoRoot } from '../repo-root.js';
 import { worktreeSessionKey } from '../session-key.js';
+import { sessionKeyForBranch } from '../worktree-rows.js';
 import type { AppConfig, PullRequestInfo } from '@n10/vcs-core';
 import { createWorktree } from '@n10/worktree-manager';
 import { isSessionAlive, hasSessionConnection } from '../pty-registry.js';
@@ -41,17 +42,48 @@ export interface CheckoutDeps {
   flashStatus: (msg: string) => void;
 }
 
+/** State A, inject: attach to the running agent if this process holds
+ *  no live connection to it, then type the plan into it. */
+async function inject(
+  deps: CheckoutDeps,
+  repo: string,
+  name: string
+): Promise<CheckoutResult> {
+  const { pr, prompt, paneCols, paneRows, config, flashStatus } = deps;
+  if (!isSessionAlive(name) || !hasSessionConnection(name)) {
+    const cwd = await createWorktree(pr.sourceBranch, repo);
+    if (!cwd) return 'failed';
+    await launchSession({
+      name: worktreeSessionKey(cwd, repo),
+      cwd,
+      cols: paneCols,
+      rows: paneRows,
+      config,
+      mode: 'attach',
+      request: { intent: 'blank' },
+    });
+  }
+  if (!deliverToRunningSession(name, prompt)) {
+    flashStatus('Agent is no longer running');
+    return 'failed';
+  }
+  return 'injected';
+}
+
 export async function checkoutPlan(
   deps: CheckoutDeps
 ): Promise<CheckoutResult> {
   const { pr, prompt, paneCols, paneRows, mode, config, flashStatus } = deps;
   const repo = deps.repo ?? getRepoRoot() ?? process.cwd();
-  const name = worktreeSessionKey(pr.sourceBranch, repo);
+  // The agent in the checkout that has the PR's branch, when there is
+  // one; a spawn below keys by the checkout it lands in.
+  const name = await sessionKeyForBranch(pr.sourceBranch, repo);
 
   const seed = (cwd: string) =>
     launchSession({
-      name,
+      name: worktreeSessionKey(cwd, repo),
       cwd,
+      branch: pr.sourceBranch,
       cols: paneCols,
       rows: paneRows,
       config,
@@ -59,27 +91,8 @@ export async function checkoutPlan(
     });
 
   // ── State A: an agent is already running in this worktree ──
-  if (isSessionAlive(name) || hasLiveTmuxSession(name)) {
-    if (mode === 'inject') {
-      if (!isSessionAlive(name) || !hasSessionConnection(name)) {
-        const cwd = await createWorktree(pr.sourceBranch, repo);
-        if (!cwd) return 'failed';
-        await launchSession({
-          name,
-          cwd,
-          cols: paneCols,
-          rows: paneRows,
-          config,
-          mode: 'attach',
-          request: { intent: 'blank' },
-        });
-      }
-      if (!deliverToRunningSession(name, prompt)) {
-        flashStatus('Agent is no longer running');
-        return 'failed';
-      }
-      return 'injected';
-    }
+  if (name && (isSessionAlive(name) || hasLiveTmuxSession(name))) {
+    if (mode === 'inject') return inject(deps, repo, name);
     // An explicit new session terminates the old agent before seeding a replacement.
     const worktreePath = await createWorktree(pr.sourceBranch, repo);
     if (!worktreePath) {

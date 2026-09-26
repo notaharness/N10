@@ -38,7 +38,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     }
     function worktree(branch: string, cwd: string, repo = fixture.repo) {
       return openSession({
-        session: { type: 'worktree', repo, branch },
+        session: { type: 'worktree', repo, path: cwd, branch },
         cwd,
         cols: 80,
         rows: 24,
@@ -58,7 +58,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       for (const order of ['terminal-first', 'worktree-first']) {
         const branch = 'shop-shell';
         const path = checkout(branch, order);
-        const key = worktreeSessionKey(branch, fixture.repo);
+        const key = worktreeSessionKey(path, fixture.repo);
         const [agent, tab] =
           order === 'terminal-first'
             ? await (async () => {
@@ -78,7 +78,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         killSession(tab.name);
       }
     });
-    it('keeps exact branches and repositories separate', async () => {
+    it('keeps exact checkouts and repositories separate', async () => {
       const otherRepo = join(fixture.home, 'other');
       mkdirSync(otherRepo);
       execFileSync('git', ['clone', fixture.repo, otherRepo], {
@@ -107,7 +107,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     it('offers a tagged worktree for discovery even when a same-label terminal is held', async () => {
       const branch = 'shop-shell';
       const path = checkout(branch, 'player');
-      const key = worktreeSessionKey(branch, fixture.repo);
+      const key = worktreeSessionKey(path, fixture.repo);
       const tab = await terminal();
       // A second creator uses the same protocol as Orchestra.
       const external = await createTmuxBackend(
@@ -121,7 +121,11 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         {
           mode: 'create',
           label: 'external-player',
-          tags: sessionTags(fixture.repo, { type: 'worktree', branch }),
+          tags: sessionTags(fixture.repo, {
+            type: 'worktree',
+            branch,
+            worktreePath: path,
+          }),
         }
       );
       const delta = diffScans(
@@ -135,7 +139,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       );
       expect(delta.adoptable.map((w) => w.name)).toEqual([key]);
       const adopted = await openSession({
-        session: { type: 'worktree', repo: fixture.repo, branch },
+        session: { type: 'worktree', repo: fixture.repo, path },
         mode: 'attach',
         cwd: path,
         cols: 80,
@@ -150,7 +154,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     });
     it('rejects a checkout on another branch before replacing any session', async () => {
       const path = checkout('feature/login', 'login');
-      const key = worktreeSessionKey('feature/login', fixture.repo);
+      const key = worktreeSessionKey(path, fixture.repo);
       const agent = await worktree('feature/login', path);
       await expect(worktree('feature-login', path)).rejects.toThrow(
         'Worktree is on'

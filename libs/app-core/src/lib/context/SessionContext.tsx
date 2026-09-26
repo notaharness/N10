@@ -14,7 +14,7 @@ import type {
 import {
   findOrphanPrs,
   categorizeReviews as categorizePrReviews,
-  buildSessionLookups,
+  buildSessionPrMap,
 } from '@n10/core';
 import { setOperationErrorHandler } from '../hooks/useAsyncOperation.js';
 import { useSessionManager } from '../hooks/useSessionManager.js';
@@ -39,7 +39,6 @@ export interface SessionDataContextValue {
   prError: string | null;
   orphanPrs: PullRequestInfo[];
   categorizedReviews: CategorizedReviews;
-  sessionBranchMap: Map<string, string>;
   sessionPrMap: Map<string, PullRequestInfo>;
   mergedBranches: Set<string>;
   conflictCounts: Map<string, number>;
@@ -134,8 +133,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const orphanPrs = useMemo(() => {
     if (!provider) return [];
-    const sessionNames = new Set(sessionMgr.sessions.map((s) => s.name));
-    return findOrphanPrs(prMap, sessionNames, config, provider);
+    const checkedOut = new Set(
+      sessionMgr.sessions.flatMap((s) => (s.branch ? [s.branch] : []))
+    );
+    return findOrphanPrs(prMap, checkedOut, config, provider);
   }, [prMap, sessionMgr.sessions, config, provider]);
 
   const categorizedReviews = useMemo((): CategorizedReviews => {
@@ -144,9 +145,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return categorizePrReviews(prMap, config, provider);
   }, [prMap, config, provider]);
 
-  const { sessionBranchMap, sessionPrMap } = useMemo(
-    () => buildSessionLookups(prMap),
-    [prMap]
+  const sessionPrMap = useMemo(
+    () => buildSessionPrMap(prMap, sessionMgr.sessions),
+    [prMap, sessionMgr.sessions]
   );
 
   const sortedSessions = useMemo(
@@ -163,7 +164,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       prError,
       orphanPrs,
       categorizedReviews,
-      sessionBranchMap,
       sessionPrMap,
       mergedBranches,
       conflictCounts,
@@ -178,7 +178,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       prError,
       orphanPrs,
       categorizedReviews,
-      sessionBranchMap,
       sessionPrMap,
       mergedBranches,
       conflictCounts,

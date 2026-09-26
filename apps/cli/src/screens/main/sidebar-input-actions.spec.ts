@@ -126,15 +126,24 @@ function makePr(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
 }
 
 function sessionItem(
-  name: string,
+  path: string,
   extra: { pr?: PullRequestInfo; running?: boolean } = {}
 ): SidebarItem {
   return {
     kind: 'session',
-    session: { name: worktreeSessionKey(name), running: extra.running ?? true },
+    session: { name: worktreeSessionKey(path), running: extra.running ?? true },
     isMerged: false,
     ...(extra.pr ? { pr: extra.pr } : {}),
   } as SidebarItem;
+}
+
+/** The session of the checkout `makePr()`'s branch is in. */
+const PR_SESSION = worktreeSessionKey('/wt/feat-thing');
+
+/** A PR row that has had a session (`running` set) carries the name
+ *  of the checkout's session, as `buildSidebarItems` attaches it. */
+function prSessionFields(running?: boolean) {
+  return running === undefined ? {} : { running, sessionName: PR_SESSION };
 }
 
 function reviewPrItem(pr: PullRequestInfo, running?: boolean): SidebarItem {
@@ -142,7 +151,7 @@ function reviewPrItem(pr: PullRequestInfo, running?: boolean): SidebarItem {
     kind: 'review-pr',
     pr,
     category: 'needs-review',
-    ...(running === undefined ? {} : { running }),
+    ...prSessionFields(running),
   } as SidebarItem;
 }
 
@@ -150,7 +159,7 @@ function orphanPrItem(pr: PullRequestInfo, running?: boolean): SidebarItem {
   return {
     kind: 'orphan-pr',
     pr,
-    ...(running === undefined ? {} : { running }),
+    ...prSessionFields(running),
   } as SidebarItem;
 }
 
@@ -283,7 +292,7 @@ beforeEach(() => {
 
 describe('sidebar handler — unresolved key', () => {
   it('does nothing when the keypress maps to no sidebar action', () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     handleSidebarInput('z', makeKey(), t.ctx);
 
@@ -397,10 +406,10 @@ describe('sidebar handler — checkout-branch', () => {
 
 describe('sidebar handler — focus-terminal', () => {
   it('focuses a live terminal for the selected session', () => {
-    liveSessions.add(worktreeSessionKey('alpha'));
+    liveSessions.add(worktreeSessionKey('/wt/alpha'));
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -413,8 +422,8 @@ describe('sidebar handler — focus-terminal', () => {
 
   it('opens the session menu for a session row with no live PTY', () => {
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -432,10 +441,10 @@ describe('sidebar handler — focus-terminal', () => {
   it('opens the session menu for a session whose agent exited', () => {
     // The exited entry keeps its final frame in the registry, but there
     // is nothing to focus into — offer to start it again.
-    exitedSessions.add('alpha');
+    exitedSessions.add(worktreeSessionKey('/wt/alpha'));
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -449,7 +458,7 @@ describe('sidebar handler — focus-terminal', () => {
     const pr = makePr();
     const t = makeCtx({
       selectedItem: reviewPrItem(pr, true),
-      sessionNameForTerminal: worktreeSessionKey('feat/thing'),
+      sessionNameForTerminal: PR_SESSION,
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -465,8 +474,8 @@ describe('sidebar handler — focus-terminal', () => {
 
   it('refuses to open the menu while a start is already in flight', () => {
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
     t.asyncOps.isRunning.mockReturnValue(true);
 
@@ -480,7 +489,9 @@ describe('sidebar handler — focus-terminal', () => {
   });
 
   it('does nothing when there is no selected item', () => {
-    const t = makeCtx({ sessionNameForTerminal: worktreeSessionKey('alpha') });
+    const t = makeCtx({
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
+    });
 
     press(KEYS.focusTerminal(), t.ctx);
 
@@ -490,7 +501,7 @@ describe('sidebar handler — focus-terminal', () => {
 
   it('does not open the menu when no terminal session is bound', () => {
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
       sessionNameForTerminal: null,
     });
 
@@ -503,8 +514,8 @@ describe('sidebar handler — focus-terminal', () => {
   it('returns focus to the sidebar when the terminal is focused', () => {
     const t = makeCtx({
       focus: 'terminal',
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -518,7 +529,7 @@ describe('sidebar handler — focus-terminal', () => {
 
 describe('sidebar handler — delete-branch', () => {
   it('deletes a clean branch whose agent has already exited', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -528,15 +539,15 @@ describe('sidebar handler — delete-branch', () => {
 
     expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('check-delete');
     expect(t.sessions.performDelete).toHaveBeenCalledExactlyOnceWith(
-      worktreeSessionKey('alpha'),
+      worktreeSessionKey('/wt/alpha'),
       'alpha'
     );
     expect(t.deleteConfirm.setConfirmDelete).not.toHaveBeenCalled();
   });
 
   it('asks yes/no before killing a still-running agent', async () => {
-    liveSessions.add(worktreeSessionKey('alpha'));
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    liveSessions.add(worktreeSessionKey('/wt/alpha'));
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -546,7 +557,7 @@ describe('sidebar handler — delete-branch', () => {
 
     expect(t.deleteConfirm.setConfirmDelete).toHaveBeenCalledExactlyOnceWith({
       branch: 'alpha',
-      sessionName: worktreeSessionKey('alpha'),
+      sessionName: worktreeSessionKey('/wt/alpha'),
       reason: 'session is active — agent process will be killed',
       mode: 'yes-no',
     });
@@ -557,7 +568,7 @@ describe('sidebar handler — delete-branch', () => {
   it.each(['uncommitted changes', 'not pushed to upstream'])(
     'requires typing the branch name when unsafe: %s',
     async (reason) => {
-      const t = makeCtx({ selectedItem: sessionItem('alpha') });
+      const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
       vi.mocked(listWorktrees).mockResolvedValue([
         worktree('/wt/alpha', 'alpha'),
       ]);
@@ -568,7 +579,7 @@ describe('sidebar handler — delete-branch', () => {
 
       expect(t.deleteConfirm.setConfirmDelete).toHaveBeenCalledExactlyOnceWith({
         branch: 'alpha',
-        sessionName: worktreeSessionKey('alpha'),
+        sessionName: worktreeSessionKey('/wt/alpha'),
         reason,
         mode: 'type-branch',
       });
@@ -581,7 +592,7 @@ describe('sidebar handler — delete-branch', () => {
   );
 
   it('flashes and stops for a non-overridable unsafe reason', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -601,21 +612,21 @@ describe('sidebar handler — delete-branch', () => {
   });
 
   it('kills the orphaned PTY when the row has no worktree left', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([]);
 
     press(KEYS.deleteBranch(), t.ctx);
     await t.settle();
 
     expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
-      worktreeSessionKey('alpha')
+      worktreeSessionKey('/wt/alpha')
     );
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(canRemoveBranch).not.toHaveBeenCalled();
   });
 
-  it('derives the session name from the branch for a running review PR', async () => {
+  it("uses the checkout's session for a running review PR", async () => {
     const t = makeCtx({
       selectedItem: reviewPrItem(makePr({ sourceBranch: 'feat/thing' }), true),
     });
@@ -627,7 +638,7 @@ describe('sidebar handler — delete-branch', () => {
     await t.settle();
 
     expect(t.sessions.performDelete).toHaveBeenCalledExactlyOnceWith(
-      worktreeSessionKey('feat/thing'),
+      PR_SESSION,
       'feat/thing'
     );
   });
@@ -661,20 +672,20 @@ describe('sidebar handler — delete-branch', () => {
 
 describe('sidebar handler — kill-agent', () => {
   it('kills the session and reconnects the pane', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     press(KEYS.killAgent(), t.ctx);
     await t.settle();
 
     expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('delete');
     expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
-      worktreeSessionKey('alpha')
+      worktreeSessionKey('/wt/alpha')
     );
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
   });
 
-  it('derives the session name from the branch for a running review PR', async () => {
+  it("uses the checkout's session for a running review PR", async () => {
     const t = makeCtx({
       selectedItem: reviewPrItem(makePr({ sourceBranch: 'feat/thing' }), false),
     });
@@ -682,9 +693,7 @@ describe('sidebar handler — kill-agent', () => {
     press(KEYS.killAgent(), t.ctx);
     await t.settle();
 
-    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
-      worktreeSessionKey('feat/thing')
-    );
+    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(PR_SESSION);
   });
 
   it('ignores a review PR that has never had a session', () => {
@@ -705,7 +714,7 @@ describe('sidebar handler — rebase', () => {
     ['conflict', 'Conflicts detected — rebase aborted'],
     ['error', 'Failed to fetch from origin'],
   ] as const)('reports %s', async (outcome, message) => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -720,7 +729,7 @@ describe('sidebar handler — rebase', () => {
   });
 
   it('flashes when the session has no worktree', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([]);
 
     press(KEYS.rebase(), t.ctx);
@@ -760,7 +769,10 @@ describe('sidebar handler — open-editor', () => {
   });
 
   it('spawns the configured editor detached on the session worktree', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha'), editor: 'code' });
+    const t = makeCtx({
+      selectedItem: sessionItem('/wt/alpha'),
+      editor: 'code',
+    });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -801,7 +813,7 @@ describe('sidebar handler — open-editor', () => {
 
   it('falls back to $VISUAL then $EDITOR', async () => {
     process.env.VISUAL = 'vis';
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -817,7 +829,7 @@ describe('sidebar handler — open-editor', () => {
 
     delete process.env.VISUAL;
     process.env.EDITOR = 'ed';
-    const t2 = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t2 = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     press(KEYS.openEditor(), t2.ctx);
     await t2.settle();
@@ -830,7 +842,7 @@ describe('sidebar handler — open-editor', () => {
   });
 
   it('flashes when no editor is configured anywhere', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
     ]);
@@ -845,7 +857,10 @@ describe('sidebar handler — open-editor', () => {
   });
 
   it('flashes when no path can be resolved', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha'), editor: 'code' });
+    const t = makeCtx({
+      selectedItem: sessionItem('/wt/alpha'),
+      editor: 'code',
+    });
     vi.mocked(listWorktrees).mockResolvedValue([]);
 
     press(KEYS.openEditor(), t.ctx);
@@ -879,7 +894,7 @@ describe('sidebar handler — view-diff', () => {
   });
 
   it('does nothing for a session row with no PR', () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     press(KEYS.viewDiff(), t.ctx);
 
@@ -902,7 +917,7 @@ describe('sidebar handler — view-comments', () => {
   });
 
   it('does nothing for a session row with no PR', () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     press(KEYS.viewComments(), t.ctx);
 
@@ -914,10 +929,10 @@ describe('sidebar handler — view-comments', () => {
 
 describe('sidebar handler — start-session', () => {
   it('focuses the terminal when the selected session is live', () => {
-    liveSessions.add(worktreeSessionKey('alpha'));
+    liveSessions.add(worktreeSessionKey('/wt/alpha'));
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.startSession(), t.ctx);
@@ -929,7 +944,7 @@ describe('sidebar handler — start-session', () => {
   });
 
   it('opens the session menu for a PR-less session row', () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha') });
 
     press(KEYS.startSession(), t.ctx);
 
@@ -949,8 +964,8 @@ describe('sidebar handler — start-session', () => {
     // empty pane — the same staleness the switch-tab digits guard
     // against.
     const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: worktreeSessionKey('alpha'),
+      selectedItem: sessionItem('/wt/alpha'),
+      sessionNameForTerminal: worktreeSessionKey('/wt/alpha'),
     });
 
     press(KEYS.startSession(), t.ctx);
@@ -961,7 +976,7 @@ describe('sidebar handler — start-session', () => {
 
   it('opens the session menu with the PR for a session row that has a PR', () => {
     const pr = makePr();
-    const t = makeCtx({ selectedItem: sessionItem('alpha', { pr }) });
+    const t = makeCtx({ selectedItem: sessionItem('/wt/alpha', { pr }) });
 
     press(KEYS.startSession(), t.ctx);
 
@@ -988,10 +1003,10 @@ describe('sidebar handler — start-session', () => {
   });
 
   it('focuses the live terminal instead of the menu for a PR row with a session', () => {
-    liveSessions.add(worktreeSessionKey('feat/thing'));
+    liveSessions.add(PR_SESSION);
     const t = makeCtx({
       selectedItem: orphanPrItem(makePr({ sourceBranch: 'feat/thing' })),
-      sessionNameForTerminal: worktreeSessionKey('feat/thing'),
+      sessionNameForTerminal: PR_SESSION,
     });
 
     press(KEYS.startSession(), t.ctx);

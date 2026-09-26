@@ -33,6 +33,8 @@ const createWorktree = vi.fn();
 vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (b: string) => branchToSessionName(b),
   createWorktree: (b: string) => createWorktree(b),
+  // The checkout the PR's branch is in, which keys its session.
+  listWorktrees: async () => [{ branch: 'feature/x', path: '/wt/feature-x' }],
 }));
 
 import { checkoutPlan } from './checkout-plan.js';
@@ -68,7 +70,7 @@ describe('checkoutPlan', () => {
 
     expect(result).toBe('injected');
     expect(deliverToRunningSession).toHaveBeenCalledWith(
-      worktreeSessionKey('feature/x'),
+      worktreeSessionKey('/wt/feature-x'),
       expect.stringContaining('Resolve these PR review comments')
     );
     expect(launchSession).not.toHaveBeenCalled();
@@ -104,7 +106,7 @@ describe('checkoutPlan', () => {
     hasLiveTmuxSession.mockReturnValue(true);
     await expect(checkoutPlan(deps('new-session'))).resolves.toBe('spawned');
     expect(killPersistedTmuxSession).toHaveBeenCalledWith(
-      worktreeSessionKey('feature/x')
+      worktreeSessionKey('/wt/feature-x')
     );
     expect(killPersistedTmuxSession.mock.invocationCallOrder[0]).toBeLessThan(
       launchSession.mock.invocationCallOrder[0]
@@ -132,7 +134,7 @@ describe('checkoutPlan', () => {
     expect(createWorktree).toHaveBeenCalledWith('feature/x');
     expect(launchSession).toHaveBeenCalledTimes(1);
     const arg = launchSession.mock.calls[0][0];
-    expect(arg.name).toBe(worktreeSessionKey('feature/x'));
+    expect(arg.name).toBe(worktreeSessionKey('/wt/feature-x'));
     expect(arg.cwd).toBe('/wt/feature-x');
     // Must seed (deliver the plan), never continue.
     expect(arg.request).toEqual({

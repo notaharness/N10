@@ -14,15 +14,28 @@ import type * as Core from '@n10/core';
  * what a refresh tells the provider.
  */
 
+interface Worktree {
+  branch?: string;
+  path: string;
+  state?: string;
+}
+
+/** A checkout of `branch` in `repo`, as git would list it. */
+function checkout(branch: string, repo = '/repo-a', state?: string): Worktree {
+  return {
+    branch,
+    path: `${repo}/.claude/worktrees/${branch}`,
+    ...(state ? { state } : {}),
+  };
+}
+
 const env = vi.hoisted(() => ({
   cwd: '/repo-a',
   config: {} as Record<string, unknown>,
   configured: true,
-  worktrees: [] as { branch?: string; state?: string }[],
+  worktrees: [] as Worktree[],
   /** When set, the next worktree listing waits until it is called. */
-  releaseWorktrees: null as
-    | ((list?: { branch?: string; state?: string }[]) => void)
-    | null,
+  releaseWorktrees: null as ((list?: Worktree[]) => void) | null,
   holdWorktrees: false,
   /** Resolvers for each provider fetch, in call order. */
   pending: [] as {
@@ -32,8 +45,6 @@ const env = vi.hoisted(() => ({
   fetchCount: 0,
   forgetCount: 0,
   now: 1_000_000,
-  /** Last sessionBranchMap handed to buildSidebarItems. */
-  lastBranchMap: new Map<string, string>(),
   /** Last babysat map handed to buildSidebarItems. */
   lastBabysat: null as ReadonlyMap<number, unknown> | null,
   /** cwd → babysit statuses the babysit service answers with. */
@@ -96,10 +107,6 @@ vi.mock('@n10/core', async (importOriginal) => ({
   // does with it, and a fake would only prove the fake.
   ...(await importOriginal<typeof Core>()),
   isSessionAlive: () => false,
-  buildSessionLookups: () => ({
-    sessionBranchMap: new Map<string, string>(),
-    sessionPrMap: new Map<string, unknown>(),
-  }),
   findOrphanPrs: () => [],
   categorizeReviews: () => ({
     needsReview: [],
@@ -111,13 +118,11 @@ vi.mock('@n10/core', async (importOriginal) => ({
     sessions: unknown[],
     _orphans: unknown,
     _reviews: unknown,
-    sessionBranchMap: Map<string, string>,
     _sessionPrMap: unknown,
     _merged: unknown,
     _conflicts: unknown,
     babysat: ReadonlyMap<number, unknown>
   ) => {
-    env.lastBranchMap = sessionBranchMap;
     env.lastBabysat = babysat;
     return sessions;
   },
@@ -142,7 +147,6 @@ beforeEach(async () => {
   env.fetchCount = 0;
   env.forgetCount = 0;
   env.now = 1_000_000;
-  env.lastBranchMap = new Map();
   env.lastBabysat = null;
   env.babysat = new Map();
 
@@ -281,21 +285,22 @@ describe('lookupPullRequest', () => {
 
 describe('sidebar model', () => {
   it('shows a worktree its real branch name, not the sanitized session name', async () => {
-    // Session names flatten slashes, and only branches with a PR are in
-    // the lookup — so a PR-less `feat/foo` would display as `feat-foo`.
-    env.worktrees = [{ branch: 'feat/foo' }];
+    // The row carries its branch whether or not the branch has a PR —
+    // so a PR-less `feat/foo` still displays as `feat/foo`.
+    env.worktrees = [checkout('feat/foo')];
     const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
-    await model;
+    const rows = (await model) as unknown as Core.AgentSession[];
 
-    expect(
-      env.lastBranchMap.get(worktreeSessionKey('feat/foo', '/repo-a'))
-    ).toBe('feat/foo');
+    expect(rows[0]).toMatchObject({
+      name: worktreeSessionKey('/repo-a/.claude/worktrees/feat/foo', '/repo-a'),
+      branch: 'feat/foo',
+    });
   });
 
   it('carries a mid-rebase worktree state through to its session', async () => {
-    env.worktrees = [{ branch: 'rebasing-one', state: 'rebasing' }];
+    env.worktrees = [checkout('rebasing-one', '/repo-a', 'rebasing')];
     const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
@@ -314,7 +319,7 @@ describe('sidebar model', () => {
   });
 
   it('omits the state key entirely for a normal worktree', async () => {
-    env.worktrees = [{ branch: 'normal' }];
+    env.worktrees = [checkout('normal')];
     const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
@@ -333,7 +338,7 @@ describe('sidebar model', () => {
  */
 describe('the model never waits for the provider', () => {
   it('answers from local git while the provider call is still in flight', async () => {
-    env.worktrees = [{ branch: 'feature' }];
+    env.worktrees = [checkout('feature')];
 
     // No `settle` anywhere: if this ever awaits the fetch again, the
     // await below never resolves and the test times out.
@@ -345,7 +350,7 @@ describe('the model never waits for the provider', () => {
   });
 
   it('serves the pull requests on the next call, once they have landed', async () => {
-    env.worktrees = [{ branch: 'feature' }];
+    env.worktrees = [checkout('feature')];
     await sidebar.listSidebarItems();
     settle(0, { feature: { id: 7 } });
     await flush();
@@ -388,7 +393,7 @@ describe('the model never waits for the provider', () => {
 
 describe('getSidebarSnapshot', () => {
   it('stamps the rows with the repository they describe', async () => {
-    env.worktrees = [{ branch: 'feature' }];
+    env.worktrees = [checkout('feature')];
     const snapshot = await sidebar.getSidebarSnapshot();
     expect(snapshot.cwd).toBe('/repo-a');
     expect(snapshot.items).toHaveLength(1);
@@ -400,18 +405,18 @@ describe('getSidebarSnapshot', () => {
     // back with either repo would be wrong — they were listed under
     // one and had their sessions judged under the other — so the
     // snapshot is the new repository's, computed whole.
-    const listedUnderA = [{ branch: 'from-a' }];
+    const listedUnderA = [checkout('from-a')];
     env.holdWorktrees = true;
     const pending = sidebar.getSidebarSnapshot();
     await flush();
     env.cwd = '/repo-b';
-    env.worktrees = [{ branch: 'from-b' }];
+    env.worktrees = [checkout('from-b', '/repo-b')];
     env.releaseWorktrees?.(listedUnderA);
     const snapshot = await pending;
     expect(snapshot.cwd).toBe('/repo-b');
     expect(snapshot.items).toEqual([
       expect.objectContaining({
-        name: worktreeSessionKey('from-b', '/repo-b'),
+        name: worktreeSessionKey('/repo-b/.claude/worktrees/from-b', '/repo-b'),
       }),
     ]);
   });

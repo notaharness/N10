@@ -1,11 +1,16 @@
 import type { Page } from '@playwright/test';
 
-/** Decode the branch for assertions while IPC always receives the opaque key. */
+/**
+ * The worktree a session key names, by its directory's name — for
+ * assertions, while IPC always receives the opaque key. A key is its
+ * checkout, and e2e branches are slash-free, so for a worktree n10
+ * created this is the branch it was created for.
+ */
 export function sessionBranch(key: string): string {
-  const [kind, , branch] = JSON.parse(key) as string[];
-  if (kind !== 'worktree' || !branch)
+  const [kind, , path] = JSON.parse(key) as string[];
+  if (kind !== 'worktree' || !path)
     throw new Error(`Not a worktree key: ${key}`);
-  return branch;
+  return path.split('/').pop()!;
 }
 
 export async function sessionKey(page: Page, branch: string): Promise<string> {

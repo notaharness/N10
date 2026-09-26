@@ -1,4 +1,3 @@
-import { worktreeSessionKey } from '../session-key.js';
 import type { PullRequestInfo, CategorizedReviews } from '@n10/vcs-core';
 import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
 import type { BabysitStatus } from '../babysit/babysit-model.js';
@@ -45,7 +44,6 @@ interface SessionBuckets {
 function bucketSessions(
   sortedSessions: AgentSession[],
   reviewBranches: Set<string>,
-  sessionBranchMap: Map<string, string>,
   sessionPrMap: Map<string, PullRequestInfo>,
   mergedBranches: Set<string>,
   conflictCounts: Map<string, number>,
@@ -54,7 +52,8 @@ function bucketSessions(
   const buckets: SessionBuckets = { noPr: [], draftPr: [], activePr: [] };
 
   for (const session of sortedSessions) {
-    const branch = sessionBranchMap.get(session.name);
+    // '' is a detached HEAD: no branch, so no PR, merge or conflict state.
+    const branch = session.branch || undefined;
     if (branch && reviewBranches.has(branch)) continue;
 
     const pr = sessionPrMap.get(session.name);
@@ -86,7 +85,6 @@ export function buildSidebarItems(
   sortedSessions: AgentSession[],
   orphanPrs: PullRequestInfo[],
   categorizedReviews: CategorizedReviews,
-  sessionBranchMap: Map<string, string>,
   sessionPrMap: Map<string, PullRequestInfo>,
   mergedBranches: Set<string>,
   conflictCounts: Map<string, number>,
@@ -95,29 +93,29 @@ export function buildSidebarItems(
   const sessions = bucketSessions(
     sortedSessions,
     collectReviewBranches(categorizedReviews),
-    sessionBranchMap,
     sessionPrMap,
     mergedBranches,
     conflictCounts,
     babysat
   );
 
-  const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
+  const sessionByBranch = new Map<string, AgentSession>();
+  for (const s of sortedSessions) {
+    if (s.branch) sessionByBranch.set(s.branch, s);
+  }
 
-  /** The alive worktree session backing a PR's branch, if any. */
+  /** The worktree session of the checkout on a review PR's branch, if
+   *  any. */
   const prSession = (pr: PullRequestInfo): AgentSession | undefined =>
-    sessionByName.get(worktreeSessionKey(pr.sourceBranch));
+    sessionByBranch.get(pr.sourceBranch);
 
-  const orphanItem = (pr: PullRequestInfo): SidebarItem => {
-    const session = prSession(pr);
-    return {
-      kind: 'orphan-pr',
-      pr,
-      running: session?.running,
-      sessionName: session?.name,
-      ...babysitOf(pr, babysat),
-    };
-  };
+  // An orphan PR's branch is checked out in no worktree (`findOrphanPrs`),
+  // so it has no session to carry.
+  const orphanItem = (pr: PullRequestInfo): SidebarItem => ({
+    kind: 'orphan-pr',
+    pr,
+    ...babysitOf(pr, babysat),
+  });
 
   const reviewItem =
     (category: ReviewCategory) =>

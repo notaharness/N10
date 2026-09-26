@@ -57,7 +57,7 @@ function selectBranch(ctx: BranchPickerHandlerCtx, filtered: string[]): void {
       const worktreePath = await createWorktree(branch);
       if (!worktreePath) return;
       await ctx.sessions.refreshSessions();
-      landInSession(ctx, worktreeSessionKey(branch));
+      landInSession(ctx, worktreeSessionKey(worktreePath));
     });
   }
   resetPicker(ctx);

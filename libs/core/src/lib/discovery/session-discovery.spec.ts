@@ -57,6 +57,10 @@ vi.mock('../repo-root.js', () => ({ getRepoRoot: () => '/repo' }));
 
 import { startSessionDiscovery } from './session-discovery.js';
 
+/** The registry key of the worktree checked out in directory `dir`. */
+const wtKey = (dir: string) =>
+  worktreeSessionKey(`/repo/.claude/worktrees/${dir}`);
+
 function worktrees(...branches: string[]): WorktreeInfo[] {
   return branches.map((branch) => ({
     branch,
@@ -137,20 +141,18 @@ const shellTerm: DiscoveredTerminal = {
 };
 
 describe('startSessionDiscovery', () => {
-  // A detached-HEAD worktree has no branch and is named after its
-  // directory, so the scanner has to go through worktreeSessionName
-  // rather than reading `branch` — which for an orphan is ''.
-  it('names a detached-HEAD worktree after its directory', async () => {
+  // A detached-HEAD worktree has no branch, so the scanner has to key
+  // it by its checkout rather than reading `branch` — which for an
+  // orphan is ''.
+  it('keys a detached-HEAD worktree by its checkout', async () => {
     listWorktreesMock.mockResolvedValue([
       { branch: '', path: '/repo/.claude/worktrees/detached', bare: false },
     ]);
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('detached')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('detached')]));
     const { discovery, adopt } = start();
     await discovery.scanNow();
     expect(adopt.mock.calls[0]?.[0]).toEqual({
-      name: worktreeSessionKey('detached'),
+      name: wtKey('detached'),
       branch: '',
       path: '/repo/.claude/worktrees/detached',
     });
@@ -162,14 +164,12 @@ describe('startSessionDiscovery', () => {
     expect(adopt).not.toHaveBeenCalled();
 
     listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('feature-a')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
     await discovery.scanNow();
 
     expect(adopt).toHaveBeenCalledTimes(1);
     expect(adopt.mock.calls[0]![0]).toEqual({
-      name: worktreeSessionKey('feature-a'),
+      name: wtKey('feature-a'),
       branch: 'feature-a',
       path: '/repo/.claude/worktrees/feature-a',
     });
@@ -178,9 +178,7 @@ describe('startSessionDiscovery', () => {
 
   it('attaches on the first scan to a session that outlived the last run', async () => {
     listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('feature-a')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
     const { discovery, adopt } = start();
     await discovery.scanNow();
     expect(adopt).toHaveBeenCalledTimes(1);
@@ -190,9 +188,7 @@ describe('startSessionDiscovery', () => {
   // PTY the user is looking at.
   it('never attaches twice to the same live session', async () => {
     listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('feature-a')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
     const { discovery, adopt } = start();
     await discovery.scanNow();
     await discovery.scanNow();
@@ -207,9 +203,7 @@ describe('startSessionDiscovery', () => {
   // are looking at.
   it('never attaches to a session the user launched mid-scan', async () => {
     listWorktreesMock.mockResolvedValue(worktrees('slow', 'raced'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('slow'), worktreeSessionKey('raced')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('slow'), wtKey('raced')]));
     const adopt = vi
       .fn<(wt: DiscoveredWorktree) => Promise<void>>()
       .mockImplementation(async (wt) => {
@@ -217,14 +211,11 @@ describe('startSessionDiscovery', () => {
         alive.add(wt.name);
         // While the first attach was awaiting, the user hit Enter on
         // the second row.
-        if (wt.name === worktreeSessionKey('slow'))
-          alive.add(worktreeSessionKey('raced'));
+        if (wt.name === wtKey('slow')) alive.add(wtKey('raced'));
       });
     const { discovery } = start({ adopt });
     await discovery.scanNow();
-    expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
-      worktreeSessionKey('slow'),
-    ]);
+    expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([wtKey('slow')]);
   });
 
   it('announces a new worktree that has no session behind it', async () => {
@@ -235,17 +226,13 @@ describe('startSessionDiscovery', () => {
     expect(adopt).not.toHaveBeenCalled();
     expect(onChanged).toHaveBeenCalledTimes(1);
     expect(onChanged.mock.calls[0]![0]).toMatchObject({
-      appeared: [
-        expect.objectContaining({ name: worktreeSessionKey('feature-a') }),
-      ],
+      appeared: [expect.objectContaining({ name: wtKey('feature-a') })],
     });
   });
 
   it('announces a session killed from outside', async () => {
     listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('feature-a')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
     const { discovery, onChanged } = start();
     await discovery.scanNow();
     onChanged.mockClear();
@@ -253,7 +240,7 @@ describe('startSessionDiscovery', () => {
     listPersistedMock.mockReturnValue(new Set());
     await discovery.scanNow();
     expect(onChanged.mock.calls[0]![0]).toMatchObject({
-      ended: [worktreeSessionKey('feature-a')],
+      ended: [wtKey('feature-a')],
     });
   });
 
@@ -271,9 +258,7 @@ describe('startSessionDiscovery', () => {
   it('announces only after the attach has finished', async () => {
     const order: string[] = [];
     listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-    listPersistedMock.mockReturnValue(
-      new Set([worktreeSessionKey('feature-a')])
-    );
+    listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
     const { discovery } = start({
       adopt: async (wt) => {
         await Promise.resolve();
@@ -291,9 +276,7 @@ describe('startSessionDiscovery', () => {
     // losing to an index.lock — so one is not enough to give up on.
     it('is retried a few times before the session is retired', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
       const { discovery } = start({ adopt });
       for (let i = 0; i < 6; i++) await discovery.scanNow();
@@ -302,9 +285,7 @@ describe('startSessionDiscovery', () => {
 
     it('succeeds if a retry works, and forgets the earlier failures', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const adopt = vi
         .fn<(wt: DiscoveredWorktree) => void>()
         .mockImplementationOnce(() => {
@@ -325,9 +306,7 @@ describe('startSessionDiscovery', () => {
     // the life of the process.
     it('stops reporting the world as changed once retired', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
       const { discovery, onChanged } = start({ adopt });
       for (let i = 0; i < 6; i++) await discovery.scanNow();
@@ -336,9 +315,7 @@ describe('startSessionDiscovery', () => {
 
     it('is tried again once tmux has dropped that session', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
       const { discovery } = start({ adopt });
       for (let i = 0; i < 6; i++) await discovery.scanNow();
@@ -347,9 +324,7 @@ describe('startSessionDiscovery', () => {
       // tmux drops it, and a new session appears under the same name.
       listPersistedMock.mockReturnValue(new Set());
       await discovery.scanNow();
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       await discovery.scanNow();
       expect(adopt).toHaveBeenCalledTimes(4);
     });
@@ -359,29 +334,26 @@ describe('startSessionDiscovery', () => {
     it('does not stop the others in the same scan', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('broken', 'fine'));
       listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('broken'), worktreeSessionKey('fine')])
+        new Set([wtKey('broken'), wtKey('fine')])
       );
       const adopt = vi
         .fn<(wt: DiscoveredWorktree) => void>()
         .mockImplementation((wt) => {
-          if (wt.name === worktreeSessionKey('broken'))
-            throw new Error('git refused');
+          if (wt.name === wtKey('broken')) throw new Error('git refused');
           alive.add(wt.name);
         });
       const { discovery } = start({ adopt });
       await discovery.scanNow();
       expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
-        worktreeSessionKey('broken'),
-        worktreeSessionKey('fine'),
+        wtKey('broken'),
+        wtKey('fine'),
       ]);
-      expect(alive.has(worktreeSessionKey('fine'))).toBe(true);
+      expect(alive.has(wtKey('fine'))).toBe(true);
     });
 
     it('does not take the process down', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const { discovery } = start({
         adopt: () => {
           throw new Error('boom');
@@ -536,7 +508,7 @@ describe('startSessionDiscovery', () => {
     it('stops attaching the moment another repository is opened', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('first', 'second'));
       listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('first'), worktreeSessionKey('second')])
+        new Set([wtKey('first'), wtKey('second')])
       );
       let current = true;
       const adopt = vi
@@ -548,16 +520,12 @@ describe('startSessionDiscovery', () => {
         });
       const { discovery } = start({ adopt, isCurrent: () => current });
       await discovery.scanNow();
-      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
-        worktreeSessionKey('first'),
-      ]);
+      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([wtKey('first')]);
     });
 
     it('abandons a scan when the repo is no longer current', async () => {
       listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('feature-a')])
-      );
+      listPersistedMock.mockReturnValue(new Set([wtKey('feature-a')]));
       const { discovery, adopt, onChanged } = start({
         isCurrent: () => false,
       });

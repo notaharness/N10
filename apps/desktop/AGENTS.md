@@ -67,7 +67,12 @@ Every rule below has its reasoning in `docs/decisions.md`.
   activated, pins previews with a live agent, and adds foreign and
   terminal tabs. Add nothing to that seam from an effect. A tab is identified
   by PR id or `(repo, branch)`, `repo` being the real path
-  (`canonicalRepoPath`). `TabsProvider` sits above the repo gate in `App.tsx`.
+  (`canonicalRepoPath`), and follows its worktree's path first: `git switch`
+  inside a worktree relabels the tab, which remembers `originBranch` for its
+  banner. A tab that followed its worktree off its opening branch no longer
+  answers to its opening id (`standsFor`/`tabIdFor`). Session keys are the
+  checkout (core's `worktreeSessionRow`), so the row keeps its agent.
+  `TabsProvider` sits above the repo gate in `App.tsx`.
   `tabs.properties.spec.ts` holds the invariants.
 - A PR tab is a review workspace (`components/review/PrWorkspace.tsx`): a
   collapsible rail (Agent · Files · Comments) beside one content pane that

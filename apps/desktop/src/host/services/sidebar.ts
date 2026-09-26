@@ -1,13 +1,12 @@
-import { keyForWorktree } from '@n10/core';
 import { listWorktrees } from '@n10/worktree-manager';
 import {
   buildSidebarItems,
-  buildSessionLookups,
+  buildSessionPrMap,
   categorizeReviews,
   findOrphanPrs,
   pullRequestPollIntervalMs,
   sortSessionsByPrId,
-  type AgentSession,
+  worktreeSessionRow,
   type SidebarItem,
 } from '@n10/core';
 import { activeRepoIs, requireRepo } from './repo.js';
@@ -62,34 +61,22 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
   pullRequests.refreshInBackground(cwd);
   const worktrees = await listWorktrees();
   const prMap = pullRequests.cached(cwd);
-  const sessions: AgentSession[] = worktrees.map((wt) => {
-    const name = keyForWorktree(wt, cwd);
-    return {
-      name,
-      label: wt.branch || wt.path.split('/').pop(),
-      running: isOwnSessionAlive(name),
-      ...(wt.state ? { state: wt.state } : {}),
-    };
-  });
+  // Rows are keyed by checkout, so the agent in a worktree stays that
+  // worktree's whichever branch it is on now (`worktreeSessionRow`).
+  const sessions = worktrees.map((wt) =>
+    worktreeSessionRow(wt, isOwnSessionAlive, cwd)
+  );
 
-  const sessionNames = new Set(sessions.map((s) => s.name));
+  const checkedOut = new Set(
+    sessions.flatMap((s) => (s.branch ? [s.branch] : []))
+  );
   const orphanPrs = provider
-    ? findOrphanPrs(prMap, sessionNames, config, provider, cwd)
+    ? findOrphanPrs(prMap, checkedOut, config, provider)
     : [];
   const categorizedReviews = provider
     ? categorizeReviews(prMap, config, provider)
     : { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
-  const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap, cwd);
-  // buildSessionLookups only knows branches that have a PR; worktrees
-  // without one would fall back to the sanitized session name for
-  // display. Seed the map with each worktree's real branch so rows
-  // show `feat/foo` rather than `feat-foo`.
-  for (const wt of worktrees) {
-    const name = keyForWorktree(wt, cwd);
-    if (wt.branch && !sessionBranchMap.has(name)) {
-      sessionBranchMap.set(name, wt.branch);
-    }
-  }
+  const sessionPrMap = buildSessionPrMap(prMap, sessions);
   const sortedSessions = sortSessionsByPrId(sessions, sessionPrMap);
 
   // Merged/conflict decorations come from the host's remote sync loop
@@ -99,7 +86,6 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
     sortedSessions,
     orphanPrs,
     categorizedReviews,
-    sessionBranchMap,
     sessionPrMap,
     sync.merged,
     sync.conflicts,

@@ -1,4 +1,4 @@
-import { keyForWorktree } from '@n10/core';
+import { worktreeSessionRow } from '@n10/core';
 import { useState, useEffect, useCallback, useEffectEvent } from 'react';
 import {
   listAllBranches,
@@ -29,16 +29,9 @@ export function useSessionManager(
 
   const refreshSessions = useCallback(async () => {
     const worktrees = await listWorktrees();
-    const filtered: AgentSession[] = [];
-    for (const wt of worktrees) {
-      const name = keyForWorktree(wt);
-      filtered.push({
-        name,
-        label: wt.branch || wt.path.split('/').pop(),
-        running: isSessionAlive(name),
-        ...(wt.state ? { state: wt.state } : {}),
-      });
-    }
+    const filtered: AgentSession[] = worktrees.map((wt) =>
+      worktreeSessionRow(wt, isSessionAlive)
+    );
     setSessions(filtered);
     // Detached-HEAD orphans have an empty branch; drop them here so the
     // merged/conflict git queries (countConflicts, fetchMergedBranches)
