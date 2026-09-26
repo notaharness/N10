@@ -54,6 +54,10 @@ Every rule below has its reasoning in `docs/decisions.md`.
   the path is typed into the PTY.
 - Worktree removal shares core's sequence with the TUI. `stopSession` kills
   one held target or one resolved persisted target, never both.
+- Window health lives in `main/window-watchdog.ts` (probe and log after
+  resume), `main/window-diagnostics.ts` (renderer console, load retry) and
+  `main/renderer-recovery.ts` (process deaths). Log through `main/log.ts`,
+  which also writes `<userData>/logs/desktop.log`.
 
 ## Renderer
 

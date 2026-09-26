@@ -7,12 +7,18 @@ interface Props {
   /** Changing this resets the boundary (e.g. the active tab id). */
   resetKey?: string;
   label?: string;
+  /** Offered beside "Try again" at the root, where a retry tends to fail the same way. */
+  reload?: () => void;
 }
 interface State {
   error: Error | null;
 }
 
-/** Keeps one crashing tab/pane from blanking the whole window. */
+/**
+ * Keeps one crashing tab/pane from blanking the whole window — and, at
+ * the root, the whole window from going blank: React unmounts the tree
+ * on an uncaught render error, leaving an empty page with no message.
+ */
 export class ErrorBoundary extends Component<Props, State> {
   override state: State = { error: null };
 
@@ -39,13 +45,20 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error.message}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => this.setState({ error: null })}
-        >
-          <RotateCcwIcon /> Try again
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => this.setState({ error: null })}
+          >
+            <RotateCcwIcon /> Try again
+          </Button>
+          {this.props.reload && (
+            <Button variant="outline" size="sm" onClick={this.props.reload}>
+              Reload window
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

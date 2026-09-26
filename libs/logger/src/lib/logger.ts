@@ -1,6 +1,8 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, renameSync, statSync } from 'node:fs';
 
-const logPath = process.env.N10_LOG || null;
+let logPath = process.env.N10_LOG || null;
+let rotateAtBytes = Infinity;
+let written = 0;
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -21,6 +23,37 @@ function resolveMinLevel(): number {
 }
 
 const minLevel = resolveMinLevel();
+
+/**
+ * Write to `path` instead of `$N10_LOG`. Once the file passes
+ * `rotateBytes` it is moved to `<path>.1` and started over, so a
+ * process that logs for weeks, or a renderer stuck in an error loop,
+ * cannot fill the disk.
+ */
+export function setLogFile(path: string, rotateBytes = Infinity): void {
+  logPath = path;
+  rotateAtBytes = rotateBytes;
+  try {
+    written = statSync(path).size;
+  } catch {
+    written = 0;
+  }
+}
+
+function write(line: string): void {
+  if (!logPath) return;
+  const bytes = Buffer.byteLength(line);
+  if (written + bytes > rotateAtBytes) {
+    try {
+      renameSync(logPath, `${logPath}.1`);
+    } catch {
+      // nothing to rotate
+    }
+    written = 0;
+  }
+  appendFileSync(logPath, line);
+  written += bytes;
+}
 
 /**
  * Format `data` as a single-line string for log output. Errors get
@@ -60,7 +93,7 @@ export function log(
           data
         )}`
       : `${ts} [${level.toUpperCase()}] ${context}: ${message}`;
-  appendFileSync(logPath, line + '\n');
+  write(line + '\n');
 }
 
 export function logError(context: string, err: unknown): void {

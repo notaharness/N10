@@ -8,6 +8,7 @@
  * the renderer keeps dying, in which case the user is asked.
  */
 import { app, dialog, powerMonitor, type BrowserWindow } from 'electron';
+import { log } from './log.js';
 import { reloadAfterRendererGone } from './window.js';
 
 export function installRendererRecovery(win: BrowserWindow): void {
@@ -16,8 +17,9 @@ export function installRendererRecovery(win: BrowserWindow): void {
     if (win.isDestroyed() || win.webContents.isDestroyed()) return;
     const next = reloadAfterRendererGone(deaths, Date.now());
     deaths = next.history;
-    console.error(
-      `[desktop] renderer gone: ${details.reason} (exit code ${details.exitCode})${next.reload ? ', reloading' : ''}`
+    log(
+      'error',
+      `renderer gone: ${details.reason} (exit code ${details.exitCode})${next.reload ? ', reloading' : ''}`
     );
     if (next.reload) {
       win.webContents.reload();
@@ -44,7 +46,10 @@ export function installRendererRecovery(win: BrowserWindow): void {
       });
   });
   win.webContents.on('unresponsive', () => {
-    console.warn('[desktop] renderer unresponsive');
+    log('warn', 'renderer unresponsive');
+  });
+  win.webContents.on('responsive', () => {
+    log('info', 'renderer responsive again');
   });
 }
 
@@ -58,12 +63,12 @@ export function installRendererRecovery(win: BrowserWindow): void {
 export function installProcessDiagnostics(): void {
   app.on('child-process-gone', (_event, details) => {
     const name = details.name ? ` ${details.name}` : '';
-    console.error(
-      `[desktop] ${details.type} process gone: ${details.reason} (exit code ${details.exitCode})${name}`
+    log(
+      'error',
+      `${details.type} process gone: ${details.reason} (exit code ${details.exitCode})${name}`
     );
   });
-  const power = (event: string) => () =>
-    console.log(`[desktop] power: ${event}`);
+  const power = (event: string) => () => log('info', `power: ${event}`);
   // Lock and unlock events exist on macOS and Windows only.
   powerMonitor.on('suspend', power('suspend'));
   powerMonitor.on('resume', power('resume'));
