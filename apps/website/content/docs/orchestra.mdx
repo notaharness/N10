@@ -8,16 +8,20 @@ Orchestra lets one coding agent delegate work to other coding agents. The
 Each **player** is an agent in its own tmux session and Git worktree, and
 reports its progress, questions and results back to the orchestrator.
 
-Orchestra is two agent skills. Claude Code and Codex can be the
-orchestrator; players can also be Gemini, Copilot or OpenCode.
+Orchestra is two agent skills. Claude Code and Codex can each be the
+orchestrator or a player.
 
 The source and full documentation are at
 [github.com/notaharness/plugins](https://github.com/notaharness/plugins/tree/main/orchestra).
 
 ## Install
 
-Orchestra needs Linux or macOS with Bash, Git and tmux 3.x, and an
-authenticated CLI for each agent you run as a player.
+Orchestra needs Linux or macOS with Bash, Git, tmux 3.x and `python3`, and
+an authenticated `claude` or `codex` CLI for each kind of player you run. A
+Claude Code orchestrator also needs Claude Code 2.1.224 or later and `socat`
+or OpenBSD `nc`; without them, run it inside tmux. The
+[README](https://github.com/notaharness/plugins/tree/main/orchestra#requirements)
+has the full list.
 
 In Claude Code:
 
@@ -26,10 +30,11 @@ In Claude Code:
 /plugin install orchestra@notaharness
 ```
 
-For Codex and other agents, install both skills with Node.js and npm:
+For Codex, install both skills with Node.js and npm. Leave out
+`--agent codex` to pick other agents from a list.
 
 ```sh
-npx skills@latest add notaharness/plugins --global --skill orchestrator player
+npx skills@latest add notaharness/plugins --global --agent codex --skill orchestrator player
 ```
 
 ## Use it
@@ -38,9 +43,6 @@ Start the orchestrator with your task: `/orchestra:orchestrator` followed by
 the task in Claude Code, or `$orchestrator` in Codex. It spawns players as it
 needs them and tells you when a decision is yours to make. You can attach to
 any player's tmux session to watch it or talk to it directly.
-
-Run Claude Code inside tmux when it orchestrates. Codex can orchestrate from
-a desktop or CLI conversation.
 
 ## With n10
 

@@ -9,7 +9,7 @@ const routes = [
       '/plugin marketplace add notaharness/plugins',
       '/plugin install orchestra@notaharness',
     ],
-    then: 'Open Claude Code inside tmux and run /orchestra:orchestrator with a task.',
+    then: 'Run /orchestra:orchestrator with a task. Without socat or nc, run Claude Code inside tmux.',
   },
   {
     title: 'Codex and other agents',
