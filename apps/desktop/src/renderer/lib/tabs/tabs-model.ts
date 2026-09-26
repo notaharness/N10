@@ -63,6 +63,10 @@ export interface TabsState {
    *  opening a repository again land where it was left rather than on
    *  whichever of its tabs happens to be rightmost. */
   lastActiveByRepo: Readonly<Record<string, string>>;
+  /** Tabs opened in the background — an agent that started outside
+   *  the app while the user was looking at something else — and not
+   *  activated since. The strip marks them until they are first seen. */
+  unseen: readonly string[];
 }
 
 /** The repository the active tab belongs to, if it belongs to one. A
@@ -78,6 +82,7 @@ export const EMPTY_TABS: TabsState = {
   activeId: null,
   autoOpened: [],
   lastActiveByRepo: {},
+  unseen: [],
 };
 
 export type TabsAction =
@@ -157,7 +162,21 @@ function closeOtherTabs(state: TabsState, id: string): TabsState {
 }
 
 export function reduce(state: TabsState, action: TabsAction): TabsState {
-  return remember(apply(state, action));
+  return remember(markSeen(apply(state, action)));
+}
+
+/**
+ * Drop the active tab, and every tab no longer on the strip, from
+ * `unseen`. Derived for the same reason `remember` is: every path that
+ * activates or closes a tab passes through here.
+ */
+function markSeen(state: TabsState): TabsState {
+  if (state.unseen.length === 0) return state;
+  const open = new Set(state.tabs.map((t) => t.id));
+  const unseen = state.unseen.filter(
+    (id) => id !== state.activeId && open.has(id)
+  );
+  return unseen.length === state.unseen.length ? state : { ...state, unseen };
 }
 
 /**
@@ -398,6 +417,13 @@ function moveTab(
  * already open, so this can't steal focus from what the user is
  * looking at either.
  *
+ * With a tab already in front of the user, the new one opens in the
+ * background and joins `unseen`: an agent started from a shell or by
+ * an orchestrator is news, not a request to move. With nothing active
+ * — the strip at launch, or after the user closed everything — it
+ * takes focus, as there is no place to lose. Tabs the user asks for
+ * through the UI go through `open-item` and are focused there.
+ *
  * `openTabs` answers that already-open question, and it is the strip
  * *before* `rekey` ran, not after. The two differ only where re-keying
  * collapsed a duplicate onto the survivor: the tab carrying the id
@@ -415,6 +441,10 @@ function autoOpenRunning(
   openTabs: readonly Tab[]
 ): TabsState {
   const opened = new Set(state.autoOpened);
+  // Decided once for the whole sync: the launch restore opens every
+  // surviving agent onto an empty strip, and only the first of them
+  // would otherwise see nothing active.
+  const background = state.activeId !== null;
   let next = state;
   let changed = false;
   for (const e of entries) {
@@ -424,12 +454,21 @@ function autoOpenRunning(
     opened.add(seenKey);
     changed = true;
     if (openTabs.some((t) => t.id === itemTabId(repo, e.itemKey))) continue;
-    next = reduce(next, {
-      type: 'open-item',
-      repo,
-      itemKey: e.itemKey,
-      preview: false,
-    });
+    const shown = openItem(next, repo, e.itemKey, false);
+    next = background ? behindActive(next, shown) : shown;
   }
   return changed ? { ...next, autoOpened: [...opened] } : next;
+}
+
+/** `opened`, with focus left where `state` had it. A tab the open
+ *  added is marked unseen; one it found already on the strip — a
+ *  re-keyed tab the user opened themselves — is not news. */
+function behindActive(state: TabsState, opened: TabsState): TabsState {
+  const id = opened.activeId;
+  const added = id !== null && !state.tabs.some((t) => t.id === id);
+  return {
+    ...opened,
+    activeId: state.activeId,
+    unseen: added ? [...state.unseen, id] : state.unseen,
+  };
 }

@@ -196,6 +196,7 @@ export function EditorArea({
               foreignRepo={foreignRepoOf(tab, repo.cwd)}
               startsGroup={groupStarts[i]}
               running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
+              unseen={tabs.unseen.includes(tab.id)}
               machineLabel={machineLabelFor(tab)}
             />
           );

@@ -131,6 +131,62 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
+  it('opens it behind the active tab, marked unseen until activated', () => {
+    // An agent started from a shell or by an orchestrator while the
+    // user is looking at something else must not move them.
+    let s = open(empty, 'branch:main');
+    s = sync(s, [live]);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:main'),
+      id('branch:feat-x'),
+    ]);
+    expect(s.activeId).toBe(id('branch:main'));
+    expect(s.lastActiveByRepo[REPO]).toBe(id('branch:main'));
+    expect(s.unseen).toEqual([id('branch:feat-x')]);
+
+    s = reduce(s, { type: 'activate', id: id('branch:feat-x') });
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('restores every surviving agent at launch without marking any', () => {
+    // The strip starts empty on each launch; the agents tmux kept are
+    // not news, and the last of them is where the user lands.
+    const a = { ...live, itemKey: 'branch:a', branch: 'a', sessionName: 'a' };
+    const b = { ...live, itemKey: 'branch:b', branch: 'b', sessionName: 'b' };
+    const s = sync(empty, [a, b]);
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:a'), id('branch:b')]);
+    expect(s.activeId).toBe(id('branch:b'));
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('does not mark a re-keyed tab the user opened as unseen', () => {
+    // Opened as `branch:x`, re-keyed to `pr:5` and so still carrying
+    // the `branch:x` id: the running `pr:5` entry finds that tab.
+    let s = open(empty, 'branch:x');
+    s = sync(s, [{ itemKey: 'pr:5', branch: 'x' }]);
+    s = open(s, 'branch:y');
+    s = sync(s, [
+      { itemKey: 'pr:5', branch: 'x', sessionName: 'x', running: true },
+      { itemKey: 'branch:y', branch: 'y' },
+    ]);
+    expect(s.tabs).toHaveLength(2);
+    expect(s.activeId).toBe(id('branch:y'));
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('forgets an unseen tab that is closed without being opened', () => {
+    let s = sync(open(empty, 'branch:main'), [live]);
+    s = reduce(s, { type: 'close', id: id('branch:feat-x') });
+    expect(s.unseen).toEqual([]);
+  });
+
+  it('focuses the tab the user opens, even one that was unseen', () => {
+    let s = sync(open(empty, 'branch:main'), [live]);
+    s = open(s, 'branch:feat-x');
+    expect(s.activeId).toBe(id('branch:feat-x'));
+    expect(s.unseen).toEqual([]);
+  });
+
   it('leaves an idle worktree alone even though it has a session name', () => {
     // Every worktree row carries a session name whether or not an agent
     // was ever started; only `running` means there is one.

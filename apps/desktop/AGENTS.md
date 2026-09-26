@@ -63,7 +63,8 @@ Every rule below has its reasoning in `docs/decisions.md`.
 - Tabs have exactly one reconciliation point: `Workspace` hands the item list
   to `sync-items` in `lib/tabs/tabs-model.ts`, a pure reducer that re-keys
   stale tabs, opens a tab per newly running agent (`autoOpened`,
-  repo-qualified), pins previews with a live agent, and adds foreign and
+  repo-qualified) behind the active tab and marks it `unseen` until
+  activated, pins previews with a live agent, and adds foreign and
   terminal tabs. Add nothing to that seam from an effect. A tab is identified
   by PR id or `(repo, branch)`, `repo` being the real path
   (`canonicalRepoPath`). `TabsProvider` sits above the repo gate in `App.tsx`.
