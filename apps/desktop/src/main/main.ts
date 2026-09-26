@@ -35,6 +35,7 @@ import {
 import { installHostEventBridge } from './host-events.js';
 import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
+import { pickFolderWithDialog } from './folder-picker.js';
 import { buildMenuTemplate } from './menu.js';
 import {
   installProcessDiagnostics,
@@ -252,16 +253,7 @@ async function runQaSteps(win: BrowserWindow): Promise<void> {
 
 registerHostHandlers(ipcMain);
 
-// Native folder picker — Electron glue lives here so the handler
-// registry stays testable without Electron.
-setFolderPicker(async (title) => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    title,
-  });
-  if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
-});
+setFolderPicker(pickFolderWithDialog);
 
 setExternalOpener(async (url) => {
   if (!/^https?:/i.test(url)) throw new Error(`Refusing to open ${url}`);
