@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
 
@@ -12,7 +12,9 @@ function subscribeReduced(onChange: () => void) {
 
 /**
  * A looping feature demo. Under prefers-reduced-motion it doesn't
- * autoplay: the poster shows, with controls to play it.
+ * autoplay: the poster shows, with controls to play it. `autoplay` is
+ * never server-rendered, since the browser would act on it before
+ * hydration could take it back; playback starts from an effect instead.
  */
 export function DemoVideo({
   name,
@@ -26,12 +28,20 @@ export function DemoVideo({
   const reduced = useSyncExternalStore(
     subscribeReduced,
     () => window.matchMedia(REDUCED).matches,
-    () => false
+    () => true
   );
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    // Rejected when the browser's autoplay policy says no; the poster stays.
+    const video = ref.current;
+    if (!video) return;
+    if (reduced) video.pause();
+    else video.play().catch(() => undefined);
+  }, [reduced]);
   return (
     <video
+      ref={ref}
       className={className}
-      autoPlay={!reduced}
       controls={reduced}
       muted
       loop
