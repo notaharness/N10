@@ -7,7 +7,7 @@ import { N10_REPO } from './n10.js';
  * page loads; the Orchestra plugins checkout is what the folder picker
  * offers, so adding a repository adds it.
  */
-export const PLUGINS = `${HOME}/code/plugins`;
+const PLUGINS = `${HOME}/code/plugins`;
 
 const PLUGINS_REPO: RepoData = {
   cwd: PLUGINS,
@@ -34,6 +34,3 @@ export const REPOS: readonly RepoData[] = [N10_REPO, BEAM_REPO, PLUGINS_REPO];
 
 /** Recent when the page loads. */
 export const RECENT: readonly string[] = [N10_REPO.cwd, BEAM_REPO.cwd];
-
-/** What the folder picker lands on. */
-export const PICKED = PLUGINS;

@@ -3,7 +3,6 @@ import type {
   PullRequestComments,
   ReviewComment,
   SidebarItem,
-  SyncNoticeEvent,
 } from '../../../host/contract.js';
 import type { RepoData } from '../data/identity.js';
 import { RECENT, REPOS } from '../data/repos.js';
@@ -19,7 +18,6 @@ import { Channel } from './hub.js';
 export interface Channels {
   readonly remoteUpdated: Channel<void>;
   readonly discovery: Channel<void>;
-  readonly syncNotice: Channel<SyncNoticeEvent>;
 }
 
 export class RepoState {
@@ -88,7 +86,6 @@ export class RepoState {
 export class DemoState implements Channels {
   readonly remoteUpdated = new Channel<void>();
   readonly discovery = new Channel<void>();
-  readonly syncNotice = new Channel<SyncNoticeEvent>();
   readonly repos = new Map<string, RepoState>(
     REPOS.map((data) => [data.cwd, new RepoState(data, this)])
   );

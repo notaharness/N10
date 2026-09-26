@@ -1,9 +1,5 @@
 import type { WorktreeInfo } from '@n10/worktree-manager';
-import type {
-  BabysitChangedEvent,
-  N10HostApi,
-  SyncState,
-} from '../../../host/contract.js';
+import type { N10HostApi, SyncState } from '../../../host/contract.js';
 import { babysitting, worktreeDir } from '../data/identity.js';
 import { Channel, later } from './hub.js';
 import type { DemoState } from './state.js';
@@ -48,7 +44,8 @@ type WorktreeHost = Pick<
 >;
 
 export function createWorktreeHost(state: DemoState): WorktreeHost {
-  const babysit = new Channel<BabysitChangedEvent>();
+  // The demo pushes no sync notices or babysitter changes.
+  const never = new Channel<never>();
   const repo = () => state.repo();
   return {
     getSidebarModel: () => later({ cwd: repo().cwd, items: repo().sidebar }),
@@ -76,7 +73,7 @@ export function createWorktreeHost(state: DemoState): WorktreeHost {
     canRemoveBranch: () =>
       later({ safe: false as const, reason: 'The demo keeps its worktrees.' }),
     openInEditor: () => later({ editor: 'code' }),
-    onSyncNotice: state.syncNotice.subscribe,
+    onSyncNotice: never.subscribe,
     onRemoteUpdated: state.remoteUpdated.subscribe,
     onDiscoveryChanged: state.discovery.subscribe,
     startBabysit: (prId) => {
@@ -96,6 +93,6 @@ export function createWorktreeHost(state: DemoState): WorktreeHost {
       );
       return later(undefined);
     },
-    onBabysitChanged: babysit.subscribe,
+    onBabysitChanged: never.subscribe,
   };
 }
